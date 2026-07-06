@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AUTH_COOKIE, authToken } from '@/lib/auth';
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const password = process.env.SITE_PASSWORD;
   if (!password) return NextResponse.next(); // yerel geliştirme: koruma kapalı
 
