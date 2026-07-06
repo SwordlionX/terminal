@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { greeks } from "@/lib/math";
+import { gk, greeks } from "@/lib/math";
 
 interface ScenarioProps {
   spot: number;
@@ -85,11 +85,12 @@ export function ScenarioAnalysis({
   const tableRows = [];
   for (let i = 0; i <= steps; i++) {
     const s = minSpot + (i * stepSize);
-    const gr = greeks(s, strike, tYears, rate, lease, vol, 365);
+    const g = gk(s, strike, tYears, rate / 100, lease / 100, vol / 100);
+    const gr = greeks(s, strike, tYears, rate / 100, lease / 100, vol / 100, 365);
     const iv = Math.max(0, s - strike);
     if (!gr) continue;
-    const pnl = (gr.call.price - callPremium) * contractSize; 
-    tableRows.push({ spot: s, iv, price: gr.call.price, pnl, delta: gr.call.delta, gamma: gr.call.gamma, theta: gr.call.theta, vega: gr.call.vega });
+    const pnl = (g.call - callPremium) * contractSize;
+    tableRows.push({ spot: s, iv, price: g.call, pnl, delta: gr.call.delta, gamma: gr.call.gamma, theta: gr.call.theta, vega: gr.call.vega });
   }
 
   return (
@@ -112,7 +113,7 @@ export function ScenarioAnalysis({
               min={minSpot} 
               max={maxSpot} 
               step={0.1}
-              onValueChange={(val) => setScenarioSpot(val[0])} 
+              onValueChange={(val) => setScenarioSpot(Array.isArray(val) ? val[0] : val)}
               className="flex-1"
             />
             <span className="text-sm font-mono font-bold w-24 text-right text-sky-400">{formatCurrency(scenarioSpot)}</span>
@@ -162,7 +163,7 @@ export function ScenarioAnalysis({
                   <TableCell className="text-right font-mono text-[11px] text-slate-500">{r.theta.toFixed(4)}</TableCell>
                   <TableCell className="text-right font-mono text-[11px] text-slate-500">{r.vega.toFixed(4)}</TableCell>
                 </TableRow>
-              ))}
+                 ))}
             </TableBody>
           </Table>
         </div>

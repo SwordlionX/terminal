@@ -1,97 +1,141 @@
-import { Customer, Trade, Portfolio, CustomerNote, CustomerTimelineEvent } from '../types';
+import { Customer, Trade, Portfolio } from '../types';
+import { dbc } from '@/lib/db';
+import type { Row } from '@libsql/client';
 
-export const mockCustomers: Customer[] = [
-  {
-    id: 'c1',
-    companyName: 'Customer A',
-    customerNumber: 'CUST-001',
-    taxNumber: '1111111111',
-    branch: 'Merkez',
-    portfolioManager: 'PM User 1',
-    relationshipManager: 'RM User 1',
-    riskLimit: null,
-    customerSegment: 'Kurumsal',
-    notes: 'Initial customer for layout testing.',
-    createdDate: '2026-01-10T10:00:00Z',
-    updatedDate: '2026-07-01T10:00:00Z',
-    status: 'Active',
-  },
-  {
-    id: 'c2',
-    companyName: 'Customer B',
-    customerNumber: 'CUST-002',
-    taxNumber: '2222222222',
-    branch: 'Şube 1',
-    portfolioManager: 'PM User 2',
-    relationshipManager: 'RM User 2',
-    riskLimit: null,
-    customerSegment: 'Ticari',
-    notes: '',
-    createdDate: '2026-02-15T10:00:00Z',
-    updatedDate: '2026-07-02T10:00:00Z',
-    status: 'Active',
-  }
-];
+/**
+ * Veri erişim katmanı — Turso/libSQL üzerinde çalışır.
+ * (Dosya adı geçmişten geliyor; API aynı kaldığı için sayfalar değişmedi.)
+ */
 
-export const mockTrades: Trade[] = [];
-export const mockPortfolios: Record<string, Portfolio> = {};
-export const mockNotes: CustomerNote[] = [];
-export const mockTimeline: CustomerTimelineEvent[] = [];
+function rowToCustomer(r: Row): Customer {
+  return {
+    id: String(r.id),
+    companyName: String(r.companyName),
+    customerNumber: String(r.customerNumber ?? ''),
+    taxNumber: String(r.taxNumber ?? ''),
+    branch: String(r.branch ?? ''),
+    portfolioManager: String(r.portfolioManager ?? ''),
+    relationshipManager: String(r.relationshipManager ?? ''),
+    riskLimit: r.riskLimit == null ? null : Number(r.riskLimit),
+    customerSegment: String(r.customerSegment ?? ''),
+    notes: String(r.notes ?? ''),
+    createdDate: String(r.createdDate ?? ''),
+    updatedDate: String(r.updatedDate ?? ''),
+    status: (r.status === 'Passive' ? 'Passive' : 'Active'),
+  };
+}
 
-// Simulated DB Client Architecture
+function rowToTrade(r: Row): Trade {
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  return {
+    id: String(r.id),
+    customerId: String(r.customerId),
+    tradeDate: String(r.tradeDate ?? ''),
+    expiryDate: String(r.expiryDate ?? ''),
+    underlying: String(r.underlying ?? ''),
+    type: (r.type === 'Put' ? 'Put' : 'Call'),
+    position: (r.position === 'Short' ? 'Short' : 'Long'),
+    spot: Number(r.spot ?? 0),
+    strike: Number(r.strike ?? 0),
+    volatility: Number(r.volatility ?? 0),
+    contractSize: Number(r.contractSize ?? 0),
+    premium: Number(r.premium ?? 0),
+    currentPremium: num(r.currentPremium),
+    mtm: num(r.mtm),
+    pnl: num(r.pnl),
+    delta: num(r.delta),
+    gamma: num(r.gamma),
+    vega: num(r.vega),
+    theta: num(r.theta),
+    status: (['Open', 'Near Expiry', 'Expired', 'Closed'].includes(String(r.status)) ? String(r.status) : 'Open') as Trade['status'],
+  };
+}
+
 export const db = {
   customers: {
     findMany: async (): Promise<Customer[]> => {
-      return [...mockCustomers];
+      const c = await dbc();
+      const r = await c.execute('SELECT * FROM customers ORDER BY companyName');
+      return r.rows.map(rowToCustomer);
     },
     findById: async (id: string): Promise<Customer | null> => {
-      return mockCustomers.find(c => c.id === id) || null;
+      const c = await dbc();
+      const r = await c.execute({ sql: 'SELECT * FROM customers WHERE id = ?', args: [id] });
+      return r.rows.length ? rowToCustomer(r.rows[0]) : null;
     },
     create: async (data: Omit<Customer, 'id' | 'createdDate' | 'updatedDate'>): Promise<Customer> => {
-      const newCustomer: Customer = {
-        ...data,
-        id: 'c' + Date.now(),
-        createdDate: new Date().toISOString(),
-        updatedDate: new Date().toISOString(),
-      };
-      mockCustomers.push(newCustomer);
-      return newCustomer;
-    }
+      const c = await dbc();
+      const now = new Date().toISOString();
+      const cust: Customer = { ...data, id: 'c' + Date.now(), createdDate: now, updatedDate: now };
+      await c.execute({
+        sql: 'INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        args: [cust.id, cust.companyName, cust.customerNumber, cust.taxNumber, cust.branch,
+               cust.portfolioManager, cust.relationshipManager, cust.riskLimit, cust.customerSegment,
+               cust.notes, cust.createdDate, cust.updatedDate, cust.status],
+      });
+      return cust;
+    },
+    delete: async (id: string): Promise<void> => {
+      const c = await dbc();
+      await c.batch([
+        { sql: 'DELETE FROM trades WHERE customerId = ?', args: [id] },
+        { sql: 'DELETE FROM collaterals WHERE customerId = ?', args: [id] },
+        { sql: 'DELETE FROM customers WHERE id = ?', args: [id] },
+      ], 'write');
+    },
   },
   trades: {
     findMany: async (): Promise<Trade[]> => {
-      return [...mockTrades];
+      const c = await dbc();
+      const r = await c.execute('SELECT * FROM trades ORDER BY tradeDate DESC');
+      return r.rows.map(rowToTrade);
     },
     findByCustomerId: async (customerId: string): Promise<Trade[]> => {
-      return mockTrades.filter(t => t.customerId === customerId);
+      const c = await dbc();
+      const r = await c.execute({ sql: 'SELECT * FROM trades WHERE customerId = ? ORDER BY tradeDate DESC', args: [customerId] });
+      return r.rows.map(rowToTrade);
     },
     create: async (data: Omit<Trade, 'id'>): Promise<Trade> => {
-      const newTrade: Trade = { ...data, id: 't' + Date.now() };
-      mockTrades.push(newTrade);
-      return newTrade;
-    }
+      const c = await dbc();
+      const t: Trade = { ...data, id: 't' + Date.now() };
+      await c.execute({
+        sql: 'INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        args: [t.id, t.customerId, t.tradeDate, t.expiryDate, t.underlying, t.type, t.position,
+               t.spot, t.strike, t.volatility, t.contractSize, t.premium, t.currentPremium,
+               t.mtm, t.pnl, t.delta, t.gamma, t.vega, t.theta, t.status],
+      });
+      return t;
+    },
+    update: async (id: string, data: Partial<Trade>): Promise<Trade | null> => {
+      const c = await dbc();
+      const fields = Object.keys(data).filter(k => k !== 'id');
+      if (fields.length === 0) return null;
+      const sets = fields.map(f => `${f} = ?`).join(', ');
+      const args = [...fields.map(f => (data as Record<string, unknown>)[f] as string | number | null), id];
+      await c.execute({ sql: `UPDATE trades SET ${sets} WHERE id = ?`, args });
+      const r = await c.execute({ sql: 'SELECT * FROM trades WHERE id = ?', args: [id] });
+      return r.rows.length ? rowToTrade(r.rows[0]) : null;
+    },
+    delete: async (id: string): Promise<void> => {
+      const c = await dbc();
+      await c.execute({ sql: 'DELETE FROM trades WHERE id = ?', args: [id] });
+    },
   },
   portfolio: {
     findByCustomerId: async (customerId: string): Promise<Portfolio> => {
-      if (!mockPortfolios[customerId]) {
-        // Prepare portfolio template with null values for financial metrics as requested.
-        mockPortfolios[customerId] = {
-          customerId,
-          totalOpenPositions: mockTrades.filter(t => t.customerId === customerId && t.status === 'Open').length,
-          usdNotional: null,
-          currentMtm: null,
-          totalProfit: null,
-          totalLoss: null,
-          requiredMargin: null,
-          availableMargin: null,
-          excessMargin: null,
-          missingMargin: null,
-          marginUtilization: null,
-          delta: null, gamma: null, vega: null, theta: null,
-          riskLevel: null
-        };
-      }
-      return mockPortfolios[customerId];
-    }
-  }
+      const c = await dbc();
+      const r = await c.execute({
+        sql: "SELECT COUNT(*) AS n FROM trades WHERE customerId = ? AND status IN ('Open','Near Expiry')",
+        args: [customerId],
+      });
+      return {
+        customerId,
+        totalOpenPositions: Number(r.rows[0].n),
+        usdNotional: null, currentMtm: null, totalProfit: null, totalLoss: null,
+        requiredMargin: null, availableMargin: null, excessMargin: null, missingMargin: null,
+        marginUtilization: null, delta: null, gamma: null, vega: null, theta: null,
+        riskLevel: null,
+      };
+    },
+  },
 };

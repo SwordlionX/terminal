@@ -4,6 +4,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+import { deleteCustomerAction } from "./actions";
+
+export const dynamic = "force-dynamic";
+
 export default async function CustomersPage() {
   const customers = await db.customers.findMany();
 
@@ -43,9 +47,19 @@ export default async function CustomersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <a href={`/customers/${c.id}`} className="text-sm font-medium text-primary hover:underline">
-                      Detay
-                    </a>
+                    <div className="flex items-center justify-end gap-4">
+                      <a href={`/customers/${c.id}`} className="text-sm font-medium text-emerald-500 hover:underline">
+                        Detay
+                      </a>
+                      <form action={async () => {
+                        "use server";
+                        await deleteCustomerAction(c.id);
+                      }}>
+                        <button type="submit" className="text-sm font-medium text-rose-500 hover:underline">
+                          Sil
+                        </button>
+                      </form>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

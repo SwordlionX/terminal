@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { GlobalSearch } from "@/components/global-search";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,7 +38,6 @@ export default function RootLayout({
                 <SidebarTrigger />
                 <div className="ml-4 font-semibold text-sm">Hazine Yönetimi</div>
               </div>
-              <GlobalSearch />
             </header>
             <div className="p-4 md:p-6 lg:p-8">
               {children}

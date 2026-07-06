@@ -1,9 +1,14 @@
 import { db } from "@/services/mockDb";
+import { evaluatePortfolio } from "@/services/portfolio.service";
+import { marginService } from "@/services/margin.service";
 import { notFound } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CustomerTimeline } from "@/features/crm/customer-timeline";
 import { CustomerNotes } from "@/features/crm/customer-notes";
+import { TradeManagement } from "@/features/crm/trade-management";
 
 function KPICard({ title, value, subtitle }: { title: string, value: React.ReactNode, subtitle?: string }) {
   return (
@@ -19,11 +24,29 @@ function KPICard({ title, value, subtitle }: { title: string, value: React.React
   );
 }
 
-export default async function CustomerDashboard({ params }: { params: { id: string } }) {
+export default async function CustomerDashboard(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const customer = await db.customers.findById(params.id);
   if (!customer) return notFound();
 
-  const portfolio = await db.portfolio.findByCustomerId(params.id);
+  const { trades: enrichedAll } = await evaluatePortfolio();
+  const myEnriched = enrichedAll.filter(e => e.trade.customerId === params.id);
+  const marginResult = await marginService.evaluateCustomerMargin(params.id);
+  const portfolioTrades = await db.trades.findByCustomerId(params.id);
+
+  const openTrades = portfolioTrades.filter(t => t.status === 'Open' || t.status === 'Near Expiry');
+  const closedTrades = portfolioTrades.filter(t => t.status === 'Closed');
+
+  const currentMtm = myEnriched.reduce((sum, e) => sum + (e.mtm || 0), 0);
+  const usdNotional = myEnriched.reduce((sum, e) => sum + e.notional, 0);
+  const maintenanceMargin = myEnriched.reduce((sum, e) => sum + e.maintenanceMargin, 0);
+  const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+  const utilization = marginResult.totalCollateralValue > 0
+    ? (marginResult.totalRequiredMargin / marginResult.totalCollateralValue) * 100 : 0;
+  const riskLabel = marginResult.status === 'SAFE' ? 'Düşük'
+    : marginResult.status === 'MARGIN_CALL' ? 'Teminat Çağrısı'
+    : marginResult.status === 'WARNING_60' ? 'Yüksek' : 'Kritik';
+  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
   return (
     <div className="space-y-6">
@@ -38,14 +61,14 @@ export default async function CustomerDashboard({ params }: { params: { id: stri
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard title="Total Open Positions" value={portfolio.totalOpenPositions} />
-        <KPICard title="USD Notional" value="-" subtitle="Waiting for Margin Engine" />
-        <KPICard title="Current MTM" value="-" subtitle="Waiting for live portfolio data" />
-        <KPICard title="Total Profit/Loss" value="-" subtitle="Waiting for Margin Engine" />
-        <KPICard title="Required Margin" value="-" subtitle="Waiting for Margin Engine" />
-        <KPICard title="Available Margin" value="-" subtitle="Waiting for Margin Engine" />
-        <KPICard title="Margin Utilization" value="-" subtitle="Waiting for Margin Engine" />
-        <KPICard title="Risk Level" value={portfolio.riskLevel || "-"} subtitle="Pending Risk Engine" />
+        <KPICard title="Total Open Positions" value={openTrades.length} />
+        <KPICard title="Current MTM" value={formatCurrency(currentMtm)} subtitle="Açık pozisyonların anlık MTM değeri" />
+        <KPICard title="Realized PnL" value={formatCurrency(totalPnl)} subtitle="Vadesi kapanmış işlemlerin kâr/zararı" />
+        <KPICard title="USD Notional" value={formatCurrency(usdNotional)} subtitle="Açık pozisyonların nominal değeri" />
+        <KPICard title="Sürdürme Teminatı" value={formatCurrency(maintenanceMargin)} subtitle="Vade dilimine göre gereken teminat" />
+        <KPICard title="Mevcut Teminat" value={formatCurrency(marginResult.totalCollateralValue)} subtitle="Haircut sonrası" />
+        <KPICard title="Teminat Kullanımı" value={`%${utilization.toFixed(1)}`} subtitle="Gereken / Mevcut" />
+        <KPICard title="Risk Seviyesi" value={riskLabel} subtitle={`Coverage %${(marginResult.coverageRatio * 100).toFixed(1)}`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -64,7 +87,10 @@ export default async function CustomerDashboard({ params }: { params: { id: stri
               </div>
             </CardContent>
           </Card>
-          
+
+          {/* İşlem Yönetimi Modülü */}
+          <TradeManagement customerId={customer.id} trades={portfolioTrades} />
+
           <CustomerNotes customerId={customer.id} initialNotes={customer.notes} />
         </div>
 

@@ -1,6 +1,6 @@
-import { 
-  LayoutDashboard, Users, Calculator, Briefcase, 
-  ShieldAlert, Settings, FileText, PieChart 
+import {
+  LayoutDashboard, Users, Calculator, Briefcase,
+  ShieldAlert, Settings, PieChart
 } from "lucide-react";
 import {
   Sidebar,
@@ -16,14 +16,13 @@ import {
 } from "@/components/ui/sidebar";
 
 const items = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Customers", url: "/customers", icon: Users },
-  { title: "Pricing", url: "/", icon: Calculator },
-  { title: "Portfolio", url: "/portfolio", icon: Briefcase },
-  { title: "Margin & Risk", url: "/margin", icon: ShieldAlert },
-  { title: "Trades", url: "/trades", icon: Briefcase },
-  { title: "Reports", url: "/reports", icon: FileText },
-  { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Ana Ekran", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Müşteriler", url: "/customers", icon: Users },
+  { title: "Fiyatlama", url: "/", icon: Calculator },
+  { title: "Risk Merkezi", url: "/risk", icon: ShieldAlert },
+  { title: "Teminat (Margin)", url: "/margin", icon: PieChart },
+  { title: "İşlemler", url: "/trades", icon: Briefcase },
+  { title: "Ayarlar", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -41,7 +40,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton isActive={item.title === 'Pricing'}>
+                  <SidebarMenuButton>
                     <a href={item.url} className="flex items-center gap-2">
                       <item.icon />
                       <span>{item.title}</span>

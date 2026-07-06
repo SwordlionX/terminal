@@ -1,14 +1,18 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMarketData } from "@/store/marketData";
+import { useMarketFeed } from "@/hooks/use-market-feed";
+import { surfaceVol } from "@/lib/vol/surface";
 import { gk, greeks } from "@/lib/math";
-import { mockCustomers } from "@/services/mockDb";
+import { addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { PositionCard } from "@/features/pricing/position-card";
 import { ScenarioAnalysis } from "@/features/pricing/scenario-analysis";
 import { ReverseEngineering } from "@/features/pricing/reverse-engineering";
@@ -17,22 +21,99 @@ import { HedgePanel } from "@/features/pricing/hedge-panel";
 
 export default function PricingPage() {
   const md = useMarketData();
-  
-  // Hesaplama (Gün farkı / basis)
-  const T = (new Date(md.expiryDate).getTime() - new Date(md.tradeDate).getTime()) / (1000 * 3600 * 24) / md.basis;
-  const tYears = Math.max(T, 0.001);
-  const result = gk(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, md.vol / 100);
-  const gr = greeks(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, md.vol / 100, md.basis);
+  const feed = useMarketFeed(md.product, md.rate / 100);
+
+  // Kaydetme formu durumu
+  const [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
+  const [customerId, setCustomerId] = useState<string>("");
+  const [bookType, setBookType] = useState<"Call" | "Put">("Call");
+  const [bookPosition, setBookPosition] = useState<"Long" | "Short">("Long");
+  const [bookMsg, setBookMsg] = useState<string>("");
+
+  // Müşteri listesi (kaydetme formu için)
+  useEffect(() => {
+    fetch('/api/customers').then(r => r.json()).then(setCustomers).catch(() => {});
+  }, []);
+
+  // Canlı spot geldiğinde otomatik uygula (5 dk'da bir tazelenir).
+  // "Manuel" tiki işaretliyse canlı veri kullanıcının girdiği spotu EZMEZ.
+  useEffect(() => {
+    if (!md.manualSpot && feed.spot?.price) {
+      md.setField("spot", Math.round(feed.spot.price * 100) / 100);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed.spot?.at, feed.spot?.price, md.manualSpot]);
+
+  // Vade hesabı — geçersiz/silinmiş tarihte NaN'a düşmemek için son geçerli değer korunur
+  const dayMs = 1000 * 3600 * 24;
+  const lastValidDays = useRef(90);
+  const rawDays = (new Date(md.expiryDate).getTime() - new Date(md.tradeDate).getTime()) / dayMs;
+  const dateValid = isFinite(rawDays);
+  const daysToExpiry = dateValid ? Math.max(rawDays, 0.5) : lastValidDays.current;
+  if (dateValid) lastValidDays.current = daysToExpiry;
+  const tYears = Math.max(daysToExpiry / md.basis, 0.001);
+
+  // Volatilite: manuel tik yoksa smile'dan (de-Amerikanize IV), tik varsa kullanıcı girer
+  const smileIv = useMemo(() => {
+    if (!feed.surface || md.spot <= 0) return null;
+    const iv = surfaceVol(feed.surface, md.strike / md.spot, daysToExpiry);
+    return iv != null && isFinite(iv) ? iv * 100 : null;
+  }, [feed.surface, md.strike, md.spot, daysToExpiry]);
+
+  const effVol = md.manualVol ? md.vol : (smileIv ?? md.vol);
+
+  const result = gk(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100);
+  const gr = greeks(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100, md.basis);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
   const formatNumber = (val: number, dig = 4) => Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: dig, maximumFractionDigits: dig });
 
+  const handleBookTrade = async () => {
+    if (!customerId) { setBookMsg("Önce müşteri seçin."); return; }
+    const premiumPerOz = bookType === "Call" ? result.call : result.put;
+    await addManualTradeAction(customerId, {
+      tradeDate: md.tradeDate,
+      expiryDate: md.expiryDate,
+      underlying: md.product,
+      type: bookType,
+      position: bookPosition,
+      spot: md.spot,
+      strike: md.strike,
+      volatility: effVol / 100,
+      contractSize: md.contractSize,
+      premium: premiumPerOz * md.contractSize,
+    });
+    setBookMsg(`Kaydedildi: ${bookPosition} ${bookType} ${md.product} @ ${md.strike} (prim ${formatCurrency(premiumPerOz * md.contractSize)})`);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Fiyatlama</h1>
-        <Button>İşlemi Kaydet (Book Trade)</Button>
+      <div className="flex flex-wrap justify-between items-center gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold tracking-tight">Fiyatlama</h1>
+          {feed.spot && (
+            <Badge variant="outline" className="border-emerald-600 text-emerald-500 font-mono">
+              Canlı: {feed.spot.source} ${formatNumber(feed.spot.price, 2)}
+            </Badge>
+          )}
+          {feed.snapshotISO && (
+            <Badge variant="outline" className="border-slate-700 text-slate-400">
+              Zincir: {feed.snapshotISO}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={feed.refreshChains} disabled={feed.refreshing}>
+            {feed.refreshing ? "Yenileniyor..." : "Opsiyon Zincirlerini Yenile"}
+          </Button>
+        </div>
       </div>
+
+      {feed.error && (
+        <div className="text-sm text-amber-500 border border-amber-900/50 bg-amber-950/20 rounded-md px-4 py-2">
+          {feed.error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Market Data Girişi */}
@@ -42,28 +123,35 @@ export default function PricingPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Müşteri (Portfolio Link)</Label>
-              <Select>
-                <SelectTrigger><SelectValue placeholder="Müşteri Seçiniz..." /></SelectTrigger>
-                <SelectContent>
-                  {mockCustomers.map(c => <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
               <Label>Ürün (Sembol)</Label>
-              <Select value={md.product} onValueChange={(v) => md.setField('product', v || '')}>
+              <Select value={md.product} onValueChange={(v) => md.setField('product', v || 'XAU')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="XAU">XAU/USD (Altın)</SelectItem>
-                  <SelectItem value="XAG">XAG/USD (Gümüş)</SelectItem>
+                  <SelectItem value="XAU">XAU/USD (Altın — GLD smile)</SelectItem>
+                  <SelectItem value="XAG">XAG/USD (Gümüş — SLV smile)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Spot Fiyat</Label>
-                <Input type="number" value={md.spot} onChange={e => md.setField('spot', parseFloat(e.target.value) || 0)} />
+                <div className="flex items-center justify-between">
+                  <Label>Spot Fiyat</Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="manualSpot"
+                      checked={md.manualSpot}
+                      onChange={(e) => md.setField('manualSpot', e.target.checked)}
+                    />
+                    <Label htmlFor="manualSpot" className="text-xs text-slate-400 cursor-pointer">Manuel</Label>
+                  </div>
+                </div>
+                <Input
+                  type="number"
+                  value={md.spot}
+                  disabled={!md.manualSpot && feed.spot != null}
+                  onChange={e => md.setField('spot', parseFloat(e.target.value) || 0)}
+                  className={!md.manualSpot && feed.spot != null ? "opacity-80 font-mono" : ""}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Kullanım (Strike)</Label>
@@ -76,18 +164,41 @@ export default function PricingPage() {
               <div className="space-y-2">
                 <Label>Vade (Tarih)</Label>
                 <Input type="date" value={md.expiryDate} onChange={e => md.setField('expiryDate', e.target.value)} />
+                {!dateValid && (
+                  <p className="text-[11px] text-amber-500">Geçersiz tarih — son geçerli vade ({daysToExpiry.toFixed(0)} gün) kullanılıyor</p>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Volatilite (%)</Label>
-                <Input type="number" step="0.1" value={md.vol} onChange={e => md.setField('vol', parseFloat(e.target.value) || 0)} />
+              <div className="space-y-2 col-span-2">
+                <div className="flex items-center justify-between">
+                  <Label>Volatilite (%)</Label>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="manualVol"
+                      checked={md.manualVol}
+                      onChange={(e) => md.setField('manualVol', e.target.checked)}
+                    />
+                    <Label htmlFor="manualVol" className="text-xs text-slate-400 cursor-pointer">Manuel gir</Label>
+                  </div>
+                </div>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={md.manualVol ? md.vol : Number(effVol.toFixed(2))}
+                  disabled={!md.manualVol}
+                  onChange={e => md.setField('vol', parseFloat(e.target.value) || 0)}
+                  className={!md.manualVol ? "opacity-80 font-mono" : ""}
+                />
+                {!md.manualVol && (
+                  <p className="text-[11px] text-slate-500">
+                    {smileIv != null
+                      ? `Smile'dan otomatik: ${feed.surface?.symbol} yüzeyi, ${daysToExpiry.toFixed(0)} gün, de-Amerikanize IV`
+                      : "Smile verisi yok — son manuel değer kullanılıyor"}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Kontrat (ons)</Label>
                 <Input type="number" value={md.contractSize} onChange={e => md.setField('contractSize', parseFloat(e.target.value) || 0)} />
-              </div>
-              <div className="col-span-2 flex items-center space-x-2 pt-2 pb-1 border-b border-slate-800/50">
-                <Checkbox id="smile" />
-                <Label htmlFor="smile" className="text-xs text-slate-400">Volatiliteyi Smile'dan al (her strike kendi vol'ünü kullanır)</Label>
               </div>
               <div className="space-y-2">
                 <Label>Faiz Oranı (%)</Label>
@@ -123,7 +234,11 @@ export default function PricingPage() {
               <div className="space-y-2 mt-4">
                 <div className="flex justify-between text-sm py-1">
                   <span className="text-muted-foreground">Vade (Gün)</span>
-                  <span className="font-mono">{formatNumber(tYears * md.basis, 0)} gün</span>
+                  <span className="font-mono">{formatNumber(daysToExpiry, 0)} gün</span>
+                </div>
+                <div className="flex justify-between text-sm py-1 border-t">
+                  <span className="text-muted-foreground">Kullanılan Vol</span>
+                  <span className="font-mono">% {formatNumber(effVol, 2)} {md.manualVol ? "(manuel)" : "(smile)"}</span>
                 </div>
                 <div className="flex justify-between text-sm py-1 border-t">
                   <span className="text-muted-foreground">Kontrat Değeri ({md.contractSize} ons)</span>
@@ -137,6 +252,35 @@ export default function PricingPage() {
                   <span className="text-muted-foreground">Toplam Put Primi</span>
                   <span className="font-mono text-rose-500">{formatCurrency(result.put * md.contractSize)}</span>
                 </div>
+              </div>
+
+              {/* İşlem Kaydetme */}
+              <div className="mt-4 p-4 rounded-lg border border-slate-800 space-y-3">
+                <div className="text-sm font-semibold text-slate-300">İşlemi Müşteriye Kaydet</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Select value={customerId} onValueChange={(v) => setCustomerId(v || "")}>
+                    <SelectTrigger><SelectValue placeholder="Müşteri..." /></SelectTrigger>
+                    <SelectContent>
+                      {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={bookPosition} onValueChange={(v) => setBookPosition((v as "Long" | "Short") || "Long")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Long">Long</SelectItem>
+                      <SelectItem value="Short">Short</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={bookType} onValueChange={(v) => setBookType((v as "Call" | "Put") || "Call")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Call">Call</SelectItem>
+                      <SelectItem value="Put">Put</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="w-full" onClick={handleBookTrade}>İşlemi Kaydet (Book Trade)</Button>
+                {bookMsg && <p className="text-xs text-emerald-500">{bookMsg}</p>}
               </div>
             </div>
           </CardContent>
@@ -159,7 +303,7 @@ export default function PricingPage() {
                  <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Vanna</span><span>{formatNumber(gr.call.vanna, 5)}</span></div>
                  <div className="flex justify-between py-1.5"><span className="text-muted-foreground">Vomma</span><span>{formatNumber(gr.call.vomma, 5)}</span></div>
                </div>
-             ) : (
+                     ) : (
                <div className="text-muted-foreground text-sm">Hesaplanamıyor</div>
              )}
           </CardContent>
@@ -167,7 +311,7 @@ export default function PricingPage() {
       </div>
 
       <div className="mt-6">
-        <PositionCard 
+        <PositionCard
           spot={md.spot}
           strike={md.strike}
           callPremium={result.call}
@@ -182,14 +326,14 @@ export default function PricingPage() {
         tYears={tYears}
         rate={md.rate}
         lease={md.lease}
-        vol={md.vol}
+        vol={effVol}
         contractSize={md.contractSize}
         callPremium={result.call}
         putPremium={result.put}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <ReverseEngineering 
+        <ReverseEngineering
           spot={md.spot}
           strike={md.strike}
           tYears={tYears}
@@ -197,20 +341,20 @@ export default function PricingPage() {
           lease={md.lease}
           contractSize={md.contractSize}
         />
-        <BarrierOptions 
+        <BarrierOptions
           spot={md.spot}
           strike={md.strike}
           tYears={tYears}
           rate={md.rate}
           lease={md.lease}
-          vol={md.vol}
+          vol={effVol}
         />
       </div>
 
-      <HedgePanel 
+      <HedgePanel
         spot={md.spot}
-        usdTryRate={40.0} // Varsayılan kur, ileride API'den gelir
-        deltaExposure={gr ? (gr.call.delta * md.contractSize) : 0} // Örnek olarak Long Call deltası kullanıldı, normalde portföy deltası çekilmeli
+        usdTryRate={md.usdtry}
+        deltaExposure={gr ? (gr.call.delta * md.contractSize) : 0}
       />
     </div>
   );

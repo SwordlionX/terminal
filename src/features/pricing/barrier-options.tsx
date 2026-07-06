@@ -43,7 +43,7 @@ export function BarrierOptions({
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label className="text-slate-400 text-xs uppercase tracking-wider">Bariyer Tipi</Label>
-            <Select value={barrierType} onValueChange={(v: string) => setBarrierType(v)}>
+            <Select value={barrierType} onValueChange={(v) => setBarrierType(v || "cuo")}>
               <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="cuo">Call Up & Out (cuo)</SelectItem>

@@ -6,7 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MarginSimulation } from "@/features/margin/margin-simulation";
 
-export default async function CustomerMarginPage({ params }: { params: { id: string } }) {
+export const dynamic = "force-dynamic";
+
+export default async function CustomerMarginPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const customer = await db.customers.findById(params.id);
   if (!customer) return notFound();
 
