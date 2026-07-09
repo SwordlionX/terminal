@@ -1,4 +1,4 @@
-import { gk, normCDF, GKResult } from './gk';
+import { gk, normCDF } from './gk';
 
 export interface GreeksResult {
   delta: number;

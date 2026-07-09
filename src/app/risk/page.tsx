@@ -2,35 +2,36 @@ import { db } from "@/services/mockDb";
 import { marginService } from "@/services/margin.service";
 import { PortfolioSummary } from "@/features/risk/portfolio-summary";
 import { HeatMap, HeatMapCustomer } from "@/features/risk/heat-map";
-import { GreeksDashboard, GreeksData } from "@/features/risk/greeks-dashboard";
 import { ExposureDashboard, ExposureData } from "@/features/risk/exposure-dashboard";
 import { ExpiryCalendar, ExpiryItem } from "@/features/risk/expiry-calendar";
-import { StressTesting, StressScenario } from "@/features/risk/stress-testing";
-import { greeks } from "@/lib/math";
+import { collateralRepository } from "@/repositories/collateral.repository";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * NOT: Greeks Dashboard ve Stress Testing kasıtlı olarak kaldırıldı. İkisi de Black-Scholes tabanlı
+ * hedge/risk analitiğiydi — ama şube kendi opsiyon kitabını hedge etmiyor, bunu hazine + karşı taraf
+ * banka (örn. JPMorgan ile back-to-back) yönetiyor. Şube seviyesinde anlamlı olan tek şey müşterinin
+ * bugünkü basit K/Z'si (intrinsic - prim) ve teminat durumu; onlar aşağıda hâlâ var.
+ */
 export default async function RiskCenterPage() {
   const marginResults = await marginService.evaluateAllCustomers();
   const allTrades = await db.trades.findMany();
-  const allCustomers = await db.customers.findMany();
+  const allCollaterals = await collateralRepository.findAll();
 
   // Heat Map Data
   const heatMapData: HeatMapCustomer[] = marginResults.map(r => ({
     id: r.customer.id,
     name: r.customer.companyName,
     marginUtil: r.margin.totalCollateralValue > 0 ? (r.margin.totalRequiredMargin / r.margin.totalCollateralValue) * 100 : 0,
-    mtm: 0
+    pnl: allTrades.filter(t => (t.status === 'Open' || t.status === 'Near Expiry') && t.customerId === r.customer.id).reduce((s, t) => s + (t.pnl || 0), 0),
   }));
 
   // Aggregations
   let totalNotional = 0;
-  let totalMtm = 0;
+  let totalPnl = 0;
   let totalMargin = 0;
   let totalCollateral = 0;
-
-  const portfolioGreeks: GreeksData = { delta: 0, gamma: 0, vega: 0, theta: 0 };
-  const custGreeksMap: Record<string, GreeksData> = {};
 
   const exposure: ExposureData = {
     currency: [],
@@ -45,38 +46,21 @@ export default async function RiskCenterPage() {
 
   const expiryItems: ExpiryItem[] = [];
 
-  const now = Date.now();
+  const nowMs = new Date().getTime();
+  const allCustomers = await db.customers.findMany();
 
   for (const t of allTrades) {
     if (t.status !== 'Open' && t.status !== 'Near Expiry') continue;
 
     const notional = t.contractSize * t.spot;
     totalNotional += notional;
-    totalMtm += t.mtm || 0;
+    totalPnl += t.pnl || 0;
 
-    const T = Math.max(0.001, (new Date(t.expiryDate).getTime() - now) / (1000 * 3600 * 24) / 365);
-    const gr = greeks(t.spot, t.strike, T, 0.04, 0.01, 0.15, 365); 
-    if (gr) {
-      const g = t.type === 'Call' ? gr.call : gr.put;
-      const mult = t.position === 'Long' ? 1 : -1;
-      const size = t.contractSize;
-      
-      portfolioGreeks.delta += g.delta * mult * size;
-      portfolioGreeks.gamma += g.gamma * mult * size;
-      portfolioGreeks.vega += g.vega * mult * size;
-      portfolioGreeks.theta += g.theta * mult * size;
-
-      if (!custGreeksMap[t.customerId]) custGreeksMap[t.customerId] = { delta: 0, gamma: 0, vega: 0, theta: 0 };
-      custGreeksMap[t.customerId].delta += g.delta * mult * size;
-      custGreeksMap[t.customerId].gamma += g.gamma * mult * size;
-      custGreeksMap[t.customerId].vega += g.vega * mult * size;
-      custGreeksMap[t.customerId].theta += g.theta * mult * size;
-    }
+    const daysLeft = (new Date(t.expiryDate).getTime() - nowMs) / 86400000;
 
     productMap[t.underlying] = (productMap[t.underlying] || 0) + notional;
     directionMap[t.position] += notional;
 
-    const daysLeft = T * 365;
     if (daysLeft < 7) expiryMap["< 1 Hafta"] += notional;
     else if (daysLeft < 30) expiryMap["< 1 Ay"] += notional;
     else expiryMap["> 1 Ay"] += notional;
@@ -94,32 +78,25 @@ export default async function RiskCenterPage() {
   marginResults.forEach(r => {
     totalMargin += r.margin.totalRequiredMargin;
     totalCollateral += r.margin.totalCollateralValue;
-    const cIdx = heatMapData.findIndex(h => h.id === r.customer.id);
-    if (cIdx >= 0) heatMapData[cIdx].mtm = allTrades.filter(t => t.customerId === r.customer.id).reduce((s,t) => s + (t.mtm||0), 0);
   });
 
-  exposure.product = Object.keys(productMap).map((k,i) => ({ name: k, value: productMap[k], color: ["bg-orange-500", "bg-zinc-400", "bg-sky-500"][i] || "bg-blue-500" }));
+  exposure.product = Object.keys(productMap).map((k,i) => ({ name: k, value: productMap[k], color: ["bg-zinc-300", "bg-zinc-500", "bg-zinc-700"][i] || "bg-zinc-800" }));
   exposure.direction = [{ name: "Long", value: directionMap.Long, color: "bg-emerald-500" }, { name: "Short", value: directionMap.Short, color: "bg-rose-500" }];
   exposure.expiry = [
     { name: "< 1 Hafta", value: expiryMap["< 1 Hafta"], color: "bg-rose-500" },
     { name: "< 1 Ay", value: expiryMap["< 1 Ay"], color: "bg-orange-500" },
     { name: "> 1 Ay", value: expiryMap["> 1 Ay"], color: "bg-emerald-500" },
   ];
-  exposure.currency = [{ name: "USD", value: totalCollateral * 0.8, color: "bg-blue-500" }, { name: "TRY", value: totalCollateral * 0.2, color: "bg-indigo-500" }];
-
-  const customerGreeks = Object.keys(custGreeksMap).map(id => ({
-    name: allCustomers.find(c => c.id === id)?.companyName || 'Bilinmiyor',
-    greeks: custGreeksMap[id]
-  })).sort((a,b) => Math.abs(b.greeks.delta) - Math.abs(a.greeks.delta));
-
-  const stressScenarios: StressScenario[] = [
-    { name: "Spot Altın (XAU) +15% Şoku", impactMtm: -1250000, marginCallCount: 3 },
-    { name: "Spot Altın (XAU) -15% Şoku", impactMtm: 850000, marginCallCount: 0 },
-    { name: "Spot Gümüş (XAG) -20% Şoku", impactMtm: -150000, marginCallCount: 1 },
-    { name: "Tüm Ürünlerde Volatilite +10% Artışı", impactMtm: -420000, marginCallCount: 1 },
-    { name: "Genel Faiz Oranı +200bp Artışı", impactMtm: 15000, marginCallCount: 0 },
-    { name: "USD/TRY Kur Şoku (+20%)", impactMtm: -3000000, marginCallCount: 5 },
-  ];
+  const currencyColors = ["bg-zinc-300", "bg-zinc-500", "bg-zinc-600", "bg-zinc-700"];
+  const currencyMap = allCollaterals.reduce<Record<string, number>>((acc, item) => {
+    acc[item.currency] = (acc[item.currency] || 0) + item.marketValueUsd;
+    return acc;
+  }, {});
+  exposure.currency = Object.keys(currencyMap).map((name, i) => ({
+    name,
+    value: currencyMap[name],
+    color: currencyColors[i] || "bg-slate-500",
+  }));
 
   return (
     <div className="space-y-8">
@@ -130,24 +107,18 @@ export default async function RiskCenterPage() {
         </div>
       </div>
 
-      <PortfolioSummary 
-        totalNotional={totalNotional} 
-        totalMtm={totalMtm} 
-        totalMargin={totalMargin} 
-        totalCollateral={totalCollateral} 
+      <PortfolioSummary
+        totalNotional={totalNotional}
+        totalPnl={totalPnl}
+        totalMargin={totalMargin}
+        totalCollateral={totalCollateral}
       />
 
       <HeatMap customers={heatMapData} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        <GreeksDashboard portfolioGreeks={portfolioGreeks} customerGreeks={customerGreeks} />
-        <ExposureDashboard data={exposure} />
-      </div>
+      <ExposureDashboard data={exposure} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        <StressTesting scenarios={stressScenarios} />
-        <ExpiryCalendar items={expiryItems} />
-      </div>
+      <ExpiryCalendar items={expiryItems} />
     </div>
   );
 }

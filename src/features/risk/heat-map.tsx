@@ -7,7 +7,7 @@ export interface HeatMapCustomer {
   id: string;
   name: string;
   marginUtil: number; // percentage
-  mtm: number;
+  pnl: number;
 }
 
 interface HeatMapProps {
@@ -39,7 +39,7 @@ export function HeatMap({ customers }: HeatMapProps) {
   return (
     <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
       <CardHeader>
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest flex items-center gap-2">
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest flex items-center gap-2">
           Risk Isı Haritası (Müşteri Limitleri)
           <div className="flex gap-2 ml-auto text-[10px] font-normal tracking-normal text-slate-400">
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>Düşük (&lt;40%)</span>
@@ -59,7 +59,7 @@ export function HeatMap({ customers }: HeatMapProps) {
                 <div className="flex justify-between items-end mt-2">
                   <div className="text-xs opacity-80">Util: <span className="font-mono font-bold text-sm">{c.marginUtil.toFixed(1)}%</span></div>
                 </div>
-                <div className="text-xs opacity-80 mt-1">MTM: <span className="font-mono">{formatCurrency(c.mtm)}</span></div>
+                <div className="text-xs opacity-80 mt-1">K/Z: <span className="font-mono">{formatCurrency(c.pnl)}</span></div>
               </a>
             );
           })}

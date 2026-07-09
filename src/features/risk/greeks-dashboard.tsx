@@ -51,16 +51,16 @@ export function GreeksDashboard({ portfolioGreeks, customerGreeks }: GreeksDashb
   return (
     <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
       <CardHeader className="pb-3 border-b border-slate-800">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Greeks Analizi (Net Pozisyon)</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Greeks Analizi (Net Pozisyon)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6 pt-5">
         <div className="p-4 border border-slate-800 bg-slate-900/40 rounded-lg shadow-inner">
           <h3 className="text-[13px] font-bold text-slate-300 mb-4 uppercase tracking-wider">Toplam Portföy Greek Değerleri</h3>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {renderBarChart("Net Delta", portfolioGreeks.delta, maxD, "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]")}
-            {renderBarChart("Net Gamma", portfolioGreeks.gamma, maxG, "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]")}
-            {renderBarChart("Net Vega", portfolioGreeks.vega, maxV, "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]")}
-            {renderBarChart("Net Theta", portfolioGreeks.theta, maxT, "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]")}
+            {renderBarChart("Net Delta", portfolioGreeks.delta, maxD, "bg-zinc-300 shadow-[0_0_8px_rgba(255,255,255,0.15)]")}
+            {renderBarChart("Net Gamma", portfolioGreeks.gamma, maxG, "bg-zinc-500 shadow-[0_0_8px_rgba(255,255,255,0.1)]")}
+            {renderBarChart("Net Vega", portfolioGreeks.vega, maxV, "bg-zinc-400 shadow-[0_0_8px_rgba(255,255,255,0.12)]")}
+            {renderBarChart("Net Theta", portfolioGreeks.theta, maxT, "bg-zinc-600 shadow-[0_0_8px_rgba(255,255,255,0.08)]")}
           </div>
         </div>
 
@@ -70,10 +70,10 @@ export function GreeksDashboard({ portfolioGreeks, customerGreeks }: GreeksDashb
             {customerGreeks.slice(0, 5).map((c, i) => (
               <div key={i} className="grid grid-cols-5 gap-6 items-center">
                 <div className="text-xs truncate font-medium text-slate-300" title={c.name}>{c.name}</div>
-                {renderBarChart("Delta", c.greeks.delta, maxD, "bg-sky-500/80")}
-                {renderBarChart("Gamma", c.greeks.gamma, maxG, "bg-indigo-500/80")}
-                {renderBarChart("Vega", c.greeks.vega, maxV, "bg-emerald-500/80")}
-                {renderBarChart("Theta", c.greeks.theta, maxT, "bg-rose-500/80")}
+                {renderBarChart("Delta", c.greeks.delta, maxD, "bg-zinc-300/80")}
+                {renderBarChart("Gamma", c.greeks.gamma, maxG, "bg-zinc-500/80")}
+                {renderBarChart("Vega", c.greeks.vega, maxV, "bg-zinc-400/80")}
+                {renderBarChart("Theta", c.greeks.theta, maxT, "bg-zinc-600/80")}
               </div>
             ))}
             {customerGreeks.length === 0 && (

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,14 +13,28 @@ export interface StressScenario {
 }
 
 export function StressTesting({ scenarios }: { scenarios: StressScenario[] }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(val);
+
+  const runAll = () => {
+    startTransition(() => {
+      router.refresh();
+    });
+  };
 
   return (
     <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
       <CardHeader className="pb-3 border-b border-slate-800 flex flex-row items-center justify-between">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Stres Testi ve Senaryo Motoru</CardTitle>
-        <Button variant="outline" size="sm" className="h-6 text-[10px] bg-slate-900 border-slate-700 hover:bg-slate-800">
-          Tümünü Çalıştır
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Stres Testi ve Senaryo Motoru</CardTitle>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 text-[10px] bg-slate-900 border-slate-700 hover:bg-slate-800"
+          onClick={runAll}
+          disabled={isPending}
+        >
+          {isPending ? "Çalıştırılıyor..." : "Tümünü Çalıştır"}
         </Button>
       </CardHeader>
       <CardContent className="pt-5 space-y-3 h-[320px] overflow-y-auto custom-scrollbar pr-1">

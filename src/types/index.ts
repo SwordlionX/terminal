@@ -34,7 +34,14 @@ export interface Trade {
   gamma: number | null;
   vega: number | null;
   theta: number | null;
+  marginRate?: number;
   status: 'Open' | 'Near Expiry' | 'Expired' | 'Closed';
+  // Bariyer opsiyonlar için opsiyonel alanlar (vanilla işlemlerde boş kalır)
+  barrierType?: string; // örn. "Knock Out Down", "Knock Out Up"
+  barrierLevel?: number;
+  barrierStyle?: string; // "Avrupa" (vade sonu gözlem) | "Amerikan" (sürekli gözlem)
+  barrierStartDate?: string;
+  barrierEndDate?: string;
 }
 
 export interface Portfolio {

@@ -5,12 +5,12 @@ import { cn } from "@/lib/utils";
 
 interface PortfolioSummaryProps {
   totalNotional: number;
-  totalMtm: number;
+  totalPnl: number;
   totalMargin: number;
   totalCollateral: number;
 }
 
-export function PortfolioSummary({ totalNotional, totalMtm, totalMargin, totalCollateral }: PortfolioSummaryProps) {
+export function PortfolioSummary({ totalNotional, totalPnl, totalMargin, totalCollateral }: PortfolioSummaryProps) {
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(val);
   const marginUtil = totalCollateral > 0 ? (totalMargin / totalCollateral) * 100 : 0;
 
@@ -21,8 +21,8 @@ export function PortfolioSummary({ totalNotional, totalMtm, totalMargin, totalCo
         <CardContent><div className="text-2xl font-bold font-mono text-slate-100">{formatCurrency(totalNotional)}</div></CardContent>
       </Card>
       <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
-        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Net MTM</CardTitle></CardHeader>
-        <CardContent><div className={cn("text-2xl font-bold font-mono", totalMtm >= 0 ? "text-emerald-400" : "text-rose-400")}>{totalMtm >= 0 ? "+" : ""}{formatCurrency(totalMtm)}</div></CardContent>
+        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Net K/Z (Açık Pozisyonlar)</CardTitle></CardHeader>
+        <CardContent><div className={cn("text-2xl font-bold font-mono", totalPnl >= 0 ? "text-emerald-400" : "text-rose-400")}>{totalPnl >= 0 ? "+" : ""}{formatCurrency(totalPnl)}</div></CardContent>
       </Card>
       <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
         <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Gereken Toplam Teminat</CardTitle></CardHeader>

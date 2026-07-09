@@ -1,41 +1,35 @@
 import { db } from '@/services/mockDb';
-import { getSpot, getSurface } from '@/services/market.service';
-import { marginService } from '@/services/margin.service';
-import { surfaceVol } from '@/lib/vol/surface';
-import { gk } from '@/lib/math';
-import { MarginEngine, MarginResult } from '@/lib/margin/engine';
+import { getSpot } from '@/services/market.service';
 import { Trade, Customer } from '@/types';
-
-const DEFAULT_RATE = 0.05;
-const DEFAULT_LEASE = 0; // GLD/SLV smile q=0 bazlı; XAU kirasını ayarlardan bağlamak istersek buraya taşınır
 
 export interface EnrichedTrade {
   trade: Trade;
   customerName: string;
+  initialDaysToExpiry: number;
   daysToExpiry: number;
-  currentSpot: number | null;   // canlı spot (yoksa giriş spotu)
+  currentSpot: number | null;   // canlı spot
   spotIsLive: boolean;
-  usedVol: number | null;       // smile'dan gelen IV (yoksa işlem vol'ü)
-  volSource: 'smile' | 'trade';
-  currentValue: number | null;  // opsiyonun güncel toplam değeri (USD)
-  mtm: number | null;           // aktif kar/zarar
-  maintenanceMargin: number;    // gereken sürdürme teminatı (USD)
-  notional: number;
+  notional: number;             // currentSpot * contractSize
+  pnl: number | null;           // Unrealized K/Z — basit intrinsic (Black-Scholes/smile YOK):
+                                 // aynı formül settleTradeAction'daki gerçekleşen K/Z ile birebir aynı,
+                                 // sadece vade spotu yerine canlı spot kullanılır.
 }
 
 export interface CustomerPortfolioSummary {
   customer: Customer;
   openTrades: number;
   totalNotional: number;
-  totalMtm: number;
-  totalMaintenanceMargin: number;
-  margin: MarginResult;
+  totalPnl: number;
 }
 
 /**
- * Tüm açık işlemleri güncel spot + smile IV ile yeniden fiyatlar (MTM),
- * sürdürme teminatını hesaplar ve mockDb'deki mtm alanlarını günceller —
- * böylece Risk Merkezi ve Margin ekranları da güncel MTM görür.
+ * Tüm açık işlemleri canlı spotla yeniden değerler. NOT: Black-Scholes/smile YOK — MTM kavramı
+ * kaldırıldı (banka şubesi kendi opsiyon kitabını hedge etmiyor, bunu hazine + karşı taraf banka
+ * back-to-back yapıyor; şube için tek anlamlı rakam "bugün kapatılsa ne kadar kâr/zarar" sorusu).
+ * PnL = intrinsic value (canlı spot vs strike) - prim; settleTradeAction'daki gerçekleşen K/Z
+ * formülüyle birebir aynı, sadece expiry spotu yerine canlı spot kullanır.
+ *
+ * Teminat burada YOK — o margin.service.ts'te, bu fonksiyondan tamamen bağımsız hesaplanıyor.
  */
 export async function evaluatePortfolio(): Promise<{
   trades: EnrichedTrade[];
@@ -48,11 +42,16 @@ export async function evaluatePortfolio(): Promise<{
   // Kullanılan ürünler için spotları tek seferde çek (5 dk önbellekli)
   const products = [...new Set(allTrades.map(t => t.underlying.toUpperCase()))];
   const spotMap: Record<string, { price: number } | null> = {};
-  const surfMap: Record<string, Awaited<ReturnType<typeof getSurface>>> = {};
   await Promise.all(products.map(async p => {
     spotMap[p] = await getSpot(p);
-    surfMap[p] = await getSurface(p, DEFAULT_RATE);
   }));
+
+  // Canlı spot alınamayan ürün varsa PnL'i eski/işlem-anı veriyle sessizce hesaplamak yerine
+  // burada durup açık hata fırlat — çağıran ekran hatayı gösterir, yanlış PnL'e güvenilmez.
+  const missingSpot = products.filter(p => !spotMap[p]);
+  if (missingSpot.length) {
+    throw new Error(`Canlı spot alınamadı: ${missingSpot.join(', ')}. PnL hesaplanamıyor.`);
+  }
 
   const enriched: EnrichedTrade[] = [];
 
@@ -60,54 +59,48 @@ export async function evaluatePortfolio(): Promise<{
     if (t.status === 'Closed' || t.status === 'Expired') continue;
 
     const prod = t.underlying.toUpperCase();
-    const live = spotMap[prod];
-    const spot = live?.price ?? t.spot;
+    const live = spotMap[prod]!; // yukarıda kontrol edildi — eksikse zaten hata fırlatıldı
+    const spot = live.price;
     const daysToExpiry = Math.max(0.5, (new Date(t.expiryDate).getTime() - now) / 86400000);
-    const T = daysToExpiry / 365;
 
-    // Vol: smile'dan; yoksa işleme yazılmış vol
-    const surface = surfMap[prod];
-    const smileIv = surface ? surfaceVol(surface, t.strike / spot, daysToExpiry) : null;
-    const vol = smileIv ?? (t.volatility > 0 ? t.volatility : 0.15);
+    // Basit intrinsic değer — settleTradeAction'la aynı formül, sadece expiry spotu yerine canlı spot.
+    let intrinsicValue = t.type === 'Call'
+      ? Math.max(0, spot - t.strike)
+      : Math.max(0, t.strike - spot);
+    intrinsicValue *= t.contractSize;
 
-    const g = gk(spot, t.strike, T, DEFAULT_RATE, DEFAULT_LEASE, vol);
-    const valPerOz = t.type === 'Call' ? g.call : g.put;
-    const currentValue = valPerOz * t.contractSize;
-    const mtm = t.position === 'Long' ? currentValue - t.premium : t.premium - currentValue;
+    const payout = t.position === 'Long' ? intrinsicValue : -intrinsicValue;
+    const premiumAdjustment = t.position === 'Long' ? -t.premium : t.premium;
+    const pnl = payout + premiumAdjustment;
 
     const notional = spot * t.contractSize;
-    const maintenanceMargin = MarginEngine.getBaseMarginRate(prod, daysToExpiry) * notional;
 
-    // mockDb'yi güncelle — margin/risk ekranları güncel MTM kullansın
-    await db.trades.update(t.id, { mtm, currentPremium: valPerOz });
+    // mockDb'yi güncelle — risk ekranları güncel PnL kullansın
+    await db.trades.update(t.id, { pnl });
+    
+    const initialDaysToExpiry = Math.max(1, (new Date(t.expiryDate).getTime() - new Date(t.tradeDate).getTime()) / (1000 * 3600 * 24));
 
     enriched.push({
-      trade: { ...t, mtm, currentPremium: valPerOz },
+      trade: { ...t, pnl },
       customerName: allCustomers.find(c => c.id === t.customerId)?.companyName || 'Bilinmiyor',
+      initialDaysToExpiry,
       daysToExpiry,
       currentSpot: spot,
-      spotIsLive: live != null,
-      usedVol: vol,
-      volSource: smileIv != null ? 'smile' : 'trade',
-      currentValue,
-      mtm,
-      maintenanceMargin,
+      spotIsLive: true, // canlı değilse yukarıda zaten hata fırlatıldı
       notional,
+      pnl,
     });
   }
 
-  // Müşteri bazlı özet (margin motoru teminat/haircut kurallarını uygular)
-  const marginResults = await marginService.evaluateAllCustomers();
-  const customers: CustomerPortfolioSummary[] = marginResults
-    .map(({ customer, margin }) => {
+  // Müşteri bazlı özet (nominal + PnL — teminat burada YOK, bkz. margin.service.ts)
+  const customers: CustomerPortfolioSummary[] = allCustomers
+    .map((customer) => {
       const ct = enriched.filter(e => e.trade.customerId === customer.id);
       return {
         customer,
         openTrades: ct.length,
         totalNotional: ct.reduce((s, e) => s + e.notional, 0),
-        totalMtm: ct.reduce((s, e) => s + (e.mtm || 0), 0),
-        totalMaintenanceMargin: ct.reduce((s, e) => s + e.maintenanceMargin, 0),
-        margin,
+        totalPnl: ct.reduce((s, e) => s + (e.pnl || 0), 0),
       };
     });
 

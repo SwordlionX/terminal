@@ -1,21 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Ucan Finans Terminal",
+  title: "Hazine Opsiyon Terminali",
   description: "Kurumsal Hazine Opsiyon Terminali",
 };
 
@@ -27,7 +16,7 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className="h-full antialiased dark"
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <SidebarProvider>

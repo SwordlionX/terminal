@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export function CustomerNotes({ customerId, initialNotes }: { customerId: string, initialNotes: string }) {
+export function CustomerNotes({ initialNotes }: { customerId: string, initialNotes: string }) {
   return (
     <Card>
       <CardHeader>

@@ -31,11 +31,11 @@ export function ScenarioAnalysis({
   const formatPercent = (val: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val * 100);
 
   const renderCol = (title: string, sub: string, pos: "Long Call"|"Short Call"|"Long Put"|"Short Put", prm: number) => {
-    let maxP: string, maxL: string, be: number, iv: number, tv: number, pnlUnit: number;
+    let maxP: string, maxL: string, be: number, pnlUnit: number;
     const s = scenarioSpot;
     
     const currentIv = pos.includes("Call") ? Math.max(0, spot - strike) : Math.max(0, strike - spot);
-    tv = prm - currentIv;
+    const tv = prm - currentIv;
 
     if (pos.includes("Call")) {
       be = strike + prm;
@@ -87,17 +87,17 @@ export function ScenarioAnalysis({
     const s = minSpot + (i * stepSize);
     const g = gk(s, strike, tYears, rate / 100, lease / 100, vol / 100);
     const gr = greeks(s, strike, tYears, rate / 100, lease / 100, vol / 100, 365);
-    const iv = Math.max(0, s - strike);
     if (!gr) continue;
+    const intrinsicValue = Math.max(0, s - strike);
     const pnl = (g.call - callPremium) * contractSize;
-    tableRows.push({ spot: s, iv, price: g.call, pnl, delta: gr.call.delta, gamma: gr.call.gamma, theta: gr.call.theta, vega: gr.call.vega });
+    tableRows.push({ spot: s, iv: intrinsicValue, price: g.call, pnl, delta: gr.call.delta, gamma: gr.call.gamma, theta: gr.call.theta, vega: gr.call.vega });
   }
 
   return (
     <div className="space-y-6 mt-6">
       <Card className="bg-[#0b1120] border-slate-800 text-slate-100 shadow-xl">
         <CardHeader className="pb-4">
-          <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Vade Sonu Senaryo Analizi</CardTitle>
+          <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Vade Sonu Senaryo Analizi</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex items-center gap-5 p-4 rounded-lg bg-slate-900/50 border border-slate-800">
@@ -116,7 +116,7 @@ export function ScenarioAnalysis({
               onValueChange={(val) => setScenarioSpot(Array.isArray(val) ? val[0] : val)}
               className="flex-1"
             />
-            <span className="text-sm font-mono font-bold w-24 text-right text-sky-400">{formatCurrency(scenarioSpot)}</span>
+            <span className="text-sm font-mono font-bold w-24 text-right text-zinc-200">{formatCurrency(scenarioSpot)}</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -130,7 +130,7 @@ export function ScenarioAnalysis({
 
       <Card className="bg-[#0b1120] border-slate-800 text-slate-100 shadow-xl overflow-hidden">
         <CardHeader className="bg-slate-900/30 border-b border-slate-800 pb-3 pt-4">
-          <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest flex justify-between">
+          <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest flex justify-between">
             <span>Senaryo Tablosu (Long Call)</span>
             <span className="text-slate-500 text-[10px]">{steps + 1} Fiyat Seviyesi</span>
           </CardTitle>
@@ -154,7 +154,7 @@ export function ScenarioAnalysis({
                 <TableRow key={i} className="border-slate-800/50 hover:bg-slate-800/30 transition-colors">
                   <TableCell className="font-mono text-xs font-bold text-slate-200">{formatCurrency(r.spot)}</TableCell>
                   <TableCell className="text-right font-mono text-xs text-slate-400">{formatCurrency(r.iv)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs text-sky-400 font-semibold">{formatCurrency(r.price)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs text-zinc-200 font-semibold">{formatCurrency(r.price)}</TableCell>
                   <TableCell className={cn("text-right font-mono text-xs font-bold", r.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
                     {r.pnl >= 0 ? "+" : ""}{formatCurrency(r.pnl)}
                   </TableCell>

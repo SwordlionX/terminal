@@ -29,21 +29,33 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
   const customer = await db.customers.findById(params.id);
   if (!customer) return notFound();
 
-  const { trades: enrichedAll } = await evaluatePortfolio();
-  const myEnriched = enrichedAll.filter(e => e.trade.customerId === params.id);
+  // Teminat, PnL/smile yeniden değerlemesinden bağımsız hesaplanır — sadece canlı spot + strike
+  // kullanır, bu yüzden evaluatePortfolio() hata verse bile çalışmaya devam eder.
   const marginResult = await marginService.evaluateCustomerMargin(params.id);
   const portfolioTrades = await db.trades.findByCustomerId(params.id);
+
+  // PnL: Black-Scholes/smile YOK, sadece canlı spot + strike (intrinsic - prim). Yine de canlı spot
+  // alınamazsa evaluatePortfolio() hata fırlatabilir; bu durumda teminat/risk kartları etkilenmesin
+  // diye try/catch'e alıyoruz.
+  let myEnriched: Awaited<ReturnType<typeof evaluatePortfolio>>["trades"] = [];
+  let pnlError: string | null = null;
+  try {
+    const { trades: enrichedAll } = await evaluatePortfolio();
+    myEnriched = enrichedAll.filter(e => e.trade.customerId === params.id);
+  } catch (e) {
+    pnlError = e instanceof Error ? e.message : "PnL hesaplanamadı.";
+  }
 
   const openTrades = portfolioTrades.filter(t => t.status === 'Open' || t.status === 'Near Expiry');
   const closedTrades = portfolioTrades.filter(t => t.status === 'Closed');
 
-  const currentMtm = myEnriched.reduce((sum, e) => sum + (e.mtm || 0), 0);
+  const unrealizedPnl = myEnriched.reduce((sum, e) => sum + (e.pnl || 0), 0);
   const usdNotional = myEnriched.reduce((sum, e) => sum + e.notional, 0);
-  const maintenanceMargin = myEnriched.reduce((sum, e) => sum + e.maintenanceMargin, 0);
-  const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-  const utilization = marginResult.totalCollateralValue > 0
-    ? (marginResult.totalRequiredMargin / marginResult.totalCollateralValue) * 100 : 0;
+  const realizedPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+  const utilization = marginResult.totalRequiredMargin > 0
+    ? (marginResult.totalCollateralValue / marginResult.totalRequiredMargin) * 100 : 0;
   const riskLabel = marginResult.status === 'SAFE' ? 'Düşük'
+    : marginResult.status === 'DEFICIT' ? 'Eksik Teminat'
     : marginResult.status === 'MARGIN_CALL' ? 'Teminat Çağrısı'
     : marginResult.status === 'WARNING_60' ? 'Yüksek' : 'Kritik';
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
@@ -60,15 +72,26 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
         </div>
       </div>
 
+      {pnlError && (
+        <div className="rounded-md border border-amber-800/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-400">
+          PnL hesaplanamadı: {pnlError} Teminat/risk kartları etkilenmez (ayrı ve sadece canlı spota bağlı hesaplanıyor).
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard title="Total Open Positions" value={openTrades.length} />
-        <KPICard title="Current MTM" value={formatCurrency(currentMtm)} subtitle="Açık pozisyonların anlık MTM değeri" />
-        <KPICard title="Realized PnL" value={formatCurrency(totalPnl)} subtitle="Vadesi kapanmış işlemlerin kâr/zararı" />
-        <KPICard title="USD Notional" value={formatCurrency(usdNotional)} subtitle="Açık pozisyonların nominal değeri" />
-        <KPICard title="Sürdürme Teminatı" value={formatCurrency(maintenanceMargin)} subtitle="Vade dilimine göre gereken teminat" />
+        <KPICard title="Açık Pozisyon K/Z" value={pnlError ? "—" : formatCurrency(unrealizedPnl)} subtitle="Bugün kapatılsa ne kadar kâr/zarar (intrinsic - prim)" />
+        <KPICard title="Realized PnL" value={formatCurrency(realizedPnl)} subtitle="Vadesi kapanmış işlemlerin kâr/zararı" />
+        <KPICard title="USD Notional" value={pnlError ? "—" : formatCurrency(usdNotional)} subtitle="Açık pozisyonların nominal değeri" />
+        <KPICard title="Gerekli Teminat" value={formatCurrency(marginResult.totalRequiredMargin)} subtitle="Giriş notional'i + canlı spota göre zarar, sabit oranla" />
         <KPICard title="Mevcut Teminat" value={formatCurrency(marginResult.totalCollateralValue)} subtitle="Haircut sonrası" />
-        <KPICard title="Teminat Kullanımı" value={`%${utilization.toFixed(1)}`} subtitle="Gereken / Mevcut" />
-        <KPICard title="Risk Seviyesi" value={riskLabel} subtitle={`Coverage %${(marginResult.coverageRatio * 100).toFixed(1)}`} />
+        <KPICard title="Teminat Kullanımı" value={`%${utilization.toFixed(1)}`} subtitle="Mevcut / Gereken" />
+        <KPICard
+          title="Teminat Açığı / Fazlası"
+          value={marginResult.excessMargin > 0 ? `+${formatCurrency(marginResult.excessMargin)}` : `-${formatCurrency(marginResult.missingMargin)}`}
+          subtitle={marginResult.excessMargin > 0 ? "Kullanılabilir Fazla Teminat" : "Yatırılması Gereken Tutar"}
+        />
+        <KPICard title="Risk Seviyesi" value={riskLabel} subtitle={`Zarar/Teminat %${(marginResult.marginCallRatio * 100).toFixed(1)}`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

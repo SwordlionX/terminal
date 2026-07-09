@@ -63,7 +63,7 @@ export default async function GlobalMarginDashboard() {
                 <TableHead className="text-right">Required Margin</TableHead>
                 <TableHead className="text-right">Available Collateral</TableHead>
                 <TableHead className="text-right">Missing Margin</TableHead>
-                <TableHead className="text-center">Coverage</TableHead>
+                <TableHead className="text-center">Zarar / Teminat</TableHead>
                 <TableHead>Durum / Aksiyon</TableHead>
               </TableRow>
             </TableHeader>
@@ -81,10 +81,11 @@ export default async function GlobalMarginDashboard() {
                     {margin.missingMargin > 0 ? formatCurrency(margin.missingMargin) : '-'}
                   </TableCell>
                   <TableCell className="text-center font-mono">
-                    {(margin.coverageRatio * 100).toFixed(1)}%
+                    %{(margin.marginCallRatio * 100).toFixed(1)}
                   </TableCell>
                   <TableCell>
                     {margin.status === 'SAFE' && <Badge variant="outline" className="border-emerald-500 text-emerald-500">GÜVENLİ</Badge>}
+                    {margin.status === 'DEFICIT' && <Badge variant="outline" className="border-yellow-500 text-yellow-500">EKSİK TEMİNAT</Badge>}
                     {margin.status === 'MARGIN_CALL' && <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500">TEMİNAT ÇAĞRISI (&gt;%40)</Badge>}
                     {margin.status === 'WARNING_60' && <Badge variant="secondary" className="bg-orange-500/20 text-orange-500">STOP UYARISI (&gt;%60)</Badge>}
                     {margin.status === 'STOP_LOSS_80' && <Badge variant="destructive">ANINDA STOP (&gt;%80)</Badge>}

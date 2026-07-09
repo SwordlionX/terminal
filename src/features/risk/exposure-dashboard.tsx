@@ -43,7 +43,7 @@ export function ExposureDashboard({ data }: { data: ExposureData }) {
   return (
     <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
       <CardHeader className="pb-3 border-b border-slate-800">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Risk & Dağılım Paneli</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Risk & Dağılım Paneli</CardTitle>
       </CardHeader>
       <CardContent className="space-y-8 pt-5">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

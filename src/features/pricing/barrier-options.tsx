@@ -17,13 +17,20 @@ interface BarrierOptionsProps {
   vol: number;
 }
 
+interface BarrierGreekResult {
+  delta: number;
+  gamma: number;
+  theta: number;
+  vega: number;
+}
+
 export function BarrierOptions({
   spot, strike, tYears, rate, lease, vol
 }: BarrierOptionsProps) {
   const [barrierH, setBarrierH] = useState<number>(spot * 1.1);
   const [rebateR, setRebateR] = useState<number>(0);
   const [barrierType, setBarrierType] = useState<string>("cuo");
-  const [calcResult, setCalcResult] = useState<any>(null);
+  const [calcResult, setCalcResult] = useState<{ price: number; greeks: BarrierGreekResult } | null>(null);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
 
@@ -37,7 +44,7 @@ export function BarrierOptions({
   return (
     <Card className="bg-[#0b1120] border-slate-800 text-slate-100 mt-6 shadow-xl">
       <CardHeader className="pb-3 border-b border-slate-800">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Bariyer Opsiyonları (Knock-Out / Knock-In)</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Bariyer Opsiyonları (Knock-Out / Knock-In)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6 pt-5">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -76,16 +83,16 @@ export function BarrierOptions({
             />
           </div>
           <div className="flex items-end">
-            <Button onClick={calculate} className="w-full bg-cyan-700 hover:bg-cyan-600 text-white font-bold tracking-wide">
+            <Button onClick={calculate} className="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-bold tracking-wide">
               HESAPLA
             </Button>
           </div>
         </div>
 
         {calcResult && (
-          <div className="mt-4 p-5 rounded-lg bg-cyan-950/20 border border-cyan-900/50 flex flex-col gap-4 shadow-inner">
-            <div className="flex justify-between items-center border-b border-cyan-900/50 pb-3">
-              <span className="text-cyan-300 font-semibold tracking-wide">Bariyer Opsiyon Primi:</span>
+          <div className="mt-4 p-5 rounded-lg bg-zinc-900/40 border border-zinc-700/50 flex flex-col gap-4 shadow-inner">
+            <div className="flex justify-between items-center border-b border-zinc-700/50 pb-3">
+              <span className="text-zinc-200 font-semibold tracking-wide">Bariyer Opsiyon Primi:</span>
               <span className="text-3xl font-bold font-mono text-emerald-400">${formatCurrency(calcResult.price)}</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">

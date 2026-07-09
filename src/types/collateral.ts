@@ -5,5 +5,6 @@ export interface CollateralItem {
   currency: string;
   nominalQuantity: number;
   marketValueUsd: number;
+  haircut?: number;
   addedAt: string;
 }

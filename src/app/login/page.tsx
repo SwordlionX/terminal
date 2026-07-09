@@ -37,8 +37,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#0b1120] p-4">
       <Card className="w-full max-w-sm border-slate-800 bg-slate-950/60 shadow-2xl">
         <CardHeader className="text-center space-y-1">
-          <div className="text-2xl font-bold tracking-tight text-primary">Ucan Finans</div>
-          <CardTitle className="text-sm font-normal text-muted-foreground">
+          <CardTitle className="text-lg font-semibold text-primary">
             Hazine Opsiyon Terminali
           </CardTitle>
         </CardHeader>

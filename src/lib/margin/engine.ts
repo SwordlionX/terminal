@@ -9,9 +9,13 @@ import {
 export interface TradePosition {
   id: string;
   underlying: string; // e.g., "XAU/USD"
-  daysToExpiry: number;
-  usdNotional: number; // For simplicity, all risk is standardized in USD
-  mtm: number;
+  initialDaysToExpiry: number;
+  marginRate?: number; // Override if trade was created with a manual or locked margin rate
+  usdNotional: number; // Girişteki SABİT notional (contractSize * giriş spotu) — Black-Scholes/smile'a bağımlı değil
+  position: 'Long' | 'Short'; // Bankanın yönü: Long = banka aldı (müşteri yazdı/sattı), Short = banka sattı (müşteri aldı)
+  intrinsicLoss: number; // Müşteri aleyhine basit içsel zarar (canlı spot vs strike, contractSize ile çarpılmış). Sadece
+                         // Long'da ve spot aleyhineyse >0; Short'ta veya spot lehineyse 0. Black-Scholes/smile kullanmaz.
+  premium: number; // Müşterinin ödediği veya aldığı prim
 }
 
 export interface CollateralAsset {
@@ -19,6 +23,7 @@ export interface CollateralAsset {
   assetCode: string; // e.g., "IDL-LKT-MPF" or "Nakit-TRY" or "DOL"
   currency: string;
   marketValueUsd: number;
+  haircut?: number;
 }
 
 export interface MarginResult {
@@ -29,7 +34,7 @@ export interface MarginResult {
   coverageRatio: number;
   totalMtmLoss: number; // Only counting losses for Margin Call calculation
   marginCallRatio: number; // Loss / Collateral Value
-  status: 'SAFE' | 'MARGIN_CALL' | 'WARNING_60' | 'STOP_LOSS_80';
+  status: 'SAFE' | 'DEFICIT' | 'MARGIN_CALL' | 'WARNING_60' | 'STOP_LOSS_80';
   isDeficitOver1Million: boolean;
 }
 
@@ -66,7 +71,10 @@ export class MarginEngine {
    * Procedure: baseRate + (baseRate * collateralRate) OR baseRate + (baseRate * haircut)
    */
   public static getEffectiveMarginRate(tradeBaseRate: number, collateralCode: string, days: number): number {
-    const isFund = collateralCode !== 'Nakit-TRY' && collateralCode !== 'Nakit-USD' && collateralCode !== 'Nakit-EUR';
+    const cashCurrency = collateralCode.startsWith('Nakit-') ? collateralCode.slice('Nakit-'.length) : null;
+    const isBaseCashCollateral = cashCurrency != null && BASE_COLLATERAL_CURRENCIES.includes(cashCurrency);
+    const isPreciousMetalCashCollateral = cashCurrency === 'XAU' || cashCurrency === 'XAG';
+    const isFund = cashCurrency == null;
     
     // Procedure Example 2: DOL fon teminata vermek
     if (isFund) {
@@ -80,6 +88,10 @@ export class MarginEngine {
       return tradeBaseRate + (tradeBaseRate * tlRate);
     }
 
+    if (isBaseCashCollateral || isPreciousMetalCashCollateral) {
+      return tradeBaseRate;
+    }
+
     return tradeBaseRate;
   }
 
@@ -87,7 +99,7 @@ export class MarginEngine {
    * Calculate the discounted value of a collateral asset (Haircut).
    */
   public static getCollateralDiscountedValue(asset: CollateralAsset): number {
-    const haircut = COLLATERAL_HAIRCUT_RATES[asset.assetCode] ?? 1.0; // 100% haircut if totally unapproved
+    const haircut = asset.haircut ?? COLLATERAL_HAIRCUT_RATES[asset.assetCode] ?? 1.0; // 100% haircut if totally unapproved
     return asset.marketValueUsd * (1 - haircut);
   }
 
@@ -105,21 +117,15 @@ export class MarginEngine {
     let totalRequiredMargin = 0;
     let totalMtmLoss = 0;
 
-    // We assume the portfolio gives the worst-case collateral match for conservatism,
-    // or just calculate base required margin and apply haircuts to collaterals.
-    // To strictly follow the "cross collateral" we check if any collateral applies penalty.
-    // For simplicity in this engine, we calculate Required Margin based on trade pairs,
-    // and apply standard Haircuts to Collateral. Cross-margin logic is isolated.
-    
     for (const pos of positions) {
-      const baseRate = this.getBaseMarginRate(pos.underlying, pos.daysToExpiry);
-      // Determine if cross penalty applies (checking if all collaterals are Funds or TRY)
-      // In a real system, you map specific collateral to specific trades. 
-      // We will assume standard baseRate for required margin, and apply haircut to collaterals.
-      totalRequiredMargin += (pos.usdNotional * baseRate);
+      const baseRate = pos.marginRate ?? this.getBaseMarginRate(pos.underlying, pos.initialDaysToExpiry);
       
-      if (pos.mtm < 0) {
-        totalMtmLoss += Math.abs(pos.mtm);
+      if (pos.position === 'Short') {
+        const baseMargin = pos.usdNotional * baseRate;
+        totalRequiredMargin += (baseMargin + pos.intrinsicLoss);
+        
+        // Zarar/Teminat oranı (risk eşikleri için) sadece riskli olan Short yönlü müşteri zararlarını topluyoruz
+        totalMtmLoss += pos.intrinsicLoss;
       }
     }
 
@@ -128,15 +134,21 @@ export class MarginEngine {
       totalCollateralValue += this.getCollateralDiscountedValue(col);
     }
 
-    // Net required after MTM (if MTM is positive, it does NOT reduce required margin per standard conservative rules, 
-    // but if MTM is negative, it consumes collateral).
-    // Margin Call Ratio = Loss / Collateral Value
+    // Long (Müşteri Alış) işlemlerinde ödenen primi teminat olarak kabul et
+    for (const pos of positions) {
+      if (pos.position === 'Long') {
+        totalCollateralValue += pos.premium;
+      }
+    }
+
+    // Margin Call Ratio = Zarar / Teminat Değeri (risk eşikleri bunun üzerinden tetiklenir)
     const marginCallRatio = totalCollateralValue > 0 ? (totalMtmLoss / totalCollateralValue) : (totalMtmLoss > 0 ? 1 : 0);
-    
-    const availableMargin = totalCollateralValue - totalMtmLoss;
-    const excessMargin = Math.max(0, availableMargin - totalRequiredMargin);
-    const missingMargin = Math.max(0, totalRequiredMargin - availableMargin);
-    const coverageRatio = totalRequiredMargin > 0 ? (availableMargin / totalRequiredMargin) : (availableMargin > 0 ? 1 : 0);
+
+    // Zarar artık gerekli teminatın içine gömülü olduğu için (exposureNotional üzerinden), burada
+    // ikinci kez düşülmüyor — tek, tutarlı bir teminat rakamı.
+    const excessMargin = Math.max(0, totalCollateralValue - totalRequiredMargin);
+    const missingMargin = Math.max(0, totalRequiredMargin - totalCollateralValue);
+    const coverageRatio = totalRequiredMargin > 0 ? (totalCollateralValue / totalRequiredMargin) : (totalCollateralValue > 0 ? 1 : 0);
 
     let status: MarginResult['status'] = 'SAFE';
     
@@ -146,6 +158,8 @@ export class MarginEngine {
       status = 'WARNING_60';
     } else if (marginCallRatio > RISK_THRESHOLDS.MARGIN_CALL) {
       status = 'MARGIN_CALL';
+    } else if (missingMargin > 0) {
+      status = 'DEFICIT';
     }
 
     const missingMarginTl = missingMargin * usdTryRate;

@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export function CustomerTimeline({ customerId }: { customerId: string }) {
+export function CustomerTimeline(_props: { customerId: string }) {
+  void _props.customerId;
   // Mock veri - UI gösterimi için
   const events = [
     { date: "2026-07-01", type: "Customer Created", desc: "Müşteri sisteme eklendi." },

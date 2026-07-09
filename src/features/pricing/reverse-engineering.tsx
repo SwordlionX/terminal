@@ -18,7 +18,7 @@ interface ReverseEngineeringProps {
 }
 
 export function ReverseEngineering({
-  spot, strike, tYears, rate, lease, contractSize
+  spot, strike, tYears, rate, lease
 }: ReverseEngineeringProps) {
   const [targetPremium, setTargetPremium] = useState<number>(0);
   const [unitMode, setUnitMode] = useState<"oz" | "pct">("oz");
@@ -48,13 +48,13 @@ export function ReverseEngineering({
   return (
     <Card className="bg-[#0b1120] border-slate-800 text-slate-100 mt-6 shadow-xl">
       <CardHeader className="pb-3 border-b border-slate-800">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Tersine Mühendislik (Implied Volatility Solver)</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Tersine Mühendislik (Implied Volatility Solver)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-5">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label className="text-slate-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
-            <Select value={optionType} onValueChange={(v: any) => setOptionType(v)}>
+            <Select value={optionType} onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}>
               <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="call">Alış (Call)</SelectItem>
@@ -74,7 +74,7 @@ export function ReverseEngineering({
           </div>
           <div className="space-y-2">
             <Label className="text-slate-400 text-xs uppercase tracking-wider">Prim Birimi</Label>
-            <Select value={unitMode} onValueChange={(v: any) => setUnitMode(v)}>
+            <Select value={unitMode} onValueChange={(v) => setUnitMode(v === "pct" ? "pct" : "oz")}>
               <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="oz">USD / ons</SelectItem>
@@ -83,15 +83,15 @@ export function ReverseEngineering({
             </Select>
           </div>
           <div className="flex items-end">
-            <Button onClick={runReverse} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold tracking-wide">
+            <Button onClick={runReverse} className="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-bold tracking-wide">
               IV ÇÖZ (ÇALIŞTIR)
             </Button>
           </div>
         </div>
 
         {resultIv !== null && (
-          <div className="mt-4 p-5 rounded-lg bg-indigo-950/30 border border-indigo-900/50 flex justify-between items-center shadow-inner">
-            <span className="text-indigo-300 font-semibold tracking-wide">Bulunan Zımni Volatilite (Implied Volatility):</span>
+          <div className="mt-4 p-5 rounded-lg bg-zinc-900/40 border border-zinc-700/50 flex justify-between items-center shadow-inner">
+            <span className="text-zinc-200 font-semibold tracking-wide">Bulunan Zımni Volatilite (Implied Volatility):</span>
             <span className="text-3xl font-bold font-mono text-emerald-400">{formatPercent(resultIv)}%</span>
           </div>
         )}

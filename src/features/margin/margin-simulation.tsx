@@ -27,9 +27,9 @@ export function MarginSimulation({ initialMargin, initialCollateral }: MarginSim
   const newMissing = Math.max(0, totalMargin - totalCollateral);
 
   return (
-    <Card className="border-indigo-900/60 shadow-lg shadow-indigo-900/20 bg-indigo-950/5">
+    <Card className="border-zinc-700/60 shadow-lg shadow-black/20 bg-zinc-900/20">
       <CardHeader>
-        <CardTitle className="text-indigo-400">Margin Simulator</CardTitle>
+        <CardTitle className="text-zinc-300">Margin Simulator</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">

@@ -1,10 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMarketData } from "@/store/marketData";
-import { useMarketFeed } from "@/hooks/use-market-feed";
-import { surfaceVol } from "@/lib/vol/surface";
-import { gk, greeks } from "@/lib/math";
+import { useEffect, useState } from "react";
 import { addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,13 +11,27 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { PositionCard } from "@/features/pricing/position-card";
 import { ScenarioAnalysis } from "@/features/pricing/scenario-analysis";
-import { ReverseEngineering } from "@/features/pricing/reverse-engineering";
 import { BarrierOptions } from "@/features/pricing/barrier-options";
-import { HedgePanel } from "@/features/pricing/hedge-panel";
+import { usePricingModel, formatCurrency, formatNumber } from "@/features/pricing/use-pricing-model";
+import { TrendingUpDown, Shield } from "lucide-react";
+
+const pricingTools = [
+  {
+    title: "Tersine Mühendislik",
+    desc: "Hedef primden zımni volatilite (implied vol) çözümü",
+    href: "/pricing/reverse-engineering",
+    icon: TrendingUpDown,
+  },
+  {
+    title: "Delta Hedge",
+    desc: "Delta nötr pozisyon için hedge büyüklüğü hesaplayıcı",
+    href: "/pricing/delta-hedge",
+    icon: Shield,
+  },
+];
 
 export default function PricingPage() {
-  const md = useMarketData();
-  const feed = useMarketFeed(md.product, md.rate / 100);
+  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr } = usePricingModel();
 
   // Kaydetme formu durumu
   const [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
@@ -29,44 +39,12 @@ export default function PricingPage() {
   const [bookType, setBookType] = useState<"Call" | "Put">("Call");
   const [bookPosition, setBookPosition] = useState<"Long" | "Short">("Long");
   const [bookMsg, setBookMsg] = useState<string>("");
+  const [showBarrier, setShowBarrier] = useState(false);
 
   // Müşteri listesi (kaydetme formu için)
   useEffect(() => {
     fetch('/api/customers').then(r => r.json()).then(setCustomers).catch(() => {});
   }, []);
-
-  // Canlı spot geldiğinde otomatik uygula (5 dk'da bir tazelenir).
-  // "Manuel" tiki işaretliyse canlı veri kullanıcının girdiği spotu EZMEZ.
-  useEffect(() => {
-    if (!md.manualSpot && feed.spot?.price) {
-      md.setField("spot", Math.round(feed.spot.price * 100) / 100);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feed.spot?.at, feed.spot?.price, md.manualSpot]);
-
-  // Vade hesabı — geçersiz/silinmiş tarihte NaN'a düşmemek için son geçerli değer korunur
-  const dayMs = 1000 * 3600 * 24;
-  const lastValidDays = useRef(90);
-  const rawDays = (new Date(md.expiryDate).getTime() - new Date(md.tradeDate).getTime()) / dayMs;
-  const dateValid = isFinite(rawDays);
-  const daysToExpiry = dateValid ? Math.max(rawDays, 0.5) : lastValidDays.current;
-  if (dateValid) lastValidDays.current = daysToExpiry;
-  const tYears = Math.max(daysToExpiry / md.basis, 0.001);
-
-  // Volatilite: manuel tik yoksa smile'dan (de-Amerikanize IV), tik varsa kullanıcı girer
-  const smileIv = useMemo(() => {
-    if (!feed.surface || md.spot <= 0) return null;
-    const iv = surfaceVol(feed.surface, md.strike / md.spot, daysToExpiry);
-    return iv != null && isFinite(iv) ? iv * 100 : null;
-  }, [feed.surface, md.strike, md.spot, daysToExpiry]);
-
-  const effVol = md.manualVol ? md.vol : (smileIv ?? md.vol);
-
-  const result = gk(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100);
-  const gr = greeks(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100, md.basis);
-
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
-  const formatNumber = (val: number, dig = 4) => Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: dig, maximumFractionDigits: dig });
 
   const handleBookTrade = async () => {
     if (!customerId) { setBookMsg("Önce müşteri seçin."); return; }
@@ -310,6 +288,26 @@ export default function PricingPage() {
         </Card>
       </div>
 
+      {/* Bariyer Opsiyonu — ayrı bir menü yerine ana fiyatlamanın altında açılıp kapanan opsiyonel bölüm */}
+      <div className="flex items-center gap-2 pt-2">
+        <Checkbox
+          id="showBarrier"
+          checked={showBarrier}
+          onChange={(e) => setShowBarrier(e.target.checked)}
+        />
+        <Label htmlFor="showBarrier" className="text-sm cursor-pointer">Bariyer Opsiyonu Ekle (Knock-In / Knock-Out)</Label>
+      </div>
+      {showBarrier && (
+        <BarrierOptions
+          spot={md.spot}
+          strike={md.strike}
+          tYears={tYears}
+          rate={md.rate}
+          lease={md.lease}
+          vol={effVol}
+        />
+      )}
+
       <div className="mt-6">
         <PositionCard
           spot={md.spot}
@@ -323,7 +321,7 @@ export default function PricingPage() {
       <ScenarioAnalysis
         spot={md.spot}
         strike={md.strike}
-        tYears={tYears}
+        tYears={Math.max(daysToExpiry / md.basis, 0.001)}
         rate={md.rate}
         lease={md.lease}
         vol={effVol}
@@ -332,30 +330,25 @@ export default function PricingPage() {
         putPremium={result.put}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <ReverseEngineering
-          spot={md.spot}
-          strike={md.strike}
-          tYears={tYears}
-          rate={md.rate}
-          lease={md.lease}
-          contractSize={md.contractSize}
-        />
-        <BarrierOptions
-          spot={md.spot}
-          strike={md.strike}
-          tYears={tYears}
-          rate={md.rate}
-          lease={md.lease}
-          vol={effVol}
-        />
+      {/* Detaylı Fiyatlama Araçları — Bariyer, Tersine Mühendislik, Delta Hedge kendi alt sayfalarına taşındı */}
+      <div>
+        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Detaylı Fiyatlama Araçları</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {pricingTools.map((tool) => (
+            <a
+              key={tool.href}
+              href={tool.href}
+              className="flex items-start gap-3 p-4 rounded-lg border border-slate-800 bg-slate-900/30 hover:bg-slate-800/60 hover:border-slate-700 transition-colors"
+            >
+              <tool.icon className="w-5 h-5 mt-0.5 text-zinc-300 shrink-0" />
+              <div>
+                <div className="text-sm font-semibold text-slate-200">{tool.title}</div>
+                <div className="text-xs text-slate-500 mt-1">{tool.desc}</div>
+              </div>
+            </a>
+          ))}
+        </div>
       </div>
-
-      <HedgePanel
-        spot={md.spot}
-        usdTryRate={md.usdtry}
-        deltaExposure={gr ? (gr.call.delta * md.contractSize) : 0}
-      />
     </div>
   );
 }

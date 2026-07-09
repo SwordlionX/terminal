@@ -20,7 +20,7 @@ export function HedgePanel({ spot, usdTryRate, deltaExposure }: HedgePanelProps)
   return (
     <Card className="bg-[#0b1120] border-slate-800 text-slate-100 mt-6 shadow-xl">
       <CardHeader className="pb-3 border-b border-slate-800">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Riskten Korunma (Delta Hedge) Paneli</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Riskten Korunma (Delta Hedge) Paneli</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-5">
         <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6 shadow-inner">

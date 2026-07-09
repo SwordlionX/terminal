@@ -1,6 +1,11 @@
+"use client";
+
+import { useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Calculator, Briefcase,
-  ShieldAlert, Settings, PieChart
+  ShieldAlert, Settings, PieChart, ChevronDown,
+  TrendingUpDown, Shield
 } from "lucide-react";
 import {
   Sidebar,
@@ -11,14 +16,27 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarHeader,
   SidebarFooter
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
 const items = [
   { title: "Ana Ekran", url: "/dashboard", icon: LayoutDashboard },
   { title: "Müşteriler", url: "/customers", icon: Users },
-  { title: "Fiyatlama", url: "/", icon: Calculator },
+  {
+    title: "Fiyatlama",
+    url: "/",
+    icon: Calculator,
+    children: [
+      { title: "Ana Fiyatlama", url: "/" },
+      { title: "Tersine Mühendislik", url: "/pricing/reverse-engineering", icon: TrendingUpDown },
+      { title: "Delta Hedge", url: "/pricing/delta-hedge", icon: Shield },
+    ],
+  },
   { title: "Risk Merkezi", url: "/risk", icon: ShieldAlert },
   { title: "Teminat (Margin)", url: "/margin", icon: PieChart },
   { title: "İşlemler", url: "/trades", icon: Briefcase },
@@ -26,28 +44,70 @@ const items = [
 ];
 
 export function AppSidebar() {
+  const pathname = usePathname();
+  const isPricingRoute = pathname === "/" || pathname.startsWith("/pricing");
+  const [pricingOpen, setPricingOpen] = useState(isPricingRoute);
+
   return (
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader>
-        <div className="flex h-12 items-center px-4 font-bold text-lg tracking-tight text-primary">
-          Ucan Finans
-        </div>
+        <div className="flex h-12 items-center px-4" />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Terminal Modülleri</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton>
-                    <a href={item.url} className="flex items-center gap-2">
+              {items.map((item) => {
+                const hasChildren = "children" in item && item.children && item.children.length > 0;
+                const isActive = !hasChildren && pathname === item.url;
+
+                if (!hasChildren) {
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton isActive={isActive} render={
+                        <a href={item.url} className="flex items-center gap-2">
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </a>
+                      } />
+                    </SidebarMenuItem>
+                  );
+                }
+
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      isActive={isPricingRoute}
+                      onClick={() => setPricingOpen((v) => !v)}
+                    >
                       <item.icon />
                       <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                      <ChevronDown className={cn("ml-auto size-4 transition-transform", pricingOpen && "rotate-180")} />
+                    </SidebarMenuButton>
+                    {pricingOpen && (
+                      <SidebarMenuSub>
+                        {item.children!.map((child) => {
+                          const childActive = pathname === child.url;
+                          return (
+                            <SidebarMenuSubItem key={child.url}>
+                              <SidebarMenuSubButton
+                                isActive={childActive}
+                                render={
+                                  <a href={child.url} className="flex items-center gap-2">
+                                    {"icon" in child && child.icon ? <child.icon /> : null}
+                                    <span>{child.title}</span>
+                                  </a>
+                                }
+                              />
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    )}
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

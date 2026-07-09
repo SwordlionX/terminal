@@ -1,5 +1,6 @@
 export function normCDF(x: number): number {
-  let e = Math.abs(x), c = 0;
+  const e = Math.abs(x);
+  let c = 0;
   if(e > 37){ c = 0; }
   else {
     const ex = Math.exp(-e*e/2);

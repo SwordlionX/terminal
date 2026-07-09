@@ -42,10 +42,12 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
   }, [product, rate]);
 
   useEffect(() => {
-    setLoading(true);
-    fetchFeed();
+    const initial = setTimeout(fetchFeed, 0);
     timer.current = setInterval(fetchFeed, REFRESH_MS);
-    return () => { if (timer.current) clearInterval(timer.current); };
+    return () => {
+      clearTimeout(initial);
+      if (timer.current) clearInterval(timer.current);
+    };
   }, [fetchFeed]);
 
   const refreshChains = useCallback(async () => {

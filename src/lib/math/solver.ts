@@ -1,7 +1,9 @@
 import { gk } from './gk';
 
 export function impliedVol(S: number, K: number, T: number, r: number, q: number, price: number, type: 'call' | 'put') {
-  let v = 0.2, iter = 0, tol = 1e-8, maxIter = 100, err = NaN;
+  let v = 0.2, iter = 0, err = NaN;
+  const tol = 1e-8;
+  const maxIter = 100;
   if (price <= 0 || T <= 0) return { vol: NaN, iter: 0, err: NaN, ok: false };
 
   for (iter = 1; iter <= maxIter; iter++) {
@@ -41,7 +43,8 @@ export function impliedVol(S: number, K: number, T: number, r: number, q: number
 }
 
 export function volForDelta(S: number, K: number, T: number, r: number, q: number, targetDelta: number, type: 'call' | 'put') {
-  let v = 0.2, tol = 1e-8;
+  let v = 0.2;
+  const tol = 1e-8;
   for (let i = 1; i <= 100; i++) {
     const g = gk(S, K, T, r, q, v);
     const delta = (type === 'call') ? g.dfQ * g.Nd1 : g.dfQ * (g.Nd1 - 1);

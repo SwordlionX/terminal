@@ -75,7 +75,7 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
   return (
     <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
       <CardHeader className="pb-3 border-b border-slate-800">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Vade Takvimi (Yaklaşan Vadeler)</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Vade Takvimi (Yaklaşan Vadeler)</CardTitle>
       </CardHeader>
       <CardContent className="pt-5">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

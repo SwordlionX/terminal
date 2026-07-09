@@ -5,6 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type PositionType = "Long Call" | "Short Call" | "Long Put" | "Short Put";
+interface PositionDetails {
+  posName: string;
+  premium: number;
+  premiumPercent: number;
+  maxProfit: string;
+  maxLoss: string;
+}
 
 interface PositionCardProps {
   spot: number;
@@ -72,7 +79,7 @@ export function PositionCard({ spot, strike, callPremium, putPremium, contractSi
   const bank = getPositionDetails(selected, true);
   const customer = getPositionDetails(selected, false);
 
-  const renderPanel = (title: string, data: any, borderColor: string, titleColor: string) => (
+  const renderPanel = (title: string, data: PositionDetails, borderColor: string, titleColor: string) => (
     <div className={cn("border rounded-md p-5 space-y-5", borderColor)}>
       <h3 className={cn("font-bold text-sm tracking-wide", titleColor)}>{title}</h3>
       <div className="space-y-3.5 text-sm">
@@ -104,7 +111,7 @@ export function PositionCard({ spot, strike, callPremium, putPremium, contractSi
   return (
     <Card className="bg-[#0b1120] border-slate-800 text-slate-100 shadow-xl">
       <CardHeader className="pb-4">
-        <CardTitle className="text-orange-500 uppercase text-xs font-bold tracking-widest">Pozisyon</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Pozisyon</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -119,20 +126,20 @@ export function PositionCard({ spot, strike, callPremium, putPremium, contractSi
               onClick={() => setSelected(btn.id as PositionType)}
               className={cn(
                 "flex flex-col items-center justify-center py-4 px-2 rounded-md border transition-all duration-200",
-                selected === btn.id 
-                  ? "border-orange-500 bg-orange-500/5 ring-1 ring-orange-500/20" 
+                selected === btn.id
+                  ? "border-zinc-400 bg-white/5 ring-1 ring-white/10"
                   : "border-slate-800 hover:border-slate-700 bg-slate-900/30"
               )}
             >
-              <span className={cn("text-[11px] font-bold tracking-wide", selected === btn.id ? "text-orange-500" : "text-slate-300")}>{btn.label}</span>
+              <span className={cn("text-[11px] font-bold tracking-wide", selected === btn.id ? "text-white" : "text-slate-300")}>{btn.label}</span>
               <span className="text-[10px] text-slate-500 mt-1.5">{btn.sub}</span>
             </button>
           ))}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          {renderPanel("BİZ (Banka / Hazine)", bank, "border-cyan-900/60 bg-cyan-950/10", "text-cyan-400")}
-          {renderPanel("MÜŞTERİ", customer, "border-purple-900/60 bg-purple-950/10", "text-purple-400")}
+          {renderPanel("BİZ (Banka / Hazine)", bank, "border-zinc-700/60 bg-zinc-900/30", "text-zinc-200")}
+          {renderPanel("MÜŞTERİ", customer, "border-zinc-800/80 bg-zinc-900/10", "text-zinc-400")}
         </div>
       </CardContent>
     </Card>

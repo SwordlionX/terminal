@@ -47,7 +47,13 @@ function rowToTrade(r: Row): Trade {
     gamma: num(r.gamma),
     vega: num(r.vega),
     theta: num(r.theta),
+    marginRate: r.marginRate == null ? undefined : Number(r.marginRate),
     status: (['Open', 'Near Expiry', 'Expired', 'Closed'].includes(String(r.status)) ? String(r.status) : 'Open') as Trade['status'],
+    barrierType: r.barrierType == null ? undefined : String(r.barrierType),
+    barrierLevel: r.barrierLevel == null ? undefined : Number(r.barrierLevel),
+    barrierStyle: r.barrierStyle == null ? undefined : String(r.barrierStyle),
+    barrierStartDate: r.barrierStartDate == null ? undefined : String(r.barrierStartDate),
+    barrierEndDate: r.barrierEndDate == null ? undefined : String(r.barrierEndDate),
   };
 }
 
@@ -99,10 +105,12 @@ export const db = {
       const c = await dbc();
       const t: Trade = { ...data, id: 't' + Date.now() };
       await c.execute({
-        sql: 'INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        sql: 'INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         args: [t.id, t.customerId, t.tradeDate, t.expiryDate, t.underlying, t.type, t.position,
                t.spot, t.strike, t.volatility, t.contractSize, t.premium, t.currentPremium,
-               t.mtm, t.pnl, t.delta, t.gamma, t.vega, t.theta, t.status],
+               t.mtm, t.pnl, t.delta, t.gamma, t.vega, t.theta, t.marginRate ?? null, t.status,
+               t.barrierType ?? null, t.barrierLevel ?? null, t.barrierStyle ?? null,
+               t.barrierStartDate ?? null, t.barrierEndDate ?? null],
       });
       return t;
     },

@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MarginSimulation } from "@/features/margin/margin-simulation";
+import { CollateralManager } from "@/features/margin/collateral-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -46,31 +47,7 @@ export default async function CustomerMarginPage(props: { params: Promise<{ id: 
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Mevcut Teminat Varlıkları</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Varlık Türü</TableHead>
-                  <TableHead>Döviz</TableHead>
-                  <TableHead className="text-right">Market Değeri</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {collaterals.map(c => (
-                  <TableRow key={c.id}>
-                    <TableCell>{c.assetCode}</TableCell>
-                    <TableCell>{c.currency}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(c.marketValueUsd)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <CollateralManager customerId={customer.id} collaterals={collaterals} />
 
         {/* Simülasyon Paneli */}
         <MarginSimulation 

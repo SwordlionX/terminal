@@ -1,8 +1,8 @@
 import { db } from "@/services/mockDb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { NewCustomerDialog } from "@/features/crm/new-customer-dialog";
 
 import { deleteCustomerAction } from "./actions";
 
@@ -15,7 +15,7 @@ export default async function CustomersPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">Müşteriler (CRM)</h1>
-        <Button>Yeni Müşteri Ekle</Button>
+        <NewCustomerDialog />
       </div>
 
       <Card>

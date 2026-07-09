@@ -34,4 +34,6 @@ Vercel'in verdiği DNS kayıtlarını (A / CNAME) domain sağlayıcında tanıml
 - **Zincir yenileme süresi:** ~30-60 sn sürer (36 vade çekiliyor). Vercel Hobby planında
   fonksiyon limiti 60 sn'dir; nadiren zaman aşımı olursa bir daha basmak yeterli.
 - **Güvenlik / Şifre:** `SITE_PASSWORD` tanımlıysa tüm sayfalar ve API'ler şifre ekranının
-  arkasındadır; giriş 30 gün hatırlanır. Şifreyi değiştirmek içi
+  arkasındadır; giriş 30 gün hatırlanır. Şifreyi değiştirmek için Vercel'de env değişkenini
+  güncelleyip redeploy et — eski oturumlar otomatik geçersiz olur. Yerel geliştirmede
+  `SITE_PASSWORD` tanımlamazsan giriş ekranı çıkmaz.
