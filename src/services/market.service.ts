@@ -7,10 +7,14 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const SPOT_TTL_MS = 5 * 60 * 1000; // 5 dakika önbellek — sayfa açıkken tekrar tekrar Yahoo'ya gidilmez
 const SNAPSHOT_FILE = path.join(process.cwd(), 'data', 'yahoo_snapshot.json');
 
-// Ürün -> Yahoo spot sembolleri (sırayla denenir)
+// Ürün -> Yahoo spot sembolleri (sırayla denenir).
+// Öncelik: gerçek spot (=X) -> fiziksel teminatlı token (-USD) -> vadeli (=F).
+// Not: XAUUSD=X / XAGUSD=X Yahoo'da sık 404 döner; o durumda ons-bazlı token
+// (PAXG = PAX Gold, XAGX = Silver Token) spota en yakın vekildir, futures ise
+// carry yüzünden sapar. Kaynak tipi ekranda etiketlenir (=X spot, -USD token, =F vadeli).
 const SPOT_SYMBOLS: Record<string, string[]> = {
-  XAU: ['XAUUSD=X', 'GC=F'],
-  XAG: ['XAGUSD=X', 'SI=F'],
+  XAU: ['XAUUSD=X', 'PAXG-USD', 'GC=F'],
+  XAG: ['XAGUSD=X', 'XAGX-USD', 'SI=F'],
   GLD: ['GLD'],
   SLV: ['SLV'],
 };

@@ -12,8 +12,17 @@ import { Badge } from "@/components/ui/badge";
 import { PositionCard } from "@/features/pricing/position-card";
 import { ScenarioAnalysis } from "@/features/pricing/scenario-analysis";
 import { BarrierOptions } from "@/features/pricing/barrier-options";
+import { SmileChart } from "@/features/pricing/smile-chart";
 import { usePricingModel, formatCurrency, formatNumber } from "@/features/pricing/use-pricing-model";
-import { TrendingUpDown, Shield } from "lucide-react";
+import { TrendingUpDown, Shield, AlertTriangle } from "lucide-react";
+
+/** Yahoo spot sembolünün tipini etiketler: =X gerçek spot, -USD token, =F vadeli. */
+function spotKind(source: string): { label: string; futures: boolean } {
+  if (source.endsWith("=F")) return { label: "Vadeli (futures)", futures: true };
+  if (source.endsWith("-USD")) return { label: "Token", futures: false };
+  if (source.endsWith("=X")) return { label: "Spot", futures: false };
+  return { label: source, futures: false };
+}
 
 const pricingTools = [
   {
@@ -31,7 +40,8 @@ const pricingTools = [
 ];
 
 export default function PricingPage() {
-  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr } = usePricingModel();
+  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason } = usePricingModel();
+  const spotInfo = feed.spot ? spotKind(feed.spot.source) : null;
 
   // Kaydetme formu durumu
   const [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
@@ -48,6 +58,7 @@ export default function PricingPage() {
 
   const handleBookTrade = async () => {
     if (!customerId) { setBookMsg("Önce müşteri seçin."); return; }
+    if (!priceable) { setBookMsg("Fiyat üretilemiyor (kote opsiyon yok / vol türetilemedi) — işlem kaydedilemez."); return; }
     const premiumPerOz = bookType === "Call" ? result.call : result.put;
     await addManualTradeAction(customerId, {
       tradeDate: md.tradeDate,
@@ -69,9 +80,14 @@ export default function PricingPage() {
       <div className="flex flex-wrap justify-between items-center gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-bold tracking-tight">Fiyatlama</h1>
-          {feed.spot && (
-            <Badge variant="outline" className="border-emerald-600 text-emerald-500 font-mono">
-              Canlı: {feed.spot.source} ${formatNumber(feed.spot.price, 2)}
+          {feed.spot && spotInfo && (
+            <Badge
+              variant="outline"
+              className={spotInfo.futures
+                ? "border-amber-600 text-amber-500 font-mono"
+                : "border-emerald-600 text-emerald-500 font-mono"}
+            >
+              {spotInfo.label}: {feed.spot.source} ${formatNumber(feed.spot.price, 2)}
             </Badge>
           )}
           {feed.snapshotISO && (
@@ -90,6 +106,13 @@ export default function PricingPage() {
       {feed.error && (
         <div className="text-sm text-amber-500 border border-amber-900/50 bg-amber-950/20 rounded-md px-4 py-2">
           {feed.error}
+        </div>
+      )}
+
+      {spotInfo?.futures && (
+        <div className="flex items-center gap-2 text-sm text-amber-500 border border-amber-900/50 bg-amber-950/20 rounded-md px-4 py-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          Spot kaynağı vadeli (futures {feed.spot?.source}) — carry yüzünden gerçek spottan yüksek olabilir; primler bir miktar sapabilir.
         </div>
       )}
 
@@ -167,10 +190,10 @@ export default function PricingPage() {
                   className={!md.manualVol ? "opacity-80 font-mono" : ""}
                 />
                 {!md.manualVol && (
-                  <p className="text-[11px] text-slate-500">
+                  <p className={smileIv != null ? "text-[11px] text-slate-500" : "text-[11px] text-amber-500"}>
                     {smileIv != null
                       ? `Smile'dan otomatik: ${feed.surface?.symbol} yüzeyi, ${daysToExpiry.toFixed(0)} gün, de-Amerikanize IV`
-                      : "Smile verisi yok — son manuel değer kullanılıyor"}
+                      : "Bu strike/vade için kote opsiyon yok — fiyat üretilmiyor. Manuel girmek için tiki işaretleyin."}
                   </p>
                 )}
               </div>
@@ -197,40 +220,61 @@ export default function PricingPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50">
-                <div>
-                  <div className="text-sm text-muted-foreground mb-1">Call Primi (ons)</div>
-                  <div className="text-2xl font-bold text-emerald-500">${formatNumber(result.call)}</div>
-                  <div className="text-xs text-muted-foreground mt-1">% {formatNumber((result.call / md.strike) * 100)}</div>
+              {priceable ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50">
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Call Primi (ons)</div>
+                      <div className="text-2xl font-bold text-emerald-500">${formatNumber(result.call)}</div>
+                      <div className="text-xs text-muted-foreground mt-1">% {formatNumber((result.call / md.strike) * 100)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Put Primi (ons)</div>
+                      <div className="text-2xl font-bold text-rose-500">${formatNumber(result.put)}</div>
+                      <div className="text-xs text-muted-foreground mt-1">% {formatNumber((result.put / md.strike) * 100)}</div>
+                    </div>
+                  </div>
+                  {md.manualVol && !autoAvailable && (
+                    <div className="mt-3 text-[11px] text-amber-500 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Manuel vol — bu strike/vade için piyasa (smile) verisi yok.
+                    </div>
+                  )}
+                  <div className="space-y-2 mt-4">
+                    <div className="flex justify-between text-sm py-1">
+                      <span className="text-muted-foreground">Vade (Gün)</span>
+                      <span className="font-mono">{formatNumber(daysToExpiry, 0)} gün</span>
+                    </div>
+                    <div className="flex justify-between text-sm py-1 border-t">
+                      <span className="text-muted-foreground">Kullanılan Vol</span>
+                      <span className="font-mono">% {formatNumber(effVol, 2)} {md.manualVol ? "(manuel)" : "(smile)"}</span>
+                    </div>
+                    <div className="flex justify-between text-sm py-1 border-t">
+                      <span className="text-muted-foreground">Kontrat Değeri ({md.contractSize} ons)</span>
+                      <span className="font-mono">{formatCurrency(md.spot * md.contractSize)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm py-1 border-t">
+                      <span className="text-muted-foreground">Toplam Call Primi</span>
+                      <span className="font-mono text-emerald-500">{formatCurrency(result.call * md.contractSize)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm py-1 border-t">
+                      <span className="text-muted-foreground">Toplam Put Primi</span>
+                      <span className="font-mono text-rose-500">{formatCurrency(result.put * md.contractSize)}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 rounded-lg border border-amber-900/50 bg-amber-950/20 flex items-start gap-2.5">
+                  <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500 mt-0.5" />
+                  <div>
+                    <div className="font-semibold text-sm text-amber-400">Fiyat üretilmiyor</div>
+                    <div className="text-xs mt-1 text-amber-500/90">{unpriceableReason}</div>
+                    <div className="text-xs mt-1.5 text-slate-400">
+                      Yine de fiyatlamak için Volatilite alanındaki &quot;Manuel gir&quot; tikini işaretleyip bir değer girebilirsiniz.
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm text-muted-foreground mb-1">Put Primi (ons)</div>
-                  <div className="text-2xl font-bold text-rose-500">${formatNumber(result.put)}</div>
-                  <div className="text-xs text-muted-foreground mt-1">% {formatNumber((result.put / md.strike) * 100)}</div>
-                </div>
-              </div>
-              <div className="space-y-2 mt-4">
-                <div className="flex justify-between text-sm py-1">
-                  <span className="text-muted-foreground">Vade (Gün)</span>
-                  <span className="font-mono">{formatNumber(daysToExpiry, 0)} gün</span>
-                </div>
-                <div className="flex justify-between text-sm py-1 border-t">
-                  <span className="text-muted-foreground">Kullanılan Vol</span>
-                  <span className="font-mono">% {formatNumber(effVol, 2)} {md.manualVol ? "(manuel)" : "(smile)"}</span>
-                </div>
-                <div className="flex justify-between text-sm py-1 border-t">
-                  <span className="text-muted-foreground">Kontrat Değeri ({md.contractSize} ons)</span>
-                  <span className="font-mono">{formatCurrency(md.spot * md.contractSize)}</span>
-                </div>
-                <div className="flex justify-between text-sm py-1 border-t">
-                  <span className="text-muted-foreground">Toplam Call Primi</span>
-                  <span className="font-mono text-emerald-500">{formatCurrency(result.call * md.contractSize)}</span>
-                </div>
-                <div className="flex justify-between text-sm py-1 border-t">
-                  <span className="text-muted-foreground">Toplam Put Primi</span>
-                  <span className="font-mono text-rose-500">{formatCurrency(result.put * md.contractSize)}</span>
-                </div>
-              </div>
+              )}
 
               {/* İşlem Kaydetme */}
               <div className="mt-4 p-4 rounded-lg border border-slate-800 space-y-3">
@@ -257,7 +301,7 @@ export default function PricingPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full" onClick={handleBookTrade}>İşlemi Kaydet (Book Trade)</Button>
+                <Button className="w-full" onClick={handleBookTrade} disabled={!priceable}>İşlemi Kaydet (Book Trade)</Button>
                 {bookMsg && <p className="text-xs text-emerald-500">{bookMsg}</p>}
               </div>
             </div>
@@ -270,7 +314,7 @@ export default function PricingPage() {
             <CardTitle>Greeks (Call)</CardTitle>
           </CardHeader>
           <CardContent>
-             {gr ? (
+             {gr && priceable ? (
                <div className="space-y-1 font-mono text-sm">
                  <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Delta</span><span>{formatNumber(gr.call.delta)}</span></div>
                  <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Gamma</span><span>{formatNumber(gr.call.gamma, 6)}</span></div>
@@ -282,11 +326,21 @@ export default function PricingPage() {
                  <div className="flex justify-between py-1.5"><span className="text-muted-foreground">Vomma</span><span>{formatNumber(gr.call.vomma, 5)}</span></div>
                </div>
                      ) : (
-               <div className="text-muted-foreground text-sm">Hesaplanamıyor</div>
+               <div className="text-muted-foreground text-sm">
+                 {priceable ? "Hesaplanamıyor" : "Kote opsiyon yok — Greeks üretilmiyor."}
+               </div>
              )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Volatilite smile kaynağı — kullanılan vol'ün hangi gözlemlenen noktalardan geldiği */}
+      <SmileChart
+        surface={feed.surface}
+        spot={md.spot}
+        strike={md.strike}
+        daysToExpiry={daysToExpiry}
+      />
 
       {/* Bariyer Opsiyonu — ayrı bir menü yerine ana fiyatlamanın altında açılıp kapanan opsiyonel bölüm */}
       <div className="flex items-center gap-2 pt-2">

@@ -40,12 +40,25 @@ export function usePricingModel() {
     return iv != null && isFinite(iv) ? iv * 100 : null;
   }, [feed.surface, md.strike, md.spot, daysToExpiry]);
 
+  // Otomatik (smile) modda vol sadece kote strike/vade aralığında türetilir.
+  // Aralık dışıysa smileIv null gelir; bu durumda fiyat UYDURULMAZ — kullanıcı
+  // bilerek "Manuel vol" tikini açmadıkça prim/Greeks gösterilmez.
+  const autoAvailable = smileIv != null;
+  const priceable = md.manualVol || autoAvailable;
+
+  // priceable=false iken effVol sadece hesap NaN'a düşmesin diye tutulur; ekranda gösterilmez.
   const effVol = md.manualVol ? md.vol : (smileIv ?? md.vol);
+
+  const unpriceableReason = priceable
+    ? null
+    : !feed.surface
+      ? "Smile verisi yok — opsiyon zincirini yenileyin veya manuel vol girin."
+      : "Bu strike/vade için kote opsiyon yok — güvenilir vol türetilemiyor.";
 
   const result = gk(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100);
   const gr = greeks(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100, md.basis);
 
-  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr };
+  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason };
 }
 
 export const formatCurrency = (val: number) =>

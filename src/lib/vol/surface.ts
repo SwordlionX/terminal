@@ -44,9 +44,14 @@ export interface VolSurface {
   expiries: ExpirySmile[];
 }
 
-function mid(bid: number | null, ask: number | null, last: number | null): number | null {
+/**
+ * Katmanlı fiyat: önce çift taraflı kotasyon ortası (bid & ask > 0),
+ * yoksa yalnızca açık pozisyonu (OI > 0) olan lastPrice kabul edilir.
+ * OI'siz bayat lastPrice ("ölü" strike) reddedilir — smile gürültüsünü keser.
+ */
+function mid(bid: number | null, ask: number | null, last: number | null, oi: number | null): number | null {
   if (bid != null && ask != null && bid > 0 && ask > 0 && ask >= bid) return (bid + ask) / 2;
-  if (last != null && last > 0) return last;
+  if (last != null && last > 0 && oi != null && oi > 0) return last;
   return null;
 }
 
@@ -65,8 +70,8 @@ export function buildSurface(prod: SnapshotProduct, r: number, fetchedISO: strin
 
     for (const row of e.rows) {
       const K = row[0] as number;
-      const cMid = mid(row[1], row[2], row[3]);
-      const pMid = mid(row[5], row[6], row[7]);
+      const cMid = mid(row[1], row[2], row[3], row[9]); // row[9] = call OI
+      const pMid = mid(row[5], row[6], row[7], row[10]); // row[10] = put OI
       const m = K / S;
 
       let iv = NaN;
@@ -93,11 +98,15 @@ export function buildSurface(prod: SnapshotProduct, r: number, fetchedISO: strin
   return { symbol: prod.symbol, spot: S, fetchedISO, expiries };
 }
 
-/** Tek vade smile'ı üzerinde moneyness'e göre lineer enterpolasyon (uçlarda düz). */
+/**
+ * Tek vade smile'ı üzerinde moneyness'e göre lineer enterpolasyon.
+ * Kote strike aralığının DIŞINDA ekstrapolasyon yapmaz (NaN döner) —
+ * piyasada gözlemlenmeyen strike'a uydurma vol üretilmez.
+ */
 function smileAt(points: SmilePoint[], m: number): number {
   if (points.length === 0) return NaN;
-  if (m <= points[0].m) return points[0].iv;
-  if (m >= points[points.length - 1].m) return points[points.length - 1].iv;
+  if (m < points[0].m) return NaN;
+  if (m > points[points.length - 1].m) return NaN;
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i], b = points[i + 1];
     if (m >= a.m && m <= b.m) {
@@ -117,12 +126,13 @@ export function surfaceVol(surface: VolSurface, m: number, days: number): number
   const exps = surface.expiries;
   if (exps.length === 0) return null;
 
-  if (days <= exps[0].days) {
-    const iv = smileAt(exps[0].points, m);
-    return isFinite(iv) ? iv : null;
-  }
-  if (days >= exps[exps.length - 1].days) {
-    const iv = smileAt(exps[exps.length - 1].points, m);
+  const first = exps[0], last = exps[exps.length - 1];
+  // Ekstrapolasyon yok: kote vade aralığının dışında güvenilir vol türetilemez.
+  if (days < first.days || days > last.days) return null;
+
+  // Tek kote vade (ya da tam sınırda): doğrudan o vadenin smile'ı.
+  if (exps.length === 1) {
+    const iv = smileAt(first.points, m);
     return isFinite(iv) ? iv : null;
   }
 
