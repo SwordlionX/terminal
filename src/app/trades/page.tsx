@@ -69,11 +69,11 @@ export default async function TradesBlotterPage() {
               <TableRow>
                 <TableHead>Müşteri</TableHead>
                 <TableHead className="text-center">Açık İşlem</TableHead>
-                <TableHead className="text-right">Nominal</TableHead>
-                <TableHead className="text-right">Açık Poz. K/Z</TableHead>
-                <TableHead className="text-right">Zarar</TableHead>
-                <TableHead className="text-right">Mevcut Teminat</TableHead>
-                <TableHead className="text-center">Zarar / Teminat</TableHead>
+                <TableHead className="text-right" title="Açık pozisyonların büyüklüğü: canlı spot × kontrat">Nominal</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Gerçek kâr/zarar: intrinsic − prim (primi netler). Müşteri bugün kapatsa net sonuç.">Açık Poz. K/Z</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Teminat için BRÜT zarar: intrinsic, prim HARİÇ. Sadece müşteri aleyhine (>0). Zarar/Teminat oranı bunu kullanır.">Zarar</TableHead>
+                <TableHead className="text-right" title="Yatırılan teminatın canlı USD değeri (haircut sonrası)">Mevcut Teminat</TableHead>
+                <TableHead className="text-center underline decoration-dotted decoration-slate-600 underline-offset-4" title="Ana risk metriği = Zarar ÷ Mevcut Teminat. %39 çağrı, %60/%80 kapatma.">Zarar / Teminat</TableHead>
                 <TableHead>Durum</TableHead>
               </TableRow>
             </TableHeader>
@@ -126,9 +126,9 @@ export default async function TradesBlotterPage() {
                 <TableHead className="text-right">Kalan (gün)</TableHead>
                 <TableHead className="text-right">Spot</TableHead>
                 <TableHead className="text-right">Prim (Giriş)</TableHead>
-                <TableHead className="text-right">PnL</TableHead>
-                <TableHead className="text-right">Teminat Oranı</TableHead>
-                <TableHead className="text-right">Zarar (USD)</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Gerçek kâr/zarar: intrinsic (canlı spot) − prim.">PnL</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Açılışta yatan teminatı belirleyen kaldıraç oranı (vade × varlık grubu tablosundan kilitli). Canlı risk takibinde kullanılmaz.">Teminat Oranı</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="İşlem başına BRÜT zarar (prim hariç). Teminat çağrısı bunu kullanır.">Zarar (USD)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
