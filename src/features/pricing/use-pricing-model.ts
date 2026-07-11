@@ -33,12 +33,16 @@ export function usePricingModel() {
   const daysToExpiry = dateValid ? validDaysToExpiry : 90;
   const tYears = Math.max(daysToExpiry / md.basis, 0.001);
 
-  // Volatilite: manuel tik yoksa smile'dan (de-Amerikanize IV), tik varsa kullanıcı girer
+  // Volatilite: manuel tik yoksa smile'dan (de-Amerikanize IV), tik varsa kullanıcı girer.
+  // Sorgu forward-moneyness ile yapılır: yüzey K/F ekseninde tutulduğundan lease
+  // oranı burada, fiyatlanan ürünün forward çapasında (S·e^{(r−lease)T}) devreye girer.
   const smileIv = useMemo(() => {
     if (!feed.surface || md.spot <= 0) return null;
-    const iv = surfaceVol(feed.surface, md.strike / md.spot, daysToExpiry);
+    const fwdT = daysToExpiry / 365; // yüzey konvansiyonuyla (365) aynı taban
+    const fwd = md.spot * Math.exp((md.rate / 100 - md.lease / 100) * fwdT);
+    const iv = surfaceVol(feed.surface, md.strike / fwd, daysToExpiry);
     return iv != null && isFinite(iv) ? iv * 100 : null;
-  }, [feed.surface, md.strike, md.spot, daysToExpiry]);
+  }, [feed.surface, md.strike, md.spot, md.rate, md.lease, daysToExpiry]);
 
   // Otomatik (smile) modda vol sadece kote strike/vade aralığında türetilir.
   // Aralık dışıysa smileIv null gelir; bu durumda fiyat UYDURULMAZ — kullanıcı

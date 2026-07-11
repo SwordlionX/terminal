@@ -24,13 +24,20 @@ interface BarrierGreekResult {
   vega: number;
 }
 
+interface CalcResult {
+  price: number;
+  greeks: BarrierGreekResult;
+  nearBarrier: boolean;
+  knockedOut: boolean;
+}
+
 export function BarrierOptions({
   spot, strike, tYears, rate, lease, vol
 }: BarrierOptionsProps) {
   const [barrierH, setBarrierH] = useState<number>(spot * 1.1);
   const [rebateR, setRebateR] = useState<number>(0);
   const [barrierType, setBarrierType] = useState<string>("cuo");
-  const [calcResult, setCalcResult] = useState<{ price: number; greeks: BarrierGreekResult } | null>(null);
+  const [calcResult, setCalcResult] = useState<CalcResult | null>(null);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0);
 
@@ -38,7 +45,15 @@ export function BarrierOptions({
     // lib/math motoru direkt kullanılıyor
     const price = barrierPrice(spot, strike, barrierH, rebateR, tYears, rate / 100, lease / 100, vol / 100, barrierType);
     const greeks = barrierGreeks(spot, strike, barrierH, rebateR, tYears, rate / 100, lease / 100, vol / 100, barrierType, 365);
-    setCalcResult({ price, greeks });
+
+    const isUp = barrierType[1] === "u";
+    const isOut = barrierType[2] === "o";
+    // Greek'ler sonlu farkla; bariyer süreksizliğine yakın (~%3) Delta/Gamma güvenilmez
+    const nearBarrier = spot > 0 && Math.abs(spot - barrierH) / spot < 0.03;
+    // KO opsiyonu bariyeri zaten geçtiyse devre dışı — prim yalnızca rebate
+    const knockedOut = isOut && ((isUp && spot >= barrierH) || (!isUp && spot <= barrierH));
+
+    setCalcResult({ price, greeks, nearBarrier, knockedOut });
   };
 
   return (
@@ -113,6 +128,17 @@ export function BarrierOptions({
                 <div className="font-mono text-sm text-slate-300">{calcResult.greeks.vega.toFixed(4)}</div>
               </div>
             </div>
+
+            {calcResult.knockedOut && (
+              <div className="rounded-md border border-rose-600/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-300/90">
+                ⚠ Spot bariyeri (H) zaten aştı — opsiyon devre dışı (knocked out). Prim yalnızca rebate&apos;ten ibarettir; Greek&apos;ler ~0.
+              </div>
+            )}
+            {calcResult.nearBarrier && !calcResult.knockedOut && (
+              <div className="rounded-md border border-amber-600/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300/90">
+                ⚠ Spot bariyere (H) yakın. Greek&apos;ler sonlu farkla hesaplanıyor; bariyerdeki süreksizlik nedeniyle Delta/Gamma bu bölgede oynak ve güvenilmez olabilir.
+              </div>
+            )}
           </div>
         )}
       </CardContent>

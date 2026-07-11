@@ -24,23 +24,35 @@ export function americanPrice(
     return type === 'call' ? g.call : g.put;
   }
 
-  // Vade sonu değerleri
-  const values: number[] = new Array(steps + 1);
+  // Vade sonu değerleri — Amerikan ve (control variate için) Avrupa bacağı
+  // aynı kafes üzerinde paralel taşınır.
+  const am: number[] = new Array(steps + 1);
+  const eu: number[] = new Array(steps + 1);
   for (let i = 0; i <= steps; i++) {
     const sT = S * Math.pow(u, steps - i) * Math.pow(d, i);
-    values[i] = type === 'call' ? Math.max(sT - K, 0) : Math.max(K - sT, 0);
+    const payoff = type === 'call' ? Math.max(sT - K, 0) : Math.max(K - sT, 0);
+    am[i] = payoff;
+    eu[i] = payoff;
   }
 
-  // Geriye doğru indüksiyon + erken kullanım kontrolü
+  // Geriye doğru indüksiyon: Amerikan'da erken kullanım, Avrupa'da salt iskonto
   for (let step = steps - 1; step >= 0; step--) {
     for (let i = 0; i <= step; i++) {
       const sNode = S * Math.pow(u, step - i) * Math.pow(d, i);
-      const cont = disc * (p * values[i] + (1 - p) * values[i + 1]);
+      const contAm = disc * (p * am[i] + (1 - p) * am[i + 1]);
       const exer = type === 'call' ? Math.max(sNode - K, 0) : Math.max(K - sNode, 0);
-      values[i] = Math.max(cont, exer);
+      am[i] = Math.max(contAm, exer);
+      eu[i] = disc * (p * eu[i] + (1 - p) * eu[i + 1]);
     }
   }
-  return values[0];
+
+  // Control variate (Hull): aynı ağaçtaki Avrupa fiyatının kapalı-form (GK)
+  // çözümden sapması, CRR kesikleme hatasının ortak-mod (sawtooth) bileşenidir.
+  // Amerikan fiyatından bu sapmayı düşerek salınımı büyük ölçüde yok eder;
+  // maliyeti tek bir ekstra gk() çağrısı.
+  const g = gk(S, K, T, r, q, v);
+  const euClosed = type === 'call' ? g.call : g.put;
+  return am[0] - eu[0] + euClosed;
 }
 
 /**
@@ -73,8 +85,10 @@ export function impliedVolAmerican(
  * Amerikan piyasa fiyatı -> Amerikan model (binom) ile IV geriye çözülür ->
  * bu IV doğrudan Avrupa (GK) formülünde kullanılır.
  *
- * Not: q=0 (temettüsüz ETF) iken Amerikan CALL = Avrupa CALL (Merton),
- * bu yüzden call'larda hızlı Avrupa çözücü kullanılır; fark sadece PUT'ta.
+ * Not: q<=0 (temettüsüz ETF) VE r>=0 iken Amerikan CALL = Avrupa CALL (Merton:
+ * temettü yokken call'u erken kullanmak asla optimal değildir), bu yüzden
+ * call'larda hızlı Avrupa çözücü kullanılır; fark sadece PUT'ta. r<0 senaryosunda
+ * bu eşitlik bozulur — bu araçta USD faizi r>=0 olduğundan kısayol güvenli.
  */
 export function deAmericanizedIV(
   S: number, K: number, T: number, r: number, q: number,

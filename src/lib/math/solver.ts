@@ -6,6 +6,13 @@ export function impliedVol(S: number, K: number, T: number, r: number, q: number
   const maxIter = 100;
   if (price <= 0 || T <= 0) return { vol: NaN, iter: 0, err: NaN, ok: false };
 
+  // Avrupa no-arb alt sınırı = iskontolu forward-intrinsic (spot-intrinsic değil).
+  // Fiyat bu sınırın altındaysa hiçbir v>0 fiyatı üretemez — çözücüyü yormadan reddet.
+  const fwdIntrinsic = type === 'call'
+    ? Math.max(S * Math.exp(-q * T) - K * Math.exp(-r * T), 0)
+    : Math.max(K * Math.exp(-r * T) - S * Math.exp(-q * T), 0);
+  if (price <= fwdIntrinsic + 1e-10) return { vol: NaN, iter: 0, err: NaN, ok: false };
+
   for (iter = 1; iter <= maxIter; iter++) {
     const g = gk(S, K, T, r, q, v);
     const mdl = (type === 'call') ? g.call : g.put;

@@ -3,8 +3,8 @@ import { deAmericanizedIV } from '../math/american';
 /**
  * Yahoo snapshot formatı (fetch_yahoo.py / api/market/refresh üretir):
  * row = [K, cBid, cAsk, cLast, cYahooIV, pBid, pAsk, pLast, pYahooIV, cOI, pOI]
- * Smile, moneyness (K/S) ekseninde tutulur; böylece GLD eğrisi XAU spotuna,
- * SLV eğrisi XAG spotuna bire bir taşınabilir.
+ * Smile, forward-moneyness (K/F) ekseninde tutulur; böylece GLD eğrisi XAU'ya,
+ * SLV eğrisi XAG'a taşınırken lease/carry farkı ATM çapasını kaydırmadan hizalanır.
  */
 
 export type SnapshotRow = (number | null)[];
@@ -45,20 +45,37 @@ export interface VolSurface {
 }
 
 /**
- * Katmanlı fiyat: önce çift taraflı kotasyon ortası (bid & ask > 0),
+ * (ask-bid)/mid bu eşiği aşarsa çift taraflı kota "çarpık-geniş" sayılır
+ * (ör. 0.05/2.00 illikit kota): mid güvenilmez, smile'a gürültü basar — reddedilir.
+ */
+const MAX_REL_SPREAD = 1.5;
+
+/**
+ * Katmanlı fiyat: önce çift taraflı kotasyon ortası (bid & ask > 0 ve makul spread),
  * yoksa yalnızca açık pozisyonu (OI > 0) olan lastPrice kabul edilir.
  * OI'siz bayat lastPrice ("ölü" strike) reddedilir — smile gürültüsünü keser.
  */
 function mid(bid: number | null, ask: number | null, last: number | null, oi: number | null): number | null {
-  if (bid != null && ask != null && bid > 0 && ask > 0 && ask >= bid) return (bid + ask) / 2;
+  if (bid != null && ask != null && bid > 0 && ask > 0 && ask >= bid) {
+    const m = (bid + ask) / 2;
+    if ((ask - bid) / m <= MAX_REL_SPREAD) return m;
+    // çarpık-geniş kota: mid'i atla, OI'li last'a düş
+  }
   if (last != null && last > 0 && oi != null && oi > 0) return last;
   return null;
 }
 
 /**
  * Snapshot ürününden de-Amerikanize IV smile yüzeyi kurar.
+ *
+ * Smile forward-moneyness (m = K/F) ekseninde tutulur; F = S·e^{(r−q)T}.
+ * q burada YÜZEYİN kaynağı olan ETF'in taşıma maliyetidir (GLD/SLV temettüsüz,
+ * gider oranı ~%0.4 → q≈0), metalin lease oranı DEĞİL. Böylece ATM-forward her
+ * vadede m=1'e denk gelir; yüzey XAU/XAG'a taşınırken lease farkı yalnızca
+ * sorgu tarafındaki forward çapasına girer (bkz. usePricingModel).
+ *
  * Her strike için OTM taraf kullanılır (piyasa standardı):
- * K >= S -> call IV, K < S -> put IV; o taraf yoksa diğerine düşülür.
+ * K >= F -> call IV, K < F -> put IV; o taraf yoksa diğerine düşülür.
  */
 export function buildSurface(prod: SnapshotProduct, r: number, fetchedISO: string, q: number = 0): VolSurface {
   const expiries: ExpirySmile[] = [];
@@ -66,13 +83,14 @@ export function buildSurface(prod: SnapshotProduct, r: number, fetchedISO: strin
 
   for (const e of prod.expiries) {
     const T = Math.max(e.days, 0.5) / 365;
+    const F = S * Math.exp((r - q) * T); // ETF forward'ı (q≈0)
     const points: SmilePoint[] = [];
 
     for (const row of e.rows) {
       const K = row[0] as number;
       const cMid = mid(row[1], row[2], row[3], row[9]); // row[9] = call OI
       const pMid = mid(row[5], row[6], row[7], row[10]); // row[10] = put OI
-      const m = K / S;
+      const m = K / F;
 
       let iv = NaN;
       if (m >= 1) {
@@ -118,7 +136,10 @@ function smileAt(points: SmilePoint[], m: number): number {
 }
 
 /**
- * Yüzeyden (moneyness, gün) için IV döndürür.
+ * Yüzeyden (forward-moneyness, gün) için IV döndürür. m = K/F_hedef; çağıran,
+ * fiyatlanan ürünün forward'ını (XAU: S·e^{(r−lease)T}) kullanarak m'i hesaplar.
+ * Her iki kuşatan vadenin smile'ı da aynı m'de değerlenir — forward-moneyness
+ * normalize koordinat olduğundan (ATM = 1) bu tutarlıdır.
  * Vadeler arası enterpolasyon toplam varyans üzerinden yapılır
  * (varyans = iv^2 * T, T'de lineer — piyasa standardı).
  */

@@ -44,14 +44,38 @@ export function barrierKO(S: number, K: number, H: number, R: number, T: number,
   return Math.max(val, 0);
 }
 
+/**
+ * Knock-in rebate — Reiner-Rubinstein "E" terimi: opsiyon vade boyunca hiç
+ * knock-in OLMAZSA vade sonunda ödenen R nakdi. (Knock-out'un rebate'i "F"
+ * bariyere değince ödenir ve barrierKO içinde; bu terim in-opsiyonlara özgü.)
+ * eta: down-in = +1, up-in = -1.
+ */
+function knockInRebate(S: number, H: number, R: number, T: number, r: number, q: number, v: number, isUp: boolean): number {
+  if (R === 0 || T <= 0 || v <= 0) return 0;
+  if (isUp && S >= H) return 0;   // zaten tetiklendi → in-rebate yok
+  if (!isUp && S <= H) return 0;
+  const b = r - q;
+  const sT = v * Math.sqrt(T);
+  const mu = (b - v * v / 2) / (v * v);
+  const eta = isUp ? -1 : 1;
+  const x2 = Math.log(S / H) / sT + (1 + mu) * sT;
+  const y2 = Math.log(H / S) / sT + (1 + mu) * sT;
+  const HS = H / S;
+  return R * Math.exp(-r * T) * (
+    normCDF(eta * x2 - eta * sT) - Math.pow(HS, 2 * mu) * normCDF(eta * y2 - eta * sT)
+  );
+}
+
 export function barrierPrice(S: number, K: number, H: number, R: number, T: number, r: number, q: number, v: number, code: string) {
   if (code[2] === 'o') return barrierKO(S, K, H, R, T, r, q, v, code);
   const cp = code[0], isUp = code[1] === 'u';
   const van = barVanilla(S, K, T, r, q, v, cp);
-  if (isUp && S >= H) return van;
+  if (isUp && S >= H) return van;   // zaten knock-in oldu → vanilla (rebate anlamsız)
   if (!isUp && S <= H) return van;
   const koKind = code[0] + code[1] + 'o';
-  return Math.max(van - barrierKO(S, K, H, 0, T, r, q, v, koKind), 0);
+  // in-out paritesi (R=0) + knock-in'e özgü vade-sonu rebate'i
+  const inVal = Math.max(van - barrierKO(S, K, H, 0, T, r, q, v, koKind), 0);
+  return inVal + knockInRebate(S, H, R, T, r, q, v, isUp);
 }
 
 export function barrierGreeks(S: number, K: number, H: number, R: number, T: number, r: number, q: number, v: number, code: string, basis: number = 365) {
@@ -68,6 +92,12 @@ export function barrierGreeks(S: number, K: number, H: number, R: number, T: num
   };
 }
 
+/**
+ * Bariyer opsiyonundan IV (Newton). DİKKAT: bariyer fiyatı vol'de MONOTON DEĞİLDİR
+ * (ör. up-and-out call vega'sı negatife dönebilir) → kök tek olmayabilir ya da Newton
+ * yakınsamayabilir. Bu durumda `ok:false` döner; çağıran taraf o zaman IV'yi
+ * göstermemeli, "türetilemedi" mesajı basmalıdır.
+ */
 export function barrierIV(S: number, K: number, H: number, R: number, T: number, r: number, q: number, price: number, code: string) {
   let v = 0.25;
   for (let i = 1; i <= 100; i++) {
