@@ -8,14 +8,14 @@ export const dynamic = "force-dynamic";
 export default async function GlobalMarginDashboard() {
   const allEvaluations = await marginService.evaluateAllCustomers();
 
-  let totalRequired = 0;
+  let totalLoss = 0;
   let totalAvailable = 0;
-  let totalMissing = 0;
+  let totalCure = 0;
 
   allEvaluations.forEach(e => {
-    totalRequired += e.margin.totalRequiredMargin;
+    totalLoss += e.margin.totalMtmLoss;
     totalAvailable += e.margin.totalCollateralValue;
-    totalMissing += e.margin.missingMargin;
+    totalCure += e.margin.cureAmount;
   });
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
@@ -27,15 +27,15 @@ export default async function GlobalMarginDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Required Margin</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Toplam Zarar (Açık Pozisyonlar)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalRequired)}</div>
+            <div className="text-2xl font-bold text-rose-500">{formatCurrency(totalLoss)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Available Collateral (Haircut Sonrası)</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Toplam Mevcut Teminat (Haircut Sonrası)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-500">{formatCurrency(totalAvailable)}</div>
@@ -43,10 +43,10 @@ export default async function GlobalMarginDashboard() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Missing Margin</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Toplam Gerekli Ek Teminat (%35 hedef)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-rose-500">{formatCurrency(totalMissing)}</div>
+            <div className="text-2xl font-bold text-rose-500">{formatCurrency(totalCure)}</div>
           </CardContent>
         </Card>
       </div>
@@ -60,9 +60,9 @@ export default async function GlobalMarginDashboard() {
             <TableHeader>
               <TableRow>
                 <TableHead>Müşteri</TableHead>
-                <TableHead className="text-right">Required Margin</TableHead>
-                <TableHead className="text-right">Available Collateral</TableHead>
-                <TableHead className="text-right">Missing Margin</TableHead>
+                <TableHead className="text-right">Zarar</TableHead>
+                <TableHead className="text-right">Mevcut Teminat</TableHead>
+                <TableHead className="text-right">Gerekli Ek Teminat</TableHead>
                 <TableHead className="text-center">Zarar / Teminat</TableHead>
                 <TableHead>Durum / Aksiyon</TableHead>
               </TableRow>
@@ -75,18 +75,17 @@ export default async function GlobalMarginDashboard() {
                       {customer.companyName}
                     </a>
                   </TableCell>
-                  <TableCell className="text-right">{formatCurrency(margin.totalRequiredMargin)}</TableCell>
+                  <TableCell className="text-right text-rose-500">{formatCurrency(margin.totalMtmLoss)}</TableCell>
                   <TableCell className="text-right">{formatCurrency(margin.totalCollateralValue)}</TableCell>
                   <TableCell className="text-right text-rose-500">
-                    {margin.missingMargin > 0 ? formatCurrency(margin.missingMargin) : '-'}
+                    {margin.cureAmount > 0 ? formatCurrency(margin.cureAmount) : '-'}
                   </TableCell>
                   <TableCell className="text-center font-mono">
                     %{(margin.marginCallRatio * 100).toFixed(1)}
                   </TableCell>
                   <TableCell>
                     {margin.status === 'SAFE' && <Badge variant="outline" className="border-emerald-500 text-emerald-500">GÜVENLİ</Badge>}
-                    {margin.status === 'DEFICIT' && <Badge variant="outline" className="border-yellow-500 text-yellow-500">EKSİK TEMİNAT</Badge>}
-                    {margin.status === 'MARGIN_CALL' && <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500">TEMİNAT ÇAĞRISI (&gt;%40)</Badge>}
+                    {margin.status === 'MARGIN_CALL' && <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500">TEMİNAT ÇAĞRISI (&gt;%39)</Badge>}
                     {margin.status === 'WARNING_60' && <Badge variant="secondary" className="bg-orange-500/20 text-orange-500">STOP UYARISI (&gt;%60)</Badge>}
                     {margin.status === 'STOP_LOSS_80' && <Badge variant="destructive">ANINDA STOP (&gt;%80)</Badge>}
                   </TableCell>

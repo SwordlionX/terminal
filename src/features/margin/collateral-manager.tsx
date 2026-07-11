@@ -9,8 +9,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Plus } from "lucide-react";
-import { COLLATERAL_HAIRCUT_RATES } from "@/lib/margin/config";
 import { addCustomerCollateral, removeCustomerCollateral } from "@/app/customers/[id]/margin/collateral-actions";
+
+// Teminat yalnızca USD nakit veya fiziki metal (XAU/XAG). Metaller ONS cinsinden girilir ve
+// canlı ons fiyatıyla değerlenir; USD 1:1. Hepsi nakit-eşdeğeri → haircut 0.
+const COLLATERAL_TYPES = [
+  { code: 'Nakit-USD', currency: 'USD', label: 'Nakit USD', unit: 'USD' as const },
+  { code: 'Nakit-XAU', currency: 'XAU', label: 'Altın (XAU)', unit: 'ons' as const },
+  { code: 'Nakit-XAG', currency: 'XAG', label: 'Gümüş (XAG)', unit: 'ons' as const },
+];
 
 interface CollateralManagerProps {
   customerId: string;
@@ -22,8 +29,14 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
   const [amount, setAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const selectedType = COLLATERAL_TYPES.find(t => t.code === assetCode) ?? COLLATERAL_TYPES[0];
+
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
   const formatPercent = (val: number) => new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 }).format(val);
+  const formatQty = (c: CollateralItem) =>
+    c.currency === 'USD'
+      ? formatCurrency(c.nominalQuantity)
+      : `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(c.nominalQuantity)} ons`;
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,21 +45,12 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
 
     setIsSubmitting(true);
     try {
-      const haircut = COLLATERAL_HAIRCUT_RATES[assetCode] ?? 0;
-      let currency = 'USD';
-      if (assetCode.includes('-TRY') || assetCode === 'DİBS-EB-SUKUK' || assetCode === 'Bono-EB-Repo') currency = 'TRY';
-      if (assetCode.includes('-EUR')) currency = 'EUR';
-      if (assetCode.includes('-XAU')) currency = 'XAU';
-      if (assetCode.includes('-XAG')) currency = 'XAG';
-
-      const marketValueUsd = nominal * (1 - haircut);
-
+      // marketValueUsd + haircut sunucuda hesaplanır (metal için canlı ons fiyatı). Buradan
+      // yalnızca tip + miktar gönderilir.
       await addCustomerCollateral(customerId, {
-        assetCode,
-        currency,
+        assetCode: selectedType.code,
+        currency: selectedType.currency,
         nominalQuantity: nominal,
-        marketValueUsd,
-        haircut,
       });
 
       setAmount("");
@@ -65,7 +69,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
     <Card>
       <CardHeader>
         <CardTitle>Mevcut Teminat Varlıkları</CardTitle>
-        <CardDescription>Müşterinin portföyünde bulunan anlık teminatlar ve kesinti oranları (Haircut).</CardDescription>
+        <CardDescription>USD nakit veya fiziki metal (XAU/XAG) teminat. Metaller ons cinsinden girilir, canlı ons fiyatıyla değerlenir.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="rounded-md border border-slate-800">
@@ -74,9 +78,9 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
               <TableRow className="border-slate-800 hover:bg-transparent">
                 <TableHead>Varlık Türü</TableHead>
                 <TableHead>Döviz</TableHead>
-                <TableHead className="text-right">Brüt Tutar</TableHead>
+                <TableHead className="text-right">Miktar / Tutar</TableHead>
                 <TableHead className="text-right">Kesinti (%)</TableHead>
-                <TableHead className="text-right">Geçerli Teminat Değeri</TableHead>
+                <TableHead className="text-right">Canlı Teminat Değeri (USD)</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -94,9 +98,9 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
                     <TableRow key={c.id} className="border-slate-800">
                       <TableCell className="font-medium text-slate-200">{c.assetCode}</TableCell>
                       <TableCell className="text-slate-400">{c.currency}</TableCell>
-                      <TableCell className="text-right font-mono text-slate-300">{formatCurrency(c.nominalQuantity)}</TableCell>
+                      <TableCell className="text-right font-mono text-slate-300">{formatQty(c)}</TableCell>
                       <TableCell className="text-right font-mono text-rose-400">{formatPercent(hc)}</TableCell>
-                      <TableCell className="text-right font-mono text-emerald-400 font-bold">{formatCurrency(c.marketValueUsd)}</TableCell>
+                      <TableCell className="text-right font-mono text-emerald-400 font-bold">{formatCurrency(c.marketValueUsd * (1 - hc))}</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" className="text-slate-500 hover:text-rose-400 hover:bg-rose-400/10" onClick={() => handleDelete(c.id)}>
                           <Trash2 className="h-4 w-4" />
@@ -115,33 +119,35 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
           <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3 items-end">
             <div className="space-y-1.5 flex-1">
               <Label htmlFor="assetCode" className="text-xs text-slate-400">Varlık Türü</Label>
-              <Select value={assetCode} onValueChange={(val) => setAssetCode(val || "")}>
+              <Select value={assetCode} onValueChange={(val) => setAssetCode(val || "Nakit-USD")}>
                 <SelectTrigger id="assetCode" className="bg-slate-950 border-slate-800 text-sm">
                   <SelectValue placeholder="Varlık seçin" />
                 </SelectTrigger>
                 <SelectContent className="border-slate-800 bg-slate-950">
-                  {Object.entries(COLLATERAL_HAIRCUT_RATES).map(([code, rate]) => (
-                    <SelectItem key={code} value={code}>
+                  {COLLATERAL_TYPES.map(t => (
+                    <SelectItem key={t.code} value={t.code}>
                       <span className="flex justify-between w-full pr-4">
-                        <span>{code}</span>
-                        <span className="text-slate-500 ml-4">Kesinti: {formatPercent(rate)}</span>
+                        <span>{t.label}</span>
+                        <span className="text-slate-500 ml-4">{t.unit === 'ons' ? 'ons · canlı' : 'USD 1:1'}</span>
                       </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-1.5 flex-1">
-              <Label htmlFor="amount" className="text-xs text-slate-400">Brüt Tutar (USD Karşılığı)</Label>
-              <Input 
-                id="amount" 
-                type="number" 
-                step="any" 
+              <Label htmlFor="amount" className="text-xs text-slate-400">
+                {selectedType.unit === 'ons' ? 'Miktar (ons)' : 'Tutar (USD)'}
+              </Label>
+              <Input
+                id="amount"
+                type="number"
+                step="any"
                 min="0"
-                value={amount} 
-                onChange={(e) => setAmount(e.target.value)} 
-                placeholder="Örn: 10000"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder={selectedType.unit === 'ons' ? 'Örn: 100' : 'Örn: 10000'}
                 className="bg-slate-950 border-slate-800 font-mono text-sm"
                 required
               />

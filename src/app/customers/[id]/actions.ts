@@ -2,6 +2,7 @@
 
 import { db } from "@/services/mockDb";
 import { collateralRepository } from "@/repositories/collateral.repository";
+import { getSpot } from "@/services/market.service";
 import { revalidatePath } from "next/cache";
 
 interface ManualTradeInput {
@@ -18,7 +19,6 @@ interface ManualTradeInput {
   manualMarginRate?: number | string;
   initialCollateral?: number | string;
   collateralAssetCode?: string;
-  collateralHaircut?: number | string;
   isBarrier?: boolean;
   barrierType?: string;
   barrierLevel?: number | string;
@@ -74,16 +74,24 @@ export async function addManualTradeAction(customerId: string, data: ManualTrade
   await db.trades.create(trade);
 
   if (data.initialCollateral && Number(data.initialCollateral) > 0) {
-    const colValue = Number(data.initialCollateral);
+    // Teminat yalnızca USD / XAU / XAG (nakit-eşdeğeri, haircut 0). nominalQuantity USD için tutar,
+    // metaller için ONS'tur; marketValueUsd metal için canlı ons snapshot'ı (ekranlarda revalueCollaterals
+    // ile canlı yeniden değerlenir). Bkz. collateral-actions.addCustomerCollateral — aynı mantık.
+    const nominalQuantity = Number(data.initialCollateral);
     const assetCode = data.collateralAssetCode || 'Nakit-USD';
-    const haircut = data.collateralHaircut !== undefined && data.collateralHaircut !== "" ? Number(data.collateralHaircut) : undefined;
+    const currency = assetCode.includes('-XAU') ? 'XAU' : assetCode.includes('-XAG') ? 'XAG' : 'USD';
+    let marketValueUsd = nominalQuantity; // USD 1:1
+    if (currency === 'XAU' || currency === 'XAG') {
+      const live = await getSpot(currency);
+      marketValueUsd = live?.price ? nominalQuantity * live.price : 0;
+    }
     await collateralRepository.addCollateral({
       customerId,
       assetCode,
-      currency: assetCode.includes('-TRY') ? 'TRY' : 'USD', // simplistic mapping
-      nominalQuantity: colValue,
-      marketValueUsd: colValue,
-      haircut,
+      currency,
+      nominalQuantity,
+      marketValueUsd,
+      haircut: 0,
     });
   }
 

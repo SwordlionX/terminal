@@ -1,9 +1,8 @@
-import { 
-  MARGIN_MATURITY_BUCKETS, 
-  ASSET_GROUPS, 
-  COLLATERAL_HAIRCUT_RATES, 
-  BASE_COLLATERAL_CURRENCIES,
-  RISK_THRESHOLDS 
+import {
+  MARGIN_MATURITY_BUCKETS,
+  ASSET_GROUPS,
+  COLLATERAL_HAIRCUT_RATES,
+  RISK_THRESHOLDS
 } from './config';
 
 export interface TradePosition {
@@ -27,15 +26,12 @@ export interface CollateralAsset {
 }
 
 export interface MarginResult {
-  totalRequiredMargin: number;
-  totalCollateralValue: number;
-  excessMargin: number;
-  missingMargin: number;
-  coverageRatio: number;
-  totalMtmLoss: number; // Only counting losses for Margin Call calculation
-  marginCallRatio: number; // Loss / Collateral Value
-  status: 'SAFE' | 'DEFICIT' | 'MARGIN_CALL' | 'WARNING_60' | 'STOP_LOSS_80';
-  isDeficitOver1Million: boolean;
+  totalCollateralValue: number;   // Haircut sonrası, canlı teminat değeri (USD)
+  totalMtmLoss: number;           // Brüt intrinsic zarar (prim HARİÇ), müşteri aleyhine — Short pozisyonlar
+  marginCallRatio: number;        // Zarar / Teminat — TEK headline metrik; risk eşikleri bunun üzerinden
+  cureAmount: number;             // Oranı CURE_TARGET'a indirmek için gereken ek teminat = max(0, zarar/hedef − teminat)
+  status: 'SAFE' | 'MARGIN_CALL' | 'WARNING_60' | 'STOP_LOSS_80';
+  isDeficitOver1Million: boolean; // cureAmount × usdTry > 1M TL (Şube Müdürü vs Genel Müdür onay eşiği)
 }
 
 export class MarginEngine {
@@ -66,36 +62,6 @@ export class MarginEngine {
   }
 
   /**
-   * Calculate effective margin rate considering Cross-Collateral rules.
-   * If collateral is different from trade pairs and NOT in base currencies (TRY, USD, EUR).
-   * Procedure: baseRate + (baseRate * collateralRate) OR baseRate + (baseRate * haircut)
-   */
-  public static getEffectiveMarginRate(tradeBaseRate: number, collateralCode: string, days: number): number {
-    const cashCurrency = collateralCode.startsWith('Nakit-') ? collateralCode.slice('Nakit-'.length) : null;
-    const isBaseCashCollateral = cashCurrency != null && BASE_COLLATERAL_CURRENCIES.includes(cashCurrency);
-    const isPreciousMetalCashCollateral = cashCurrency === 'XAU' || cashCurrency === 'XAG';
-    const isFund = cashCurrency == null;
-    
-    // Procedure Example 2: DOL fon teminata vermek
-    if (isFund) {
-      const fundHaircut = COLLATERAL_HAIRCUT_RATES[collateralCode] || 0.25; // Default to 25% if unknown
-      return tradeBaseRate + (tradeBaseRate * fundHaircut);
-    }
-    
-    // Procedure Example 1: TL teminat vermek
-    if (collateralCode === 'Nakit-TRY') {
-      const tlRate = this.getBaseMarginRate('TRY', days);
-      return tradeBaseRate + (tradeBaseRate * tlRate);
-    }
-
-    if (isBaseCashCollateral || isPreciousMetalCashCollateral) {
-      return tradeBaseRate;
-    }
-
-    return tradeBaseRate;
-  }
-
-  /**
    * Calculate the discounted value of a collateral asset (Haircut).
    */
   public static getCollateralDiscountedValue(asset: CollateralAsset): number {
@@ -114,17 +80,13 @@ export class MarginEngine {
     collaterals: CollateralAsset[],
     usdTryRate: number
   ): MarginResult {
-    let totalRequiredMargin = 0;
+    // Banka teminat mantığı (resmi prosedür): TEK metrik = zarar / teminat.
+    // Zarar = pozisyonun brüt intrinsic zararı (prim HARİÇ); yalnızca müşteri aleyhine olan
+    // Short pozisyonlarda oluşur. Notional×kaldıraç oranı tabanlı "gerekli teminat" kavramı
+    // KULLANILMIYOR — kaldıraç oranı yalnızca işlem açılışında yatırılan teminatı belirler.
     let totalMtmLoss = 0;
-
     for (const pos of positions) {
-      const baseRate = pos.marginRate ?? this.getBaseMarginRate(pos.underlying, pos.initialDaysToExpiry);
-      
       if (pos.position === 'Short') {
-        const baseMargin = pos.usdNotional * baseRate;
-        totalRequiredMargin += (baseMargin + pos.intrinsicLoss);
-        
-        // Zarar/Teminat oranı (risk eşikleri için) sadece riskli olan Short yönlü müşteri zararlarını topluyoruz
         totalMtmLoss += pos.intrinsicLoss;
       }
     }
@@ -141,38 +103,32 @@ export class MarginEngine {
       }
     }
 
-    // Margin Call Ratio = Zarar / Teminat Değeri (risk eşikleri bunun üzerinden tetiklenir)
+    // Zarar / Teminat — risk eşikleri (%39/%60/%80) bunun üzerinden tetiklenir.
     const marginCallRatio = totalCollateralValue > 0 ? (totalMtmLoss / totalCollateralValue) : (totalMtmLoss > 0 ? 1 : 0);
 
-    // Zarar artık gerekli teminatın içine gömülü olduğu için (exposureNotional üzerinden), burada
-    // ikinci kez düşülmüyor — tek, tutarlı bir teminat rakamı.
-    const excessMargin = Math.max(0, totalCollateralValue - totalRequiredMargin);
-    const missingMargin = Math.max(0, totalRequiredMargin - totalCollateralValue);
-    const coverageRatio = totalRequiredMargin > 0 ? (totalCollateralValue / totalRequiredMargin) : (totalCollateralValue > 0 ? 1 : 0);
+    // Teminat çağrısı karşılığı: oranı CURE_TARGET'a (%35) indirmek için gereken ek teminat.
+    // zarar / (teminat + X) = hedef  →  X = zarar/hedef − teminat.
+    const cureAmount = totalMtmLoss > 0
+      ? Math.max(0, totalMtmLoss / RISK_THRESHOLDS.CURE_TARGET - totalCollateralValue)
+      : 0;
 
     let status: MarginResult['status'] = 'SAFE';
-    
     if (marginCallRatio > RISK_THRESHOLDS.STOP_LOSS_IMMEDIATE) {
       status = 'STOP_LOSS_80';
     } else if (marginCallRatio > RISK_THRESHOLDS.STOP_LOSS_WARNING) {
       status = 'WARNING_60';
     } else if (marginCallRatio > RISK_THRESHOLDS.MARGIN_CALL) {
       status = 'MARGIN_CALL';
-    } else if (missingMargin > 0) {
-      status = 'DEFICIT';
     }
 
-    const missingMarginTl = missingMargin * usdTryRate;
-    const isDeficitOver1Million = missingMarginTl > RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL;
+    // 1M TL eşiği artık gereken ek teminat (cureAmount) üzerinden (PDF: "eksik teminat tutarı")
+    const isDeficitOver1Million = (cureAmount * usdTryRate) > RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL;
 
     return {
-      totalRequiredMargin,
       totalCollateralValue,
-      excessMargin,
-      missingMargin,
-      coverageRatio,
       totalMtmLoss,
       marginCallRatio,
+      cureAmount,
       status,
       isDeficitOver1Million
     };

@@ -52,10 +52,7 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
   const unrealizedPnl = myEnriched.reduce((sum, e) => sum + (e.pnl || 0), 0);
   const usdNotional = myEnriched.reduce((sum, e) => sum + e.notional, 0);
   const realizedPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
-  const utilization = marginResult.totalRequiredMargin > 0
-    ? (marginResult.totalCollateralValue / marginResult.totalRequiredMargin) * 100 : 0;
   const riskLabel = marginResult.status === 'SAFE' ? 'Düşük'
-    : marginResult.status === 'DEFICIT' ? 'Eksik Teminat'
     : marginResult.status === 'MARGIN_CALL' ? 'Teminat Çağrısı'
     : marginResult.status === 'WARNING_60' ? 'Yüksek' : 'Kritik';
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
@@ -83,13 +80,13 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
         <KPICard title="Açık Pozisyon K/Z" value={pnlError ? "—" : formatCurrency(unrealizedPnl)} subtitle="Bugün kapatılsa ne kadar kâr/zarar (intrinsic - prim)" />
         <KPICard title="Realized PnL" value={formatCurrency(realizedPnl)} subtitle="Vadesi kapanmış işlemlerin kâr/zararı" />
         <KPICard title="USD Notional" value={pnlError ? "—" : formatCurrency(usdNotional)} subtitle="Açık pozisyonların nominal değeri" />
-        <KPICard title="Gerekli Teminat" value={formatCurrency(marginResult.totalRequiredMargin)} subtitle="Giriş notional'i + canlı spota göre zarar, sabit oranla" />
-        <KPICard title="Mevcut Teminat" value={formatCurrency(marginResult.totalCollateralValue)} subtitle="Haircut sonrası" />
-        <KPICard title="Teminat Kullanımı" value={`%${utilization.toFixed(1)}`} subtitle="Mevcut / Gereken" />
+        <KPICard title="Zarar (Açık Poz.)" value={formatCurrency(marginResult.totalMtmLoss)} subtitle="Vadedeki brüt intrinsic zarar (prim hariç)" />
+        <KPICard title="Mevcut Teminat" value={formatCurrency(marginResult.totalCollateralValue)} subtitle="Haircut sonrası, canlı" />
+        <KPICard title="Zarar / Teminat" value={`%${(marginResult.marginCallRatio * 100).toFixed(1)}`} subtitle="Çağrı eşiği %39" />
         <KPICard
-          title="Teminat Açığı / Fazlası"
-          value={marginResult.excessMargin > 0 ? `+${formatCurrency(marginResult.excessMargin)}` : `-${formatCurrency(marginResult.missingMargin)}`}
-          subtitle={marginResult.excessMargin > 0 ? "Kullanılabilir Fazla Teminat" : "Yatırılması Gereken Tutar"}
+          title="Gerekli Ek Teminat"
+          value={marginResult.cureAmount > 0 ? formatCurrency(marginResult.cureAmount) : "-"}
+          subtitle="Oranı %35'e indirmek için"
         />
         <KPICard title="Risk Seviyesi" value={riskLabel} subtitle={`Zarar/Teminat %${(marginResult.marginCallRatio * 100).toFixed(1)}`} />
       </div>

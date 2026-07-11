@@ -44,8 +44,9 @@ export const COLLATERAL_HAIRCUT_RATES: Record<string, number> = {
 export const BASE_COLLATERAL_CURRENCIES = ['TRY', 'USD', 'EUR'];
 
 export const RISK_THRESHOLDS = {
-  MARGIN_CALL: 0.40, // Zarar/Teminat > %40
-  STOP_LOSS_WARNING: 0.60, // Zarar/Teminat > %60
-  STOP_LOSS_IMMEDIATE: 0.80, // Zarar/Teminat > %80
+  MARGIN_CALL: 0.39, // Zarar/Teminat > %39 → teminat çağrısı (resmi prosedür %40; şube tamponu %39)
+  STOP_LOSS_WARNING: 0.60, // Zarar/Teminat > %60 → banka pozisyonu kapatma yetkisi (onayla gün içi beklenebilir)
+  STOP_LOSS_IMMEDIATE: 0.80, // Zarar/Teminat > %80 → tutara/yetkiye bakılmaksızın derhal kapat
+  CURE_TARGET: 0.35, // Teminat çağrısında oranın indirileceği hedef seviye → gereken ek teminat bundan hesaplanır
   DEFICIT_THRESHOLD_TL: 1000000 // 1,000,000 TL (Altı: Şube Müdürü, Üstü: Genel Müdür onayı)
 };

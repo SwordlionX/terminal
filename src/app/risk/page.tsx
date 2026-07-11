@@ -1,5 +1,6 @@
 import { db } from "@/services/mockDb";
-import { marginService } from "@/services/margin.service";
+import { marginService, revalueCollaterals } from "@/services/margin.service";
+import { evaluatePortfolio } from "@/services/portfolio.service";
 import { PortfolioSummary } from "@/features/risk/portfolio-summary";
 import { HeatMap, HeatMapCustomer } from "@/features/risk/heat-map";
 import { ExposureDashboard, ExposureData } from "@/features/risk/exposure-dashboard";
@@ -17,20 +18,35 @@ export const dynamic = "force-dynamic";
 export default async function RiskCenterPage() {
   const marginResults = await marginService.evaluateAllCustomers();
   const allTrades = await db.trades.findMany();
-  const allCollaterals = await collateralRepository.findAll();
+  const allCollaterals = await revalueCollaterals(await collateralRepository.findAll());
+
+  // Canlı PnL/notional — evaluatePortfolio() açık işlemleri canlı spotla yeniden değerler
+  // (PnL = intrinsic[canlı spot vs strike] × kontrat − prim; portfolio.service ile birebir aynı).
+  // Canlı spot alınamazsa throw eder; o durumda teminat/exposure kartları çökmesin diye degrade
+  // edip giriş spotu + son kaydedilen pnl'e düşüyoruz ve uyarı gösteriyoruz.
+  const enrichedById = new Map<string, { pnl: number; notional: number }>();
+  let pnlError: string | null = null;
+  try {
+    const { trades } = await evaluatePortfolio();
+    for (const e of trades) enrichedById.set(e.trade.id, { pnl: e.pnl ?? 0, notional: e.notional });
+  } catch (e) {
+    pnlError = e instanceof Error ? e.message : "Canlı PnL hesaplanamadı.";
+  }
+  const livePnl = (t: (typeof allTrades)[number]) => enrichedById.get(t.id)?.pnl ?? (t.pnl || 0);
+  const liveNotional = (t: (typeof allTrades)[number]) => enrichedById.get(t.id)?.notional ?? t.contractSize * t.spot;
 
   // Heat Map Data
   const heatMapData: HeatMapCustomer[] = marginResults.map(r => ({
     id: r.customer.id,
     name: r.customer.companyName,
-    marginUtil: r.margin.totalCollateralValue > 0 ? (r.margin.totalRequiredMargin / r.margin.totalCollateralValue) * 100 : 0,
-    pnl: allTrades.filter(t => (t.status === 'Open' || t.status === 'Near Expiry') && t.customerId === r.customer.id).reduce((s, t) => s + (t.pnl || 0), 0),
+    marginUtil: r.margin.marginCallRatio * 100,
+    pnl: allTrades.filter(t => (t.status === 'Open' || t.status === 'Near Expiry') && t.customerId === r.customer.id).reduce((s, t) => s + livePnl(t), 0),
   }));
 
   // Aggregations
   let totalNotional = 0;
   let totalPnl = 0;
-  let totalMargin = 0;
+  let totalLoss = 0;
   let totalCollateral = 0;
 
   const exposure: ExposureData = {
@@ -52,9 +68,9 @@ export default async function RiskCenterPage() {
   for (const t of allTrades) {
     if (t.status !== 'Open' && t.status !== 'Near Expiry') continue;
 
-    const notional = t.contractSize * t.spot;
+    const notional = liveNotional(t);
     totalNotional += notional;
-    totalPnl += t.pnl || 0;
+    totalPnl += livePnl(t);
 
     const daysLeft = (new Date(t.expiryDate).getTime() - nowMs) / 86400000;
 
@@ -76,7 +92,7 @@ export default async function RiskCenterPage() {
   }
 
   marginResults.forEach(r => {
-    totalMargin += r.margin.totalRequiredMargin;
+    totalLoss += r.margin.totalMtmLoss;
     totalCollateral += r.margin.totalCollateralValue;
   });
 
@@ -107,10 +123,16 @@ export default async function RiskCenterPage() {
         </div>
       </div>
 
+      {pnlError && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+          Canlı spot alınamadı — K/Z ve nominal değerler son kaydedilen/giriş verisine göre gösteriliyor (bayat olabilir). Teminat oranları etkilenmez. Detay: {pnlError}
+        </div>
+      )}
+
       <PortfolioSummary
         totalNotional={totalNotional}
         totalPnl={totalPnl}
-        totalMargin={totalMargin}
+        totalLoss={totalLoss}
         totalCollateral={totalCollateral}
       />
 

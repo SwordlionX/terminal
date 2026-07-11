@@ -6,13 +6,13 @@ import { cn } from "@/lib/utils";
 interface PortfolioSummaryProps {
   totalNotional: number;
   totalPnl: number;
-  totalMargin: number;
+  totalLoss: number;
   totalCollateral: number;
 }
 
-export function PortfolioSummary({ totalNotional, totalPnl, totalMargin, totalCollateral }: PortfolioSummaryProps) {
+export function PortfolioSummary({ totalNotional, totalPnl, totalLoss, totalCollateral }: PortfolioSummaryProps) {
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(val);
-  const marginUtil = totalCollateral > 0 ? (totalMargin / totalCollateral) * 100 : 0;
+  const marginUtil = totalCollateral > 0 ? (totalLoss / totalCollateral) * 100 : 0;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -25,11 +25,11 @@ export function PortfolioSummary({ totalNotional, totalPnl, totalMargin, totalCo
         <CardContent><div className={cn("text-2xl font-bold font-mono", totalPnl >= 0 ? "text-emerald-400" : "text-rose-400")}>{totalPnl >= 0 ? "+" : ""}{formatCurrency(totalPnl)}</div></CardContent>
       </Card>
       <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
-        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Gereken Toplam Teminat</CardTitle></CardHeader>
-        <CardContent><div className="text-2xl font-bold font-mono text-slate-100">{formatCurrency(totalMargin)}</div></CardContent>
+        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Toplam Zarar (Açık Poz.)</CardTitle></CardHeader>
+        <CardContent><div className="text-2xl font-bold font-mono text-rose-400">{formatCurrency(totalLoss)}</div></CardContent>
       </Card>
       <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
-        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Teminat Kullanımı</CardTitle></CardHeader>
+        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Zarar / Teminat</CardTitle></CardHeader>
         <CardContent>
           <div className="text-2xl font-bold font-mono text-slate-100">{marginUtil.toFixed(1)}%</div>
           <div className="w-full bg-slate-800 h-1.5 mt-2 rounded-full overflow-hidden">

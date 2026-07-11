@@ -29,8 +29,6 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
     manualMarginRate: "",
     initialCollateral: "",
     collateralAssetCode: "Nakit-USD",
-    useCustomHaircut: false,
-    customHaircut: "",
     isBarrier: false,
     barrierType: "Knock Out Up",
     barrierLevel: "",
@@ -59,7 +57,6 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
       manualMarginRate: formData.useManualMargin ? (Number(formData.manualMarginRate) / 100).toString() : undefined,
       initialCollateral: formData.initialCollateral,
       collateralAssetCode: formData.collateralAssetCode,
-      collateralHaircut: formData.useCustomHaircut ? (Number(formData.customHaircut) / 100).toString() : undefined,
       isBarrier: formData.isBarrier,
       barrierType: formData.barrierType,
       barrierLevel: formData.barrierLevel,
@@ -260,37 +257,25 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                   </div>
 
                   <div className="bg-slate-800/50 p-3 rounded border border-slate-700">
-                    <label className="text-xs font-medium mb-2 block">Başlangıçta Yatırılan Nakit Teminat</label>
-                    <div className="flex gap-2">
-                      <input type="number" step="any" placeholder="Tutar" className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm" value={formData.initialCollateral} onChange={e => setFormData({...formData, initialCollateral: e.target.value})} />
-                      <Button type="button" variant="outline" size="sm" onClick={() => setFormData({...formData, initialCollateral: requiredMargin.toString()})} className="px-2" title="Gerekeni Aktar">
-                        Ayarla
-                      </Button>
-                    </div>
-                    {Number(formData.initialCollateral) > 0 && (
-                      <div className="mt-3 space-y-3">
-                        <div>
-                          <label className="text-[10px] text-slate-400 uppercase tracking-wider">Teminat Türü</label>
-                          <select className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs mt-1" value={formData.collateralAssetCode} onChange={e => setFormData({...formData, collateralAssetCode: e.target.value})}>
-                            <option value="Nakit-USD">Nakit-USD</option>
-                            <option value="Nakit-TRY">Nakit-TRY</option>
-                            <option value="IDL-LKT-MPF">IDL-LKT-MPF</option>
-                            <option value="DOL">DOL</option>
-                            <option value="DigerFonlar">Diğer Fonlar</option>
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input type="checkbox" id="useCustomHaircut" checked={formData.useCustomHaircut} onChange={e => setFormData({...formData, useCustomHaircut: e.target.checked})} className="rounded bg-slate-900 border-slate-700" />
-                          <label htmlFor="useCustomHaircut" className="text-[10px] text-slate-300">Özel İskonto (Haircut) Belirle</label>
-                        </div>
-                        {formData.useCustomHaircut && (
-                          <div className="flex items-center gap-2">
-                            <input type="number" step="any" placeholder="Örn: 5" className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs" value={formData.customHaircut} onChange={e => setFormData({...formData, customHaircut: e.target.value})} required />
-                            <span className="text-xs text-slate-400">%</span>
-                          </div>
+                    <label className="text-xs font-medium mb-2 block">Başlangıçta Yatırılan Teminat</label>
+                    <div className="space-y-2">
+                      <select className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs" value={formData.collateralAssetCode} onChange={e => setFormData({...formData, collateralAssetCode: e.target.value})}>
+                        <option value="Nakit-USD">Nakit USD</option>
+                        <option value="Nakit-XAU">Altın (XAU) — ons</option>
+                        <option value="Nakit-XAG">Gümüş (XAG) — ons</option>
+                      </select>
+                      <div className="flex gap-2">
+                        <input type="number" step="any" placeholder={formData.collateralAssetCode === 'Nakit-USD' ? 'Tutar (USD)' : 'Miktar (ons)'} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm" value={formData.initialCollateral} onChange={e => setFormData({...formData, initialCollateral: e.target.value})} />
+                        {formData.collateralAssetCode === 'Nakit-USD' && (
+                          <Button type="button" variant="outline" size="sm" onClick={() => setFormData({...formData, initialCollateral: requiredMargin.toString()})} className="px-2" title="Gerekeni Aktar">
+                            Ayarla
+                          </Button>
                         )}
                       </div>
-                    )}
+                      {formData.collateralAssetCode !== 'Nakit-USD' && (
+                        <p className="text-[10px] text-slate-500">Ons cinsinden girin; canlı ons fiyatıyla değerlenir (haircut 0).</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

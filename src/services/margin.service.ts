@@ -3,23 +3,47 @@ import { collateralRepository } from "@/repositories/collateral.repository";
 import { db } from "@/services/mockDb";
 import { getSpot } from "@/services/market.service";
 import { Trade } from "@/types";
+import { CollateralItem } from "@/types/collateral";
 
 /**
- * Müşteri aleyhine oluşan basit (Black-Scholes/smile'suz) zarar: portfolio.service.ts'teki PnL
- * formülüyle birebir aynı mantık (intrinsic değer − prim, pozisyon yönüne göre işaretlenir),
- * sadece vade spotu yerine canlı spot kullanılır. PnL negatifse (müşteri aleyhineyse) bu kadar
- * ek zarar teminata eklenir; PnL pozitif/sıfırsa (kâr veya nötr) ek zarar yoktur.
- * NOT: Önceki sürüm sadece position==='Long' işlemler için zarar hesaplıyordu ve primi hiç
- * netleştirmiyordu — bu yüzden 'Short' işlemlerde (ör. müşterinin yazdığı Put'lar) canlı zarar
- * teminata hiç yansımıyordu. Artık her iki yön için de PnL ile tutarlı hesaplanıyor.
+ * Teminatı canlı USD değerine getirir. Teminat tipleri yalnızca USD / XAU / XAG:
+ *  - USD nakit → 1:1 (nominalQuantity USD tutarı).
+ *  - XAU/XAG → nominalQuantity ONS cinsindendir; canlı ons fiyatıyla çarpılır.
+ * Canlı spot alınamazsa DB'deki son snapshot (marketValueUsd) fallback olarak kalır.
+ * Böylece gerekli teminat (canlı intrinsic zarar) ile mevcut teminat aynı anlıklıkta olur.
+ */
+export async function revalueCollaterals(items: CollateralItem[]): Promise<CollateralItem[]> {
+  const metals = [...new Set(
+    items.map(i => i.currency.toUpperCase()).filter(c => c === 'XAU' || c === 'XAG')
+  )];
+  const spotMap: Record<string, number> = {};
+  await Promise.all(metals.map(async (m) => {
+    const live = await getSpot(m);
+    if (live?.price) spotMap[m] = live.price;
+  }));
+
+  return items.map(i => {
+    const cur = i.currency.toUpperCase();
+    if (cur === 'USD') return { ...i, marketValueUsd: i.nominalQuantity };
+    if (cur === 'XAU' || cur === 'XAG') {
+      return { ...i, marketValueUsd: spotMap[cur] ? i.nominalQuantity * spotMap[cur] : i.marketValueUsd };
+    }
+    return i; // beklenmeyen tip — dokunma, snapshot kalsın
+  });
+}
+
+/**
+ * Teminat çağrısı için "zarar": pozisyonun vadedeki BRÜT intrinsic zararı — prim HARİÇ
+ * (resmi teminat prosedürü zararı primden bağımsız, canlı spot vs strike üzerinden tanımlıyor).
+ * Yalnızca müşteri aleyhine olan Short pozisyonlarda >0 olur (Long'da müşteri primi zaten ödemiş,
+ * ek zarar yok → 0). DİKKAT: Bu, portfolio.service.ts'teki PnL'den (prim NETLİ, gerçek K/Z)
+ * bilinçli olarak AYRIŞIR; oradaki PnL primi düşer, buradaki teminat-zararı düşmez.
  */
 function intrinsicLossFor(t: Trade, currentSpot: number): number {
   const diff = t.type === 'Put' ? t.strike - currentSpot : currentSpot - t.strike;
   const intrinsicValue = Math.max(0, diff) * t.contractSize;
   const payout = t.position === 'Long' ? intrinsicValue : -intrinsicValue;
-  const premiumAdjustment = t.position === 'Long' ? -t.premium : t.premium;
-  const pnl = payout + premiumAdjustment;
-  return Math.max(0, -pnl);
+  return Math.max(0, -payout); // prim HARİÇ brüt zarar
 }
 
 export interface TradeCollateral {
@@ -96,7 +120,7 @@ export class MarginService {
    */
   async evaluateCustomerMargin(customerId: string, usdTryRate: number = 35.0): Promise<MarginResult> {
     const trades = await db.trades.findByCustomerId(customerId);
-    const collateralItems = await collateralRepository.findByCustomerId(customerId);
+    const collateralItems = await revalueCollaterals(await collateralRepository.findByCustomerId(customerId));
     const tradeCollaterals = await buildTradeCollaterals(trades);
 
     const positions: TradePosition[] = trades

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 export const dynamic = "force-dynamic";
 
 export default async function TradesBlotterPage() {
+  const now = new Date().getTime();
   // Teminat: PnL/smile'a bağımlı değil, her zaman hesaplanır.
   const marginResults = await marginService.evaluateAllCustomers();
   const tradeCollaterals = await marginService.evaluateAllTradeCollaterals();
@@ -30,7 +31,7 @@ export default async function TradesBlotterPage() {
       trade: t,
       customerName: customerNames.get(t.customerId) || 'Bilinmiyor',
       initialDaysToExpiry: Math.max(1, (new Date(t.expiryDate).getTime() - new Date(t.tradeDate).getTime()) / 86400000),
-      daysToExpiry: Math.max(0.5, (new Date(t.expiryDate).getTime() - Date.now()) / 86400000),
+      daysToExpiry: Math.max(0.5, (new Date(t.expiryDate).getTime() - now) / 86400000),
       currentSpot: collateralByTrade.get(t.id)?.currentSpot ?? t.spot,
       spotIsLive: collateralByTrade.get(t.id)?.spotIsLive ?? false,
       notional: (collateralByTrade.get(t.id)?.currentSpot ?? t.spot) * t.contractSize,
@@ -70,7 +71,7 @@ export default async function TradesBlotterPage() {
                 <TableHead className="text-center">Açık İşlem</TableHead>
                 <TableHead className="text-right">Nominal</TableHead>
                 <TableHead className="text-right">Açık Poz. K/Z</TableHead>
-                <TableHead className="text-right">Gerekli Teminat</TableHead>
+                <TableHead className="text-right">Zarar</TableHead>
                 <TableHead className="text-right">Mevcut Teminat</TableHead>
                 <TableHead className="text-center">Zarar / Teminat</TableHead>
                 <TableHead>Durum</TableHead>
@@ -87,12 +88,11 @@ export default async function TradesBlotterPage() {
                     <TableCell className="text-center">{pnl ? pnl.openTrades : "—"}</TableCell>
                     <TableCell className="text-right font-mono">{pnl ? fc(pnl.totalNotional) : "—"}</TableCell>
                     <TableCell className={`text-right font-mono ${pnl && pnl.totalPnl >= 0 ? "text-emerald-500" : pnl ? "text-rose-500" : ""}`}>{pnl ? fc(pnl.totalPnl) : "—"}</TableCell>
-                    <TableCell className="text-right font-mono">{fc(margin.totalRequiredMargin)}</TableCell>
+                    <TableCell className="text-right font-mono text-rose-500">{fc(margin.totalMtmLoss)}</TableCell>
                     <TableCell className="text-right font-mono">{fc(margin.totalCollateralValue)}</TableCell>
                     <TableCell className="text-center font-mono">%{(margin.marginCallRatio * 100).toFixed(1)}</TableCell>
                     <TableCell>
                       {margin.status === 'SAFE' && <Badge variant="outline" className="border-emerald-500 text-emerald-500">GÜVENLİ</Badge>}
-                      {margin.status === 'DEFICIT' && <Badge variant="outline" className="border-yellow-500 text-yellow-500">EKSİK TEMİNAT</Badge>}
                       {margin.status === 'MARGIN_CALL' && <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500">TEMİNAT ÇAĞRISI</Badge>}
                       {margin.status === 'WARNING_60' && <Badge variant="secondary" className="bg-orange-500/20 text-orange-500">STOP UYARISI</Badge>}
                       {margin.status === 'STOP_LOSS_80' && <Badge variant="destructive">ANINDA STOP</Badge>}
@@ -128,7 +128,7 @@ export default async function TradesBlotterPage() {
                 <TableHead className="text-right">Prim (Giriş)</TableHead>
                 <TableHead className="text-right">PnL</TableHead>
                 <TableHead className="text-right">Teminat Oranı</TableHead>
-                <TableHead className="text-right">Gerekli Teminat (USD)</TableHead>
+                <TableHead className="text-right">Zarar (USD)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -156,7 +156,7 @@ export default async function TradesBlotterPage() {
                     <TableCell className="text-right font-mono">{fc(e.trade.premium)}</TableCell>
                     <TableCell className={`text-right font-mono font-bold ${(e.pnl || 0) >= 0 ? "text-emerald-500" : e.pnl != null ? "text-rose-500" : ""}`}>{fc(e.pnl)}</TableCell>
                     <TableCell className="text-right font-mono">{e.trade.marginRate ? `${(e.trade.marginRate * 100).toFixed(2)}%` : '-'}</TableCell>
-                    <TableCell className="text-right font-mono">{fc(tc?.requiredCollateral ?? null)}</TableCell>
+                    <TableCell className={`text-right font-mono ${(tc?.intrinsicLoss ?? 0) > 0 ? 'text-rose-500' : 'text-slate-500'}`}>{tc && tc.intrinsicLoss > 0 ? fc(tc.intrinsicLoss) : '-'}</TableCell>
                   </TableRow>
                 );
               })}
@@ -170,10 +170,11 @@ export default async function TradesBlotterPage() {
             </TableBody>
           </Table>
           <p className="text-[11px] text-slate-500 mt-3">
-            PnL = intrinsic değer (canlı spot vs strike) − prim; settleTradeAction'daki gerçekleşen K/Z ile aynı
-            formül, sadece vade spotu yerine canlı spot kullanılır. Black-Scholes/smile YOK. Gerekli Teminat = sabit
-            teminat oranı × (giriş notional'i + canlı spota göre müşteri aleyhine oluşan basit zarar). Spot 5 dakikada
-            bir tazelenir.
+            PnL = intrinsic değer (canlı spot vs strike) − prim; settleTradeAction&apos;daki gerçekleşen K/Z ile aynı
+            formül, sadece vade spotu yerine canlı spot kullanılır. Black-Scholes/smile YOK. Zarar = işlem başına
+            vadedeki brüt intrinsic zarar (prim hariç); müşteri risk takibi yukarıdaki özet tabloda
+            <b> Zarar/Teminat</b> oranı üzerinden yapılır. Teminat Oranı, açılışta yatan teminatı belirleyen kaldıraç
+            oranıdır. Spot 5 dakikada bir tazelenir.
           </p>
         </CardContent>
       </Card>
