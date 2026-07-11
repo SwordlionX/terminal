@@ -3,6 +3,7 @@
 import { db } from "@/services/mockDb";
 import { collateralRepository } from "@/repositories/collateral.repository";
 import { getSpot } from "@/services/market.service";
+import { MarginEngine } from "@/lib/margin/engine";
 import { revalidatePath } from "next/cache";
 
 interface ManualTradeInput {
@@ -36,6 +37,13 @@ export async function addManualTradeAction(customerId: string, data: ManualTrade
   const premium = Number(data.premium);
   const volatility = Number(data.volatility);
 
+  // Teminat oranı: manuel girildiyse onu, yoksa vade × varlık grubu tablosundan otomatik hesapla
+  // ve işleme kilitle (böylece blotter "Teminat Oranı" sütununda seed işlemler gibi görünür).
+  const initialDays = Math.max(1, (new Date(data.expiryDate).getTime() - new Date(data.tradeDate).getTime()) / 86400000);
+  const resolvedMarginRate = data.manualMarginRate
+    ? Number(data.manualMarginRate)
+    : MarginEngine.getBaseMarginRate(data.underlying, initialDays);
+
   if (!customerId || spot <= 0 || strike <= 0 || contractSize <= 0 || premium < 0) {
     throw new Error("Geçersiz işlem verisi.");
   }
@@ -62,7 +70,7 @@ export async function addManualTradeAction(customerId: string, data: ManualTrade
     gamma: 0,
     vega: 0,
     theta: 0,
-    marginRate: data.manualMarginRate ? Number(data.manualMarginRate) : undefined,
+    marginRate: resolvedMarginRate,
     status: "Open" as const,
     barrierType: data.isBarrier ? data.barrierType : undefined,
     barrierLevel: data.isBarrier && data.barrierLevel ? Number(data.barrierLevel) : undefined,
