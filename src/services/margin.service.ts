@@ -51,16 +51,13 @@ export interface TradeCollateral {
   customerId: string;
   currentSpot: number;
   spotIsLive: boolean;
-  entryNotional: number;   // sabit giriş notional'i (contractSize * giriş spotu)
-  intrinsicLoss: number;   // canlı spota göre müşteri aleyhine basit zarar
-  marginRate: number;
-  requiredCollateral: number; // marginRate * (entryNotional + intrinsicLoss)
+  intrinsicLoss: number;   // canlı spota göre müşteri aleyhine BRÜT intrinsic zarar (prim hariç)
 }
 
 /**
- * Açık işlemler için gerekli teminatı hesaplar — Black-Scholes/smile YOK, sadece canlı spot + strike.
- * NOT: portfolio.service.ts'e (tam MTM yeniden fiyatlama) bağımlı değildir; bu yüzden smile verisi
- * güncellenmemiş/hata veriyor olsa bile teminat hesaplanmaya devam eder.
+ * Açık işlemler için canlı spot + müşteri aleyhine brüt zararı hesaplar — Black-Scholes/smile YOK.
+ * NOT: portfolio.service.ts'e (tam MTM yeniden fiyatlama) bağımlı değildir; smile verisi
+ * güncellenmemiş/hata veriyor olsa bile zarar/teminat hesaplanmaya devam eder.
  */
 async function buildTradeCollaterals(trades: Trade[]): Promise<TradeCollateral[]> {
   const open = trades.filter(t => t.status === 'Open' || t.status === 'Near Expiry');
@@ -75,41 +72,13 @@ async function buildTradeCollaterals(trades: Trade[]): Promise<TradeCollateral[]
     const prod = t.underlying.toUpperCase();
     const live = spotMap[prod] > 0;
     const currentSpot = live ? spotMap[prod] : t.spot; // canlı yoksa giriş spotu (basit hesap için yeterli)
-    
-    // 1. Müşteri Ziyanı (Customer PnL < 0)
-    const customerLoss = intrinsicLossFor(t, currentSpot);
-    
-    const initialDaysToExpiry = Math.max(1, (new Date(t.expiryDate).getTime() - new Date(t.tradeDate).getTime()) / (1000 * 3600 * 24));
-    const marginRate = t.marginRate ?? MarginEngine.getBaseMarginRate(prod, initialDaysToExpiry);
-    
-    // 2. Doğru Nominal ve Teminat (Margin) Hesabı
-    let nominal = 0;
-    let requiredCollateral = 0;
-    
-    if (t.position === 'Short') {
-      // Short Call: Risk piyasanın yükselmesidir (Canlı Spot)
-      // Short Put: Risk piyasanın çakılmasıdır (Strike)
-      nominal = t.type === 'Call' 
-        ? currentSpot * t.contractSize 
-        : t.strike * t.contractSize;
-        
-      const baseMargin = nominal * marginRate;
-      requiredCollateral = baseMargin + customerLoss;
-    } else {
-      // Long Pozisyonlar (Müşteri Alış) teminat gerektirmez
-      nominal = 0;
-      requiredCollateral = 0;
-    }
 
     return {
       tradeId: t.id,
       customerId: t.customerId,
       currentSpot,
       spotIsLive: live,
-      entryNotional: nominal, // Engine uyumluluğu için nominal'i gönderiyoruz (önceden entryNotional idi)
-      intrinsicLoss: customerLoss,
-      marginRate,
-      requiredCollateral,
+      intrinsicLoss: intrinsicLossFor(t, currentSpot),
     };
   });
 }
@@ -128,11 +97,6 @@ export class MarginService {
       .map(t => {
         const tc = tradeCollaterals.find(c => c.tradeId === t.id)!;
         return {
-          id: t.id,
-          underlying: t.underlying,
-          initialDaysToExpiry: Math.max(1, (new Date(t.expiryDate).getTime() - new Date(t.tradeDate).getTime()) / (1000 * 3600 * 24)),
-          marginRate: tc.marginRate,
-          usdNotional: tc.entryNotional,
           position: t.position,
           intrinsicLoss: tc.intrinsicLoss,
           premium: t.premium,

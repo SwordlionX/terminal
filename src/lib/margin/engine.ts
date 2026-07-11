@@ -6,15 +6,9 @@ import {
 } from './config';
 
 export interface TradePosition {
-  id: string;
-  underlying: string; // e.g., "XAU/USD"
-  initialDaysToExpiry: number;
-  marginRate?: number; // Override if trade was created with a manual or locked margin rate
-  usdNotional: number; // Girişteki SABİT notional (contractSize * giriş spotu) — Black-Scholes/smile'a bağımlı değil
   position: 'Long' | 'Short'; // Bankanın yönü: Long = banka aldı (müşteri yazdı/sattı), Short = banka sattı (müşteri aldı)
-  intrinsicLoss: number; // Müşteri aleyhine basit içsel zarar (canlı spot vs strike, contractSize ile çarpılmış). Sadece
-                         // Long'da ve spot aleyhineyse >0; Short'ta veya spot lehineyse 0. Black-Scholes/smile kullanmaz.
-  premium: number; // Müşterinin ödediği veya aldığı prim
+  intrinsicLoss: number; // Müşteri aleyhine BRÜT intrinsic zarar (prim hariç, canlı spot vs strike × contractSize); yalnız Short'ta >0
+  premium: number; // Müşterinin ödediği/aldığı prim (Long'da teminata sayılır)
 }
 
 export interface CollateralAsset {
