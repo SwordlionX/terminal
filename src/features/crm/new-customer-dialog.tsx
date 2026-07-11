@@ -89,11 +89,6 @@ export function NewCustomerDialog() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="riskLimit">Risk Limiti</Label>
-            <Input id="riskLimit" name="riskLimit" type="number" step="any" />
-          </div>
-
-          <div className="space-y-1.5">
             <Label htmlFor="status">Durum</Label>
             <select id="status" name="status" defaultValue="Active" className={selectClassName}>
               <option value="Active">Active</option>

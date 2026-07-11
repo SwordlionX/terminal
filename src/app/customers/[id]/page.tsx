@@ -33,6 +33,7 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
   // kullanır, bu yüzden evaluatePortfolio() hata verse bile çalışmaya devam eder.
   const marginResult = await marginService.evaluateCustomerMargin(params.id);
   const portfolioTrades = await db.trades.findByCustomerId(params.id);
+  const activity = await db.activity.findByCustomerId(params.id);
 
   // PnL: Black-Scholes/smile YOK, sadece canlı spot + strike (intrinsic - prim). Yine de canlı spot
   // alınamazsa evaluatePortfolio() hata fırlatabilir; bu durumda teminat/risk kartları etkilenmesin
@@ -115,7 +116,7 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
         </div>
 
         <div className="space-y-6">
-          <CustomerTimeline customerId={customer.id} />
+          <CustomerTimeline events={activity} />
         </div>
       </div>
     </div>

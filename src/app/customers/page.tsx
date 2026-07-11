@@ -3,8 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { NewCustomerDialog } from "@/features/crm/new-customer-dialog";
-
-import { deleteCustomerAction } from "./actions";
+import { DeleteCustomerButton } from "@/features/crm/delete-customer-button";
 
 export const dynamic = "force-dynamic";
 
@@ -51,14 +50,7 @@ export default async function CustomersPage() {
                       <a href={`/customers/${c.id}`} className="text-sm font-medium text-emerald-500 hover:underline">
                         Detay
                       </a>
-                      <form action={async () => {
-                        "use server";
-                        await deleteCustomerAction(c.id);
-                      }}>
-                        <button type="submit" className="text-sm font-medium text-rose-500 hover:underline">
-                          Sil
-                        </button>
-                      </form>
+                      <DeleteCustomerButton id={c.id} name={c.companyName} />
                     </div>
                   </TableCell>
                 </TableRow>

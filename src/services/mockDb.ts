@@ -1,4 +1,4 @@
-import { Customer, Trade, Portfolio } from '../types';
+import { Customer, Trade, Portfolio, CustomerTimelineEvent } from '../types';
 import { dbc } from '@/lib/db';
 import type { Row } from '@libsql/client';
 
@@ -16,7 +16,6 @@ function rowToCustomer(r: Row): Customer {
     branch: String(r.branch ?? ''),
     portfolioManager: String(r.portfolioManager ?? ''),
     relationshipManager: String(r.relationshipManager ?? ''),
-    riskLimit: r.riskLimit == null ? null : Number(r.riskLimit),
     customerSegment: String(r.customerSegment ?? ''),
     notes: String(r.notes ?? ''),
     createdDate: String(r.createdDate ?? ''),
@@ -76,7 +75,7 @@ export const db = {
       await c.execute({
         sql: 'INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
         args: [cust.id, cust.companyName, cust.customerNumber, cust.taxNumber, cust.branch,
-               cust.portfolioManager, cust.relationshipManager, cust.riskLimit, cust.customerSegment,
+               cust.portfolioManager, cust.relationshipManager, null /* riskLimit (kaldırıldı, kolon legacy) */, cust.customerSegment,
                cust.notes, cust.createdDate, cust.updatedDate, cust.status],
       });
       return cust;
@@ -86,6 +85,7 @@ export const db = {
       await c.batch([
         { sql: 'DELETE FROM trades WHERE customerId = ?', args: [id] },
         { sql: 'DELETE FROM collaterals WHERE customerId = ?', args: [id] },
+        { sql: 'DELETE FROM activity_log WHERE customerId = ?', args: [id] },
         { sql: 'DELETE FROM customers WHERE id = ?', args: [id] },
       ], 'write');
     },
@@ -144,6 +144,33 @@ export const db = {
         marginUtilization: null, delta: null, gamma: null, vega: null, theta: null,
         riskLevel: null,
       };
+    },
+  },
+  activity: {
+    // Gerçek aktivite kaydı — best-effort (log hatası ana işlemi asla bozmaz).
+    log: async (customerId: string, type: CustomerTimelineEvent['type'], description: string): Promise<void> => {
+      try {
+        const c = await dbc();
+        const id = `act-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        await c.execute({
+          sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
+          args: [id, customerId, new Date().toISOString(), type, description],
+        });
+      } catch { /* aktivite logu kritik değil */ }
+    },
+    findByCustomerId: async (customerId: string): Promise<CustomerTimelineEvent[]> => {
+      const c = await dbc();
+      const r = await c.execute({
+        sql: 'SELECT * FROM activity_log WHERE customerId = ? ORDER BY date DESC LIMIT 50',
+        args: [customerId],
+      });
+      return r.rows.map((row) => ({
+        id: String(row.id),
+        customerId: String(row.customerId),
+        date: String(row.date ?? ''),
+        type: String(row.type ?? 'Other') as CustomerTimelineEvent['type'],
+        description: String(row.description ?? ''),
+      }));
     },
   },
 };

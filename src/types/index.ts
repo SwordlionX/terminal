@@ -6,7 +6,6 @@ export interface Customer {
   branch: string;
   portfolioManager: string;
   relationshipManager: string;
-  riskLimit: number | null;
   customerSegment: string;
   notes: string;
   createdDate: string;

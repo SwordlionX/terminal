@@ -72,6 +72,8 @@ export async function addManualTradeAction(customerId: string, data: ManualTrade
   };
 
   await db.trades.create(trade);
+  await db.activity.log(customerId, "Trade Added",
+    `İşlem eklendi: ${trade.underlying} ${position} ${type} · strike ${strike} · ${contractSize} kontrat`);
 
   if (data.initialCollateral && Number(data.initialCollateral) > 0) {
     // Teminat yalnızca USD / XAU / XAG (nakit-eşdeğeri, haircut 0). nominalQuantity USD için tutar,
@@ -93,20 +95,22 @@ export async function addManualTradeAction(customerId: string, data: ManualTrade
       marketValueUsd,
       haircut: 0,
     });
+    const unit = currency === 'USD' ? 'USD' : 'ons';
+    await db.activity.log(customerId, "Margin Updated",
+      `Başlangıç teminatı yatırıldı: ${nominalQuantity} ${unit} (${assetCode})`);
   }
 
   revalidatePath(`/customers/${customerId}`);
   revalidatePath("/customers");
   revalidatePath("/risk");
-  revalidatePath("/portfolio");
 }
 
 export async function deleteTradeAction(customerId: string, tradeId: string) {
   await db.trades.delete(tradeId);
+  await db.activity.log(customerId, "Other", "İşlem silindi.");
   revalidatePath(`/customers/${customerId}`);
   revalidatePath("/customers");
   revalidatePath("/risk");
-  revalidatePath("/portfolio");
 }
 
 export async function settleTradeAction(customerId: string, tradeId: string, expirySpot: number) {
@@ -122,14 +126,8 @@ export async function settleTradeAction(customerId: string, tradeId: string, exp
     intrinsicValue = Math.max(0, trade.strike - expirySpot) * trade.contractSize;
   }
 
-  // Adjust for Long/Short position
+  // Pozisyon yönüne göre ödeme ve gerçekleşen K/Z: vade intrinsic'i − ödenen prim (Long) / + alınan prim (Short).
   const payout = trade.position === "Long" ? intrinsicValue : -intrinsicValue;
-  
-  // Calculate final PnL: Payout minus premium paid (for Long) or plus premium received (for Short)
-  // Wait, the user said "opsiyon kar zarar neyse musteriye o eklensin".
-  // Premium is typically paid at start, so final PnL = Payout - Premium (Long), or Payout + Premium (Short).
-  // But often users just want to record the final payout as PnL. We will record Payout - Premium (Long).
-  
   const premiumAdjustment = trade.position === "Long" ? -trade.premium : trade.premium;
   const finalPnl = payout + premiumAdjustment;
 
@@ -139,9 +137,10 @@ export async function settleTradeAction(customerId: string, tradeId: string, exp
     mtm: 0, // MTM is zero once settled
     currentPremium: 0,
   });
+  await db.activity.log(customerId, "Trade Closed",
+    `İşlem vade sonu kapatıldı: ${trade.underlying} ${trade.position} ${trade.type} · K/Z ${finalPnl.toFixed(2)} USD`);
 
   revalidatePath(`/customers/${customerId}`);
   revalidatePath("/customers");
   revalidatePath("/risk");
-  revalidatePath("/portfolio");
 }

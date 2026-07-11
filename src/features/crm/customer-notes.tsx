@@ -13,8 +13,8 @@ export function CustomerNotes({ initialNotes }: { customerId: string, initialNot
             <p>{initialNotes || "Not bulunmuyor."}</p>
           </div>
           <div className="bg-secondary/30 p-3 rounded-md border border-dashed">
-            <p className="text-muted-foreground text-xs mb-1">Belgeler (Hazırlık Aşaması)</p>
-            <p className="text-muted-foreground italic">Contracts, ISDA, Suitability Forms upload infrastructure ready. Implementation pending.</p>
+            <p className="text-muted-foreground text-xs mb-1">Belgeler</p>
+            <p className="text-muted-foreground italic">Sözleşme / ISDA / uygunluk formu yükleme özelliği yol haritasında (henüz aktif değil).</p>
           </div>
         </div>
       </CardContent>

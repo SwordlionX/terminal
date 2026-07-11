@@ -39,6 +39,9 @@ async function init(c: Client): Promise<void> {
       id TEXT PRIMARY KEY, customerId TEXT NOT NULL, assetCode TEXT, currency TEXT,
       nominalQuantity REAL, marketValueUsd REAL, haircut REAL, addedAt TEXT
     )`,
+    `CREATE TABLE IF NOT EXISTS activity_log (
+      id TEXT PRIMARY KEY, customerId TEXT NOT NULL, date TEXT, type TEXT, description TEXT
+    )`,
     `CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)`,
   ], 'write');
 
@@ -90,11 +93,39 @@ async function init(c: Client): Promise<void> {
       ['col-22441826', 'c-22441826', 'Nakit-USD', 'USD', 63999.98, 63999.98, 0, now],
     ];
 
+    // Aktivite geçmişi tohumu — içe aktarılan müşteri/işlemler için gerçek olay kaydı
+    // (fresh DB / demo reset'te timeline boş görünmesin). Olay tarihi olarak işlem tarihi kullanılır.
+    const activities: (string | number | null)[][] = [
+      ...customers.map((cu) => [`act-seed-${cu[0]}`, cu[0], now, 'Customer Created', 'Müşteri içe aktarıldı (YAŞAYAN OPSİYONLAR dökümü, 06.07.2026).']),
+      ...trades.map((tr) => [`act-seed-${tr[0]}`, tr[1], tr[2], 'Trade Added', `İşlem içe aktarıldı: ${tr[4]} ${tr[6]} ${tr[5]} · strike ${tr[8]}`]),
+    ];
+
     await c.batch([
       ...customers.map((args) => ({ sql: `INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, args })),
       ...trades.map((args) => ({ sql: `INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args })),
       ...collaterals.map((args) => ({ sql: `INSERT INTO collaterals VALUES (?,?,?,?,?,?,?,?)`, args })),
+      ...activities.map((args) => ({ sql: `INSERT INTO activity_log VALUES (?,?,?,?,?)`, args })),
     ], 'write');
+  }
+
+  // Aktivite backfill — activity_log boşsa ama müşteri/işlem varsa (özellik eklenmeden önce kurulmuş
+  // DB'ler için tek seferlik). Yeni kurulumda seed zaten doldurduğu için bu blok atlanır.
+  const actCount = await c.execute('SELECT COUNT(*) AS n FROM activity_log');
+  if (Number(actCount.rows[0].n) === 0) {
+    const cust = await c.execute('SELECT id, createdDate FROM customers');
+    if (cust.rows.length) {
+      const trd = await c.execute('SELECT id, customerId, tradeDate, underlying, type, position, strike FROM trades');
+      await c.batch([
+        ...cust.rows.map((r) => ({
+          sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
+          args: [`act-bf-${String(r.id)}`, String(r.id), String(r.createdDate ?? new Date().toISOString()), 'Customer Created', 'Müşteri kaydı (geçmiş).'],
+        })),
+        ...trd.rows.map((r) => ({
+          sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
+          args: [`act-bf-${String(r.id)}`, String(r.customerId), String(r.tradeDate ?? ''), 'Trade Added', `İşlem: ${String(r.underlying)} ${String(r.position)} ${String(r.type)} · strike ${Number(r.strike)}`],
+        })),
+      ], 'write');
+    }
   }
 }
 

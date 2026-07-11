@@ -2,6 +2,7 @@
 
 import { collateralRepository } from "@/repositories/collateral.repository";
 import { getSpot } from "@/services/market.service";
+import { db } from "@/services/mockDb";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -29,6 +30,9 @@ export async function addCustomerCollateral(customerId: string, data: {
     marketValueUsd,
     haircut: 0,
   });
+  const unit = cur === 'USD' ? 'USD' : 'ons';
+  await db.activity.log(customerId, "Margin Updated",
+    `Teminat eklendi: ${data.nominalQuantity} ${unit} (${data.assetCode})`);
 
   revalidatePath(`/customers/${customerId}/margin`);
   revalidatePath(`/customers/${customerId}`);
@@ -38,6 +42,7 @@ export async function addCustomerCollateral(customerId: string, data: {
 
 export async function removeCustomerCollateral(customerId: string, collateralId: string) {
   await collateralRepository.deleteCollateral(collateralId);
+  await db.activity.log(customerId, "Margin Updated", "Teminat kaldırıldı.");
 
   revalidatePath(`/customers/${customerId}/margin`);
   revalidatePath(`/customers/${customerId}`);
