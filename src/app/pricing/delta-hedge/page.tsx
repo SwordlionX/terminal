@@ -5,8 +5,11 @@ import { PricingContextBar } from "@/features/pricing/pricing-context-bar";
 import { HedgePanel } from "@/features/pricing/hedge-panel";
 
 export default function DeltaHedgePricingPage() {
-  const { md, feed, daysToExpiry, effVol, gr } = usePricingModel();
-  const deltaExposure = gr ? gr.call.delta * md.contractSize : 0;
+  const { md, feed, daysToExpiry, effVol, gr, priceable, unpriceableReason } = usePricingModel();
+  // Kote strike/vade aralığı dışında (smile yok, manuel vol de kapalı) delta ÜRETİLMEZ — ana
+  // fiyatlama sayfasıyla aynı kural: ekstrapolasyon yok, fallback vol ile hedge gösterilmez.
+  const showHedge = priceable && gr != null;
+  const deltaExposure = showHedge ? gr.call.delta * md.contractSize : 0;
 
   return (
     <div className="space-y-6">
@@ -26,17 +29,25 @@ export default function DeltaHedgePricingPage() {
         livePrice={feed.spot?.price}
       />
 
-      <div className="p-4 rounded-lg border border-slate-800 bg-slate-900/30 text-sm text-slate-400">
-        Call Delta: <span className="font-mono text-slate-200">{gr ? gr.call.delta.toFixed(4) : "-"}</span>
-        {" · "}Kontrat: <span className="font-mono text-slate-200">{md.contractSize} ons</span>
-        {" · "}Toplam Delta Exposure: <span className="font-mono text-slate-200">{deltaExposure.toFixed(3)} ons</span>
-      </div>
+      {showHedge ? (
+        <>
+          <div className="p-4 rounded-lg border border-slate-800 bg-slate-900/30 text-sm text-slate-400">
+            Call Delta: <span className="font-mono text-slate-200">{gr.call.delta.toFixed(4)}</span>
+            {" · "}Kontrat: <span className="font-mono text-slate-200">{md.contractSize} ons</span>
+            {" · "}Toplam Delta Exposure: <span className="font-mono text-slate-200">{deltaExposure.toFixed(3)} ons</span>
+          </div>
 
-      <HedgePanel
-        spot={md.spot}
-        usdTryRate={md.usdtry}
-        deltaExposure={deltaExposure}
-      />
+          <HedgePanel
+            spot={md.spot}
+            usdTryRate={md.usdtry}
+            deltaExposure={deltaExposure}
+          />
+        </>
+      ) : (
+        <div className="p-4 rounded-lg border border-amber-500/40 bg-amber-500/10 text-sm text-amber-400">
+          Delta / hedge hesaplanamıyor: {unpriceableReason ?? "Greeks hesaplanamadı."}
+        </div>
+      )}
     </div>
   );
 }
