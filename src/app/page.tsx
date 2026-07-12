@@ -39,6 +39,23 @@ const pricingTools = [
   },
 ];
 
+/**
+ * ABD borsa seansı (NYSE regular) yaklaşık açık mı — hafta içi 09:30–16:00 ET (DST otomatik).
+ * Resmi tatilleri KAPSAMAZ (nadir kenar durum); amaç, seans-dışı manuel "Yenile"de kullanıcıyı
+ * uyarmak — çünkü Yahoo seans kapalıyken son KAPANIŞ verisini döndürür (bkz. refreshSnapshot).
+ */
+function isUsMarketLikelyOpen(now: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(now);
+  const wd = parts.find(p => p.type === 'weekday')?.value;
+  if (wd === 'Sat' || wd === 'Sun') return false;
+  const hour = Number(parts.find(p => p.type === 'hour')?.value) % 24;
+  const minute = Number(parts.find(p => p.type === 'minute')?.value);
+  const mins = hour * 60 + minute;
+  return mins >= 9 * 60 + 30 && mins < 16 * 60; // 09:30–16:00 ET
+}
+
 export default function PricingPage() {
   const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason } = usePricingModel();
   const spotInfo = feed.spot ? spotKind(feed.spot.source) : null;
@@ -75,6 +92,16 @@ export default function PricingPage() {
     setBookMsg(`Kaydedildi: ${bookPosition} ${bookType} ${md.product} @ ${md.strike} (prim ${formatCurrency(premiumPerOz * md.contractSize)})`);
   };
 
+  const handleRefreshChains = () => {
+    if (!isUsMarketLikelyOpen()) {
+      const ok = window.confirm(
+        "ABD opsiyon seansı şu an kapalı görünüyor. Yenilersen son KAPANIŞ verisi çekilir — zaman damgası güncellenir ama fiyatlar seans-canlı değildir. Devam edilsin mi?"
+      );
+      if (!ok) return;
+    }
+    feed.refreshChains();
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap justify-between items-center gap-3">
@@ -97,7 +124,7 @@ export default function PricingPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={feed.refreshChains} disabled={feed.refreshing}>
+          <Button variant="outline" onClick={handleRefreshChains} disabled={feed.refreshing}>
             {feed.refreshing ? "Yenileniyor..." : "Opsiyon Zincirlerini Yenile"}
           </Button>
         </div>
