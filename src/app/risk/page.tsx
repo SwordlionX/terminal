@@ -111,15 +111,15 @@ export default async function RiskCenterPage() {
   exposure.currency = Object.keys(currencyMap).map((name, i) => ({
     name,
     value: currencyMap[name],
-    color: currencyColors[i] || "bg-slate-500",
+    color: currencyColors[i] || "bg-zinc-500",
   }));
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+      <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-100">Risk Merkezi</h1>
-          <p className="text-sm text-slate-500 mt-1">Kurumsal Hazine Portföy ve Risk Analitikleri Merkezi</p>
+          <h1 className="text-3xl font-bold tracking-tight text-zinc-100">Risk Merkezi</h1>
+          <p className="text-sm text-zinc-500 mt-1">Kurumsal Hazine Portföy ve Risk Analitikleri Merkezi</p>
         </div>
       </div>
 

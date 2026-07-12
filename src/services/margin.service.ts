@@ -1,7 +1,7 @@
 import { MarginEngine, MarginResult, TradePosition, CollateralAsset } from "@/lib/margin/engine";
 import { collateralRepository } from "@/repositories/collateral.repository";
 import { db } from "@/services/mockDb";
-import { getSpot } from "@/services/market.service";
+import { getSpot, getUsdTryRate } from "@/services/market.service";
 import { Trade } from "@/types";
 import { CollateralItem } from "@/types/collateral";
 
@@ -86,8 +86,10 @@ async function buildTradeCollaterals(trades: Trade[]): Promise<TradeCollateral[]
 export class MarginService {
   /**
    * Müşterinin tüm teminat ve açık işlem verilerini toplayarak Margin Engine'e gönderir.
+   * usdTryRate verilmezse Ayarlar sayfasından kaydedilen (kv tablosundaki) kalıcı kur kullanılır.
    */
-  async evaluateCustomerMargin(customerId: string, usdTryRate: number = 35.0): Promise<MarginResult> {
+  async evaluateCustomerMargin(customerId: string, usdTryRate?: number): Promise<MarginResult> {
+    const rate = usdTryRate ?? await getUsdTryRate();
     const trades = await db.trades.findByCustomerId(customerId);
     const collateralItems = await revalueCollaterals(await collateralRepository.findByCustomerId(customerId));
     const tradeCollaterals = await buildTradeCollaterals(trades);
@@ -111,17 +113,20 @@ export class MarginService {
       haircut: c.haircut
     }));
 
-    return MarginEngine.calculatePortfolioMargin(positions, collaterals, usdTryRate);
+    return MarginEngine.calculatePortfolioMargin(positions, collaterals, rate);
   }
 
   /**
    * Tüm müşterilerin Margin durumlarını liste halinde döndürür (Branch Dashboard için).
+   * usdTryRate verilmezse Ayarlar sayfasından kaydedilen kalıcı kur bir kez okunup tüm müşteriler
+   * için kullanılır (her müşteride ayrı ayrı DB'ye gidilmez).
    */
-  async evaluateAllCustomers(usdTryRate: number = 35.0) {
+  async evaluateAllCustomers(usdTryRate?: number) {
+    const rate = usdTryRate ?? await getUsdTryRate();
     const customers = await db.customers.findMany();
     const results = await Promise.all(
       customers.map(async (c) => {
-        const margin = await this.evaluateCustomerMargin(c.id, usdTryRate);
+        const margin = await this.evaluateCustomerMargin(c.id, rate);
         return { customer: c, margin };
       })
     );

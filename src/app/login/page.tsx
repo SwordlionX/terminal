@@ -34,8 +34,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0b1120] p-4">
-      <Card className="w-full max-w-sm border-slate-800 bg-slate-950/60 shadow-2xl">
+    <div className="min-h-screen flex items-center justify-center bg-[#09090b] p-4">
+      <Card className="w-full max-w-sm border-zinc-800 bg-zinc-950/60 shadow-2xl">
         <CardHeader className="text-center space-y-1">
           <CardTitle className="text-lg font-semibold text-primary">
             Hazine Opsiyon Terminali

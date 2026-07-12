@@ -109,7 +109,7 @@ export function PositionCard({ spot, strike, callPremium, putPremium, contractSi
   );
 
   return (
-    <Card className="bg-[#0b1120] border-slate-800 text-slate-100 shadow-xl">
+    <Card className="bg-[#09090b] border-zinc-800 text-zinc-100 shadow-xl">
       <CardHeader className="pb-4">
         <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Pozisyon</CardTitle>
       </CardHeader>
@@ -128,11 +128,11 @@ export function PositionCard({ spot, strike, callPremium, putPremium, contractSi
                 "flex flex-col items-center justify-center py-4 px-2 rounded-md border transition-all duration-200",
                 selected === btn.id
                   ? "border-zinc-400 bg-white/5 ring-1 ring-white/10"
-                  : "border-slate-800 hover:border-slate-700 bg-slate-900/30"
+                  : "border-zinc-800 hover:border-zinc-700 bg-zinc-900/30"
               )}
             >
-              <span className={cn("text-[11px] font-bold tracking-wide", selected === btn.id ? "text-white" : "text-slate-300")}>{btn.label}</span>
-              <span className="text-[10px] text-slate-500 mt-1.5">{btn.sub}</span>
+              <span className={cn("text-[11px] font-bold tracking-wide", selected === btn.id ? "text-white" : "text-zinc-300")}>{btn.label}</span>
+              <span className="text-[10px] text-zinc-500 mt-1.5">{btn.sub}</span>
             </button>
           ))}
         </div>

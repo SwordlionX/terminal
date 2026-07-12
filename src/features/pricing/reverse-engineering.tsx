@@ -46,16 +46,16 @@ export function ReverseEngineering({
   };
 
   return (
-    <Card className="bg-[#0b1120] border-slate-800 text-slate-100 mt-6 shadow-xl">
-      <CardHeader className="pb-3 border-b border-slate-800">
+    <Card className="bg-[#09090b] border-zinc-800 text-zinc-100 mt-6 shadow-xl">
+      <CardHeader className="pb-3 border-b border-zinc-800">
         <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Tersine Mühendislik (Implied Volatility Solver)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-5">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
-            <Label className="text-slate-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
+            <Label className="text-zinc-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
             <Select value={optionType} onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}>
-              <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="call">Alış (Call)</SelectItem>
                 <SelectItem value="put">Satış (Put)</SelectItem>
@@ -63,19 +63,19 @@ export function ReverseEngineering({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label className="text-slate-400 text-xs uppercase tracking-wider">Hedef Prim</Label>
+            <Label className="text-zinc-400 text-xs uppercase tracking-wider">Hedef Prim</Label>
             <Input 
               type="number" 
               value={targetPremium || ''} 
               onChange={e => setTargetPremium(Number(e.target.value))} 
-              className="bg-slate-900 border-slate-700 font-mono text-slate-200" 
+              className="bg-zinc-900 border-zinc-700 font-mono text-zinc-200" 
               placeholder="örn. 120"
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-slate-400 text-xs uppercase tracking-wider">Prim Birimi</Label>
+            <Label className="text-zinc-400 text-xs uppercase tracking-wider">Prim Birimi</Label>
             <Select value={unitMode} onValueChange={(v) => setUnitMode(v === "pct" ? "pct" : "oz")}>
-              <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="oz">USD / ons</SelectItem>
                 <SelectItem value="pct">% Notional</SelectItem>

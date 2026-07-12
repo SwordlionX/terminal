@@ -16,23 +16,23 @@ export function PortfolioSummary({ totalNotional, totalPnl, totalLoss, totalColl
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
-        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Toplam Portföy Büyüklüğü</CardTitle></CardHeader>
-        <CardContent><div className="text-2xl font-bold font-mono text-slate-100">{formatCurrency(totalNotional)}</div></CardContent>
+      <Card className="bg-[#09090b] border-zinc-800 shadow-lg">
+        <CardHeader className="pb-2"><CardTitle className="text-xs text-zinc-400 uppercase tracking-wider">Toplam Portföy Büyüklüğü</CardTitle></CardHeader>
+        <CardContent><div className="text-2xl font-bold font-mono text-zinc-100">{formatCurrency(totalNotional)}</div></CardContent>
       </Card>
-      <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
-        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Net K/Z (Açık Pozisyonlar)</CardTitle></CardHeader>
+      <Card className="bg-[#09090b] border-zinc-800 shadow-lg">
+        <CardHeader className="pb-2"><CardTitle className="text-xs text-zinc-400 uppercase tracking-wider">Net K/Z (Açık Pozisyonlar)</CardTitle></CardHeader>
         <CardContent><div className={cn("text-2xl font-bold font-mono", totalPnl >= 0 ? "text-emerald-400" : "text-rose-400")}>{totalPnl >= 0 ? "+" : ""}{formatCurrency(totalPnl)}</div></CardContent>
       </Card>
-      <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
-        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Toplam Zarar (Açık Poz.)</CardTitle></CardHeader>
+      <Card className="bg-[#09090b] border-zinc-800 shadow-lg">
+        <CardHeader className="pb-2"><CardTitle className="text-xs text-zinc-400 uppercase tracking-wider">Toplam Zarar (Açık Poz.)</CardTitle></CardHeader>
         <CardContent><div className="text-2xl font-bold font-mono text-rose-400">{formatCurrency(totalLoss)}</div></CardContent>
       </Card>
-      <Card className="bg-[#0b1120] border-slate-800 shadow-lg">
-        <CardHeader className="pb-2"><CardTitle className="text-xs text-slate-400 uppercase tracking-wider">Zarar / Teminat</CardTitle></CardHeader>
+      <Card className="bg-[#09090b] border-zinc-800 shadow-lg">
+        <CardHeader className="pb-2"><CardTitle className="text-xs text-zinc-400 uppercase tracking-wider">Zarar / Teminat</CardTitle></CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold font-mono text-slate-100">{marginUtil.toFixed(1)}%</div>
-          <div className="w-full bg-slate-800 h-1.5 mt-2 rounded-full overflow-hidden">
+          <div className="text-2xl font-bold font-mono text-zinc-100">{marginUtil.toFixed(1)}%</div>
+          <div className="w-full bg-zinc-800 h-1.5 mt-2 rounded-full overflow-hidden">
             <div className={cn("h-full", marginUtil > 80 ? "bg-rose-500" : marginUtil > 60 ? "bg-orange-500" : marginUtil > 40 ? "bg-yellow-500" : "bg-emerald-500")} style={{ width: `${Math.min(100, marginUtil)}%` }} />
           </div>
         </CardContent>

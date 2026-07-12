@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
+import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -65,7 +66,8 @@ export default function PricingPage() {
   const [customerId, setCustomerId] = useState<string>("");
   const [bookType, setBookType] = useState<"Call" | "Put">("Call");
   const [bookPosition, setBookPosition] = useState<"Long" | "Short">("Long");
-  const [bookMsg, setBookMsg] = useState<string>("");
+  const [bookMsg, setBookMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const [booking, setBooking] = useState(false);
   const [showBarrier, setShowBarrier] = useState(false);
 
   // Müşteri listesi (kaydetme formu için)
@@ -74,22 +76,31 @@ export default function PricingPage() {
   }, []);
 
   const handleBookTrade = async () => {
-    if (!customerId) { setBookMsg("Önce müşteri seçin."); return; }
-    if (!priceable) { setBookMsg("Fiyat üretilemiyor (kote opsiyon yok / vol türetilemedi) — işlem kaydedilemez."); return; }
-    const premiumPerOz = bookType === "Call" ? result.call : result.put;
-    await addManualTradeAction(customerId, {
-      tradeDate: md.tradeDate,
-      expiryDate: md.expiryDate,
-      underlying: md.product,
-      type: bookType,
-      position: bookPosition,
-      spot: md.spot,
-      strike: md.strike,
-      volatility: effVol / 100,
-      contractSize: md.contractSize,
-      premium: premiumPerOz * md.contractSize,
-    });
-    setBookMsg(`Kaydedildi: ${bookPosition} ${bookType} ${md.product} @ ${md.strike} (prim ${formatCurrency(premiumPerOz * md.contractSize)})`);
+    if (booking) return; // çift tıklamayı engelle
+    if (!customerId) { setBookMsg({ text: "Önce müşteri seçin.", error: true }); return; }
+    if (!priceable) { setBookMsg({ text: "Fiyat üretilemiyor (kote opsiyon yok / vol türetilemedi) — işlem kaydedilemez.", error: true }); return; }
+    setBooking(true);
+    setBookMsg(null);
+    try {
+      const premiumPerOz = bookType === "Call" ? result.call : result.put;
+      await addManualTradeAction(customerId, {
+        tradeDate: md.tradeDate,
+        expiryDate: md.expiryDate,
+        underlying: md.product,
+        type: bookType,
+        position: bookPosition,
+        spot: md.spot,
+        strike: md.strike,
+        volatility: effVol / 100,
+        contractSize: md.contractSize,
+        premium: premiumPerOz * md.contractSize,
+      });
+      setBookMsg({ text: `Kaydedildi: ${bookPosition} ${bookType} ${md.product} @ ${md.strike} (prim ${formatCurrency(premiumPerOz * md.contractSize)})`, error: false });
+    } catch (e) {
+      setBookMsg({ text: e instanceof Error ? e.message : "İşlem kaydedilemedi.", error: true });
+    } finally {
+      setBooking(false);
+    }
   };
 
   const handleRefreshChains = () => {
@@ -118,7 +129,7 @@ export default function PricingPage() {
             </Badge>
           )}
           {feed.snapshotISO && (
-            <Badge variant="outline" className="border-slate-700 text-slate-400">
+            <Badge variant="outline" className="border-zinc-700 text-zinc-400">
               Zincir: {feed.snapshotISO}
             </Badge>
           )}
@@ -170,28 +181,27 @@ export default function PricingPage() {
                       checked={md.manualSpot}
                       onChange={(e) => md.setField('manualSpot', e.target.checked)}
                     />
-                    <Label htmlFor="manualSpot" className="text-xs text-slate-400 cursor-pointer">Manuel</Label>
+                    <Label htmlFor="manualSpot" className="text-xs text-zinc-400 cursor-pointer">Manuel</Label>
                   </div>
                 </div>
-                <Input
-                  type="number"
+                <NumberInput
                   value={md.spot}
                   disabled={!md.manualSpot && feed.spot != null}
-                  onChange={e => md.setField('spot', parseFloat(e.target.value) || 0)}
+                  onValueChange={v => md.setField('spot', v)}
                   className={!md.manualSpot && feed.spot != null ? "opacity-80 font-mono" : ""}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Kullanım (Strike)</Label>
-                <Input type="number" value={md.strike} onChange={e => md.setField('strike', parseFloat(e.target.value) || 0)} />
+                <NumberInput value={md.strike} onValueChange={v => md.setField('strike', v)} />
               </div>
               <div className="space-y-2">
                 <Label>İşlem Tarihi</Label>
-                <Input type="date" value={md.tradeDate} onChange={e => md.setField('tradeDate', e.target.value)} />
+                <DateInput value={md.tradeDate} onValueChange={v => md.setField('tradeDate', v)} />
               </div>
               <div className="space-y-2">
                 <Label>Vade (Tarih)</Label>
-                <Input type="date" value={md.expiryDate} onChange={e => md.setField('expiryDate', e.target.value)} />
+                <DateInput value={md.expiryDate} onValueChange={v => md.setField('expiryDate', v)} />
                 {!dateValid && (
                   <p className="text-[11px] text-amber-500">Geçersiz tarih — son geçerli vade ({daysToExpiry.toFixed(0)} gün) kullanılıyor</p>
                 )}
@@ -205,19 +215,17 @@ export default function PricingPage() {
                       checked={md.manualVol}
                       onChange={(e) => md.setField('manualVol', e.target.checked)}
                     />
-                    <Label htmlFor="manualVol" className="text-xs text-slate-400 cursor-pointer">Manuel gir</Label>
+                    <Label htmlFor="manualVol" className="text-xs text-zinc-400 cursor-pointer">Manuel gir</Label>
                   </div>
                 </div>
-                <Input
-                  type="number"
-                  step="0.1"
+                <NumberInput
                   value={md.manualVol ? md.vol : Number(effVol.toFixed(2))}
                   disabled={!md.manualVol}
-                  onChange={e => md.setField('vol', parseFloat(e.target.value) || 0)}
+                  onValueChange={v => md.setField('vol', v)}
                   className={!md.manualVol ? "opacity-80 font-mono" : ""}
                 />
                 {!md.manualVol && (
-                  <p className={smileIv != null ? "text-[11px] text-slate-500" : "text-[11px] text-amber-500"}>
+                  <p className={smileIv != null ? "text-[11px] text-zinc-500" : "text-[11px] text-amber-500"}>
                     {smileIv != null
                       ? `Smile'dan otomatik: ${feed.surface?.symbol} yüzeyi, ${daysToExpiry.toFixed(0)} gün, de-Amerikanize IV`
                       : "Bu strike/vade için kote opsiyon yok — fiyat üretilmiyor. Manuel girmek için tiki işaretleyin."}
@@ -226,15 +234,15 @@ export default function PricingPage() {
               </div>
               <div className="space-y-2">
                 <Label>Kontrat (ons)</Label>
-                <Input type="number" value={md.contractSize} onChange={e => md.setField('contractSize', parseFloat(e.target.value) || 0)} />
+                <NumberInput value={md.contractSize} onValueChange={v => md.setField('contractSize', v)} />
               </div>
               <div className="space-y-2">
                 <Label>Faiz Oranı (%)</Label>
-                <Input type="number" step="0.1" value={md.rate} onChange={e => md.setField('rate', parseFloat(e.target.value) || 0)} />
+                <NumberInput value={md.rate} onValueChange={v => md.setField('rate', v)} />
               </div>
               <div className="space-y-2">
                 <Label>Kira / Temettü (%)</Label>
-                <Input type="number" step="0.1" value={md.lease} onChange={e => md.setField('lease', parseFloat(e.target.value) || 0)} />
+                <NumberInput value={md.lease} onValueChange={v => md.setField('lease', v)} />
               </div>
             </div>
           </CardContent>
@@ -296,7 +304,7 @@ export default function PricingPage() {
                   <div>
                     <div className="font-semibold text-sm text-amber-400">Fiyat üretilmiyor</div>
                     <div className="text-xs mt-1 text-amber-500/90">{unpriceableReason}</div>
-                    <div className="text-xs mt-1.5 text-slate-400">
+                    <div className="text-xs mt-1.5 text-zinc-400">
                       Yine de fiyatlamak için Volatilite alanındaki &quot;Manuel gir&quot; tikini işaretleyip bir değer girebilirsiniz.
                     </div>
                   </div>
@@ -304,8 +312,8 @@ export default function PricingPage() {
               )}
 
               {/* İşlem Kaydetme */}
-              <div className="mt-4 p-4 rounded-lg border border-slate-800 space-y-3">
-                <div className="text-sm font-semibold text-slate-300">İşlemi Müşteriye Kaydet</div>
+              <div className="mt-4 p-4 rounded-lg border border-zinc-800 space-y-3">
+                <div className="text-sm font-semibold text-zinc-300">İşlemi Müşteriye Kaydet</div>
                 <div className="grid grid-cols-3 gap-2">
                   <Select value={customerId} onValueChange={(v) => setCustomerId(v || "")}>
                     <SelectTrigger><SelectValue placeholder="Müşteri..." /></SelectTrigger>
@@ -328,8 +336,12 @@ export default function PricingPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full" onClick={handleBookTrade} disabled={!priceable}>İşlemi Kaydet (Book Trade)</Button>
-                {bookMsg && <p className="text-xs text-emerald-500">{bookMsg}</p>}
+                <Button className="w-full" onClick={handleBookTrade} disabled={!priceable || booking}>
+                  {booking ? "Kaydediliyor..." : "İşlemi Kaydet (Book Trade)"}
+                </Button>
+                {bookMsg && (
+                  <p className={`text-xs ${bookMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{bookMsg.text}</p>
+                )}
               </div>
             </div>
           </CardContent>
@@ -413,18 +425,18 @@ export default function PricingPage() {
 
       {/* Detaylı Fiyatlama Araçları — Bariyer, Tersine Mühendislik, Delta Hedge kendi alt sayfalarına taşındı */}
       <div>
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Detaylı Fiyatlama Araçları</h2>
+        <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Detaylı Fiyatlama Araçları</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {pricingTools.map((tool) => (
             <a
               key={tool.href}
               href={tool.href}
-              className="flex items-start gap-3 p-4 rounded-lg border border-slate-800 bg-slate-900/30 hover:bg-slate-800/60 hover:border-slate-700 transition-colors"
+              className="flex items-start gap-3 p-4 rounded-lg border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-800/60 hover:border-zinc-700 transition-colors"
             >
               <tool.icon className="w-5 h-5 mt-0.5 text-zinc-300 shrink-0" />
               <div>
-                <div className="text-sm font-semibold text-slate-200">{tool.title}</div>
-                <div className="text-xs text-slate-500 mt-1">{tool.desc}</div>
+                <div className="text-sm font-semibold text-zinc-200">{tool.title}</div>
+                <div className="text-xs text-zinc-500 mt-1">{tool.desc}</div>
               </div>
             </a>
           ))}

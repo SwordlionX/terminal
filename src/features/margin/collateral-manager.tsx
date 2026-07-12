@@ -72,10 +72,10 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
         <CardDescription>USD nakit veya fiziki metal (XAU/XAG) teminat. Metaller ons cinsinden girilir, canlı ons fiyatıyla değerlenir.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="rounded-md border border-slate-800">
+        <div className="rounded-md border border-zinc-800">
           <Table>
             <TableHeader>
-              <TableRow className="border-slate-800 hover:bg-transparent">
+              <TableRow className="border-zinc-800 hover:bg-transparent">
                 <TableHead>Varlık Türü</TableHead>
                 <TableHead>Döviz</TableHead>
                 <TableHead className="text-right">Miktar / Tutar</TableHead>
@@ -87,7 +87,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
             <TableBody>
               {collaterals.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                  <TableCell colSpan={6} className="text-center py-8 text-zinc-500">
                     Henüz teminat eklenmemiş. Aşağıdaki formu kullanarak ekleyebilirsiniz.
                   </TableCell>
                 </TableRow>
@@ -95,14 +95,14 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
                 collaterals.map(c => {
                   const hc = c.haircut ?? 0;
                   return (
-                    <TableRow key={c.id} className="border-slate-800">
-                      <TableCell className="font-medium text-slate-200">{c.assetCode}</TableCell>
-                      <TableCell className="text-slate-400">{c.currency}</TableCell>
-                      <TableCell className="text-right font-mono text-slate-300">{formatQty(c)}</TableCell>
+                    <TableRow key={c.id} className="border-zinc-800">
+                      <TableCell className="font-medium text-zinc-200">{c.assetCode}</TableCell>
+                      <TableCell className="text-zinc-400">{c.currency}</TableCell>
+                      <TableCell className="text-right font-mono text-zinc-300">{formatQty(c)}</TableCell>
                       <TableCell className="text-right font-mono text-rose-400">{formatPercent(hc)}</TableCell>
                       <TableCell className="text-right font-mono text-emerald-400 font-bold">{formatCurrency(c.marketValueUsd * (1 - hc))}</TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="text-slate-500 hover:text-rose-400 hover:bg-rose-400/10" onClick={() => handleDelete(c.id)}>
+                        <Button variant="ghost" size="icon" className="text-zinc-500 hover:text-rose-400 hover:bg-rose-400/10" onClick={() => handleDelete(c.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -114,21 +114,21 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
           </Table>
         </div>
 
-        <div className="pt-4 border-t border-slate-800">
-          <h3 className="text-sm font-medium mb-3 flex items-center text-slate-300"><Plus className="h-4 w-4 mr-1"/> Yeni Teminat Ekle</h3>
+        <div className="pt-4 border-t border-zinc-800">
+          <h3 className="text-sm font-medium mb-3 flex items-center text-zinc-300"><Plus className="h-4 w-4 mr-1"/> Yeni Teminat Ekle</h3>
           <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3 items-end">
             <div className="space-y-1.5 flex-1">
-              <Label htmlFor="assetCode" className="text-xs text-slate-400">Varlık Türü</Label>
+              <Label htmlFor="assetCode" className="text-xs text-zinc-400">Varlık Türü</Label>
               <Select value={assetCode} onValueChange={(val) => setAssetCode(val || "Nakit-USD")}>
-                <SelectTrigger id="assetCode" className="bg-slate-950 border-slate-800 text-sm">
+                <SelectTrigger id="assetCode" className="bg-zinc-950 border-zinc-800 text-sm">
                   <SelectValue placeholder="Varlık seçin" />
                 </SelectTrigger>
-                <SelectContent className="border-slate-800 bg-slate-950">
+                <SelectContent className="border-zinc-800 bg-zinc-950">
                   {COLLATERAL_TYPES.map(t => (
                     <SelectItem key={t.code} value={t.code}>
                       <span className="flex justify-between w-full pr-4">
                         <span>{t.label}</span>
-                        <span className="text-slate-500 ml-4">{t.unit === 'ons' ? 'ons · canlı' : 'USD 1:1'}</span>
+                        <span className="text-zinc-500 ml-4">{t.unit === 'ons' ? 'ons · canlı' : 'USD 1:1'}</span>
                       </span>
                     </SelectItem>
                   ))}
@@ -137,7 +137,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
             </div>
 
             <div className="space-y-1.5 flex-1">
-              <Label htmlFor="amount" className="text-xs text-slate-400">
+              <Label htmlFor="amount" className="text-xs text-zinc-400">
                 {selectedType.unit === 'ons' ? 'Miktar (ons)' : 'Tutar (USD)'}
               </Label>
               <Input
@@ -148,7 +148,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder={selectedType.unit === 'ons' ? 'Örn: 100' : 'Örn: 10000'}
-                className="bg-slate-950 border-slate-800 font-mono text-sm"
+                className="bg-zinc-950 border-zinc-800 font-mono text-sm"
                 required
               />
             </div>

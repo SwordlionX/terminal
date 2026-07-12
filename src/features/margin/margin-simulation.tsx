@@ -45,7 +45,7 @@ export function MarginSimulation({ initialLoss, initialCollateral }: MarginSimul
           </div>
         </div>
 
-        <div className="mt-6 p-4 rounded-md bg-[#0b1120] border border-slate-800 space-y-3">
+        <div className="mt-6 p-4 rounded-md bg-[#09090b] border border-zinc-800 space-y-3">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Simüle Zarar:</span>
             <span className="font-bold text-rose-400">{formatCurrency(totalLoss)}</span>
@@ -58,7 +58,7 @@ export function MarginSimulation({ initialLoss, initialCollateral }: MarginSimul
             <span className="text-muted-foreground">Gerekli Ek Teminat (%35 hedef):</span>
             <span className="font-bold text-rose-500">{newCure > 0 ? formatCurrency(newCure) : '-'}</span>
           </div>
-          <div className="flex justify-between border-t border-slate-800 pt-3 mt-3">
+          <div className="flex justify-between border-t border-zinc-800 pt-3 mt-3">
             <span className="text-muted-foreground">Zarar / Teminat:</span>
             <span className={`font-bold text-lg ${ratioColor}`}>%{(newRatio * 100).toFixed(1)}</span>
           </div>

@@ -47,7 +47,7 @@ export default async function TradesBlotterPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">İşlemler (Portföy Takibi)</h1>
-        <Badge variant="outline" className={anyLive ? "border-emerald-600 text-emerald-500" : "border-slate-700 text-slate-400"}>
+        <Badge variant="outline" className={anyLive ? "border-emerald-600 text-emerald-500" : "border-zinc-700 text-zinc-400"}>
           {anyLive ? "Canlı spot ile PnL" : "Canlı spot yok — giriş spotu ile PnL"}
         </Badge>
       </div>
@@ -70,10 +70,10 @@ export default async function TradesBlotterPage() {
                 <TableHead>Müşteri</TableHead>
                 <TableHead className="text-center">Açık İşlem</TableHead>
                 <TableHead className="text-right" title="Açık pozisyonların büyüklüğü: canlı spot × kontrat">Nominal</TableHead>
-                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Gerçek kâr/zarar: intrinsic − prim (primi netler). Müşteri bugün kapatsa net sonuç.">Açık Poz. K/Z</TableHead>
-                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Teminat için BRÜT zarar: intrinsic, prim HARİÇ. Sadece müşteri aleyhine (>0). Zarar/Teminat oranı bunu kullanır.">Zarar</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Gerçek kâr/zarar: intrinsic − prim (primi netler). Müşteri bugün kapatsa net sonuç.">Açık Poz. K/Z</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Teminat için BRÜT zarar: intrinsic, prim HARİÇ. Sadece müşteri aleyhine (>0). Zarar/Teminat oranı bunu kullanır.">Zarar</TableHead>
                 <TableHead className="text-right" title="Yatırılan teminatın canlı USD değeri (haircut sonrası)">Mevcut Teminat</TableHead>
-                <TableHead className="text-center underline decoration-dotted decoration-slate-600 underline-offset-4" title="Ana risk metriği = Zarar ÷ Mevcut Teminat. %39 çağrı, %60/%80 kapatma.">Zarar / Teminat</TableHead>
+                <TableHead className="text-center underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Ana risk metriği = Zarar ÷ Mevcut Teminat. %39 çağrı, %60/%80 kapatma.">Zarar / Teminat</TableHead>
                 <TableHead>Durum</TableHead>
               </TableRow>
             </TableHeader>
@@ -126,9 +126,9 @@ export default async function TradesBlotterPage() {
                 <TableHead className="text-right">Kalan (gün)</TableHead>
                 <TableHead className="text-right">Spot</TableHead>
                 <TableHead className="text-right">Prim (Giriş)</TableHead>
-                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Gerçek kâr/zarar: intrinsic (canlı spot) − prim.">PnL</TableHead>
-                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="Açılışta yatan teminatı belirleyen kaldıraç oranı (vade × varlık grubu tablosundan kilitli). Canlı risk takibinde kullanılmaz.">Teminat Oranı</TableHead>
-                <TableHead className="text-right underline decoration-dotted decoration-slate-600 underline-offset-4" title="İşlem başına BRÜT zarar (prim hariç). Teminat çağrısı bunu kullanır.">Zarar (USD)</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Gerçek kâr/zarar: intrinsic (canlı spot) − prim.">PnL</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Açılışta yatan teminatı belirleyen kaldıraç oranı (vade × varlık grubu tablosundan kilitli). Canlı risk takibinde kullanılmaz.">Teminat Oranı</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="İşlem başına BRÜT zarar (prim hariç). Teminat çağrısı bunu kullanır.">Zarar (USD)</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -151,25 +151,25 @@ export default async function TradesBlotterPage() {
                     <TableCell className="text-right font-mono">{e.daysToExpiry.toFixed(0)}</TableCell>
                     <TableCell className="text-right font-mono">
                       {e.currentSpot?.toFixed(2)}
-                      {!e.spotIsLive && <span className="text-slate-500" title="Canlı spot alınamadı — giriş spotu">*</span>}
+                      {!e.spotIsLive && <span className="text-zinc-500" title="Canlı spot alınamadı — giriş spotu">*</span>}
                     </TableCell>
                     <TableCell className="text-right font-mono">{fc(e.trade.premium)}</TableCell>
                     <TableCell className={`text-right font-mono font-bold ${(e.pnl || 0) >= 0 ? "text-emerald-500" : e.pnl != null ? "text-rose-500" : ""}`}>{fc(e.pnl)}</TableCell>
                     <TableCell className="text-right font-mono">{e.trade.marginRate ? `${(e.trade.marginRate * 100).toFixed(2)}%` : '-'}</TableCell>
-                    <TableCell className={`text-right font-mono ${(tc?.intrinsicLoss ?? 0) > 0 ? 'text-rose-500' : 'text-slate-500'}`}>{tc && tc.intrinsicLoss > 0 ? fc(tc.intrinsicLoss) : '-'}</TableCell>
+                    <TableCell className={`text-right font-mono ${(tc?.intrinsicLoss ?? 0) > 0 ? 'text-rose-500' : 'text-zinc-500'}`}>{tc && tc.intrinsicLoss > 0 ? fc(tc.intrinsicLoss) : '-'}</TableCell>
                   </TableRow>
                 );
               })}
               {trades.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                     Açık pozisyon yok. Fiyatlama ekranından veya müşteri sayfasından işlem ekleyin.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-          <p className="text-[11px] text-slate-500 mt-3">
+          <p className="text-[11px] text-zinc-500 mt-3">
             PnL = intrinsic değer (canlı spot vs strike) − prim; settleTradeAction&apos;daki gerçekleşen K/Z ile aynı
             formül, sadece vade spotu yerine canlı spot kullanılır. Black-Scholes/smile YOK. Zarar = işlem başına
             vadedeki brüt intrinsic zarar (prim hariç); müşteri risk takibi yukarıdaki özet tabloda

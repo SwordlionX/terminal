@@ -55,6 +55,32 @@ export async function getSpot(product: string): Promise<{ price: number; at: num
   return cached || null; // eski önbellek varsa onu döndür
 }
 
+/**
+ * USD/TRY kuru — teminat motorunun 1.000.000 TL onay eşiği (Şube Müdürü vs Genel Müdür) bu kuru
+ * kullanır. `kv` tablosunda saklanır ki Ayarlar sayfasından (server-side) güncellenebilsin;
+ * store/marketData.ts'teki `usdtry` yalnızca tarayıcıda tutulur ve sunucu tarafı hesaplara hiç
+ * ulaşmaz — o yüzden eşik hesabı için ayrı bir kalıcı değer gerekiyor.
+ */
+export async function getUsdTryRate(): Promise<number> {
+  try {
+    const c = await dbc();
+    const r = await c.execute("SELECT v FROM kv WHERE k = 'usdtry_rate'");
+    if (r.rows.length) {
+      const v = Number(r.rows[0].v);
+      if (Number.isFinite(v) && v > 0) return v;
+    }
+  } catch { /* db yoksa varsayılana düş */ }
+  return 35.0;
+}
+
+export async function setUsdTryRate(rate: number): Promise<void> {
+  const c = await dbc();
+  await c.execute({
+    sql: "INSERT INTO kv (k, v) VALUES ('usdtry_rate', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+    args: [String(rate)],
+  });
+}
+
 export async function loadSnapshot(): Promise<YahooSnapshot | null> {
   if (snapshotMem) return snapshotMem;
   // 1) Veritabanı (Vercel'de kalıcı olan tek yer)

@@ -44,11 +44,11 @@ export default function DeltaHedgePricingPage() {
       />
 
       {/* Müşteri pozisyonu seçimi */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-lg border border-slate-800 bg-slate-900/30">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
         <div className="space-y-2">
-          <Label className="text-slate-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
+          <Label className="text-zinc-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
           <Select value={optionType} onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}>
-            <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="call">Alış (Call)</SelectItem>
               <SelectItem value="put">Satış (Put)</SelectItem>
@@ -56,9 +56,9 @@ export default function DeltaHedgePricingPage() {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label className="text-slate-400 text-xs uppercase tracking-wider">Müşteri Yönü</Label>
+          <Label className="text-zinc-400 text-xs uppercase tracking-wider">Müşteri Yönü</Label>
           <Select value={direction} onValueChange={(v) => setDirection(v === "short" ? "short" : "long")}>
-            <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="long">Long (Alış / müşteri aldı)</SelectItem>
               <SelectItem value="short">Short (Satış / müşteri yazdı)</SelectItem>
@@ -66,19 +66,19 @@ export default function DeltaHedgePricingPage() {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label className="text-slate-400 text-xs uppercase tracking-wider">Miktar (Kontrat)</Label>
-          <div className="h-9 flex items-center font-mono text-slate-200">{md.contractSize} ons</div>
-          <p className="text-[11px] text-slate-500">Piyasa verilerinden (kontrat büyüklüğü)</p>
+          <Label className="text-zinc-400 text-xs uppercase tracking-wider">Miktar (Kontrat)</Label>
+          <div className="h-9 flex items-center font-mono text-zinc-200">{md.contractSize} ons</div>
+          <p className="text-[11px] text-zinc-500">Piyasa verilerinden (kontrat büyüklüğü)</p>
         </div>
       </div>
 
       {showHedge ? (
         <>
-          <div className="p-4 rounded-lg border border-slate-800 bg-slate-900/30 text-sm text-slate-400">
-            Pozisyon: <span className="font-mono text-slate-200">{posLabel}</span>
-            {" · "}Birim Delta: <span className="font-mono text-slate-200">{unitDelta.toFixed(4)}</span>
-            {" · "}Pozisyon Delta: <span className="font-mono text-slate-200">{positionDelta.toFixed(4)}</span>
-            {" · "}Toplam Delta Exposure: <span className="font-mono text-slate-200">{deltaExposure.toFixed(3)} ons</span>
+          <div className="p-4 rounded-lg border border-zinc-800 bg-zinc-900/30 text-sm text-zinc-400">
+            Pozisyon: <span className="font-mono text-zinc-200">{posLabel}</span>
+            {" · "}Birim Delta: <span className="font-mono text-zinc-200">{unitDelta.toFixed(4)}</span>
+            {" · "}Pozisyon Delta: <span className="font-mono text-zinc-200">{positionDelta.toFixed(4)}</span>
+            {" · "}Toplam Delta Exposure: <span className="font-mono text-zinc-200">{deltaExposure.toFixed(3)} ons</span>
           </div>
 
           <HedgePanel

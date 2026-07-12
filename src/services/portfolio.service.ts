@@ -75,9 +75,6 @@ export async function evaluatePortfolio(): Promise<{
 
     const notional = spot * t.contractSize;
 
-    // mockDb'yi güncelle — risk ekranları güncel PnL kullansın
-    await db.trades.update(t.id, { pnl });
-    
     const initialDaysToExpiry = Math.max(1, (new Date(t.expiryDate).getTime() - new Date(t.tradeDate).getTime()) / (1000 * 3600 * 24));
 
     enriched.push({

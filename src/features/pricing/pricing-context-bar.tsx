@@ -20,12 +20,12 @@ interface PricingContextBarProps {
  *  panelinden gelir; buradan değiştirilmez. */
 export function PricingContextBar({ product, spot, strike, daysToExpiry, effVol, manualVol, liveSource, livePrice }: PricingContextBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border border-slate-800 bg-slate-900/30 text-xs">
-      <Badge variant="outline" className="border-slate-700 text-slate-300 font-mono">{product}</Badge>
-      <Badge variant="outline" className="border-slate-700 text-slate-300 font-mono">Spot ${formatNumber(spot, 2)}</Badge>
-      <Badge variant="outline" className="border-slate-700 text-slate-300 font-mono">Strike ${formatNumber(strike, 2)}</Badge>
-      <Badge variant="outline" className="border-slate-700 text-slate-300 font-mono">Vade {formatNumber(daysToExpiry, 0)} gün</Badge>
-      <Badge variant="outline" className="border-slate-700 text-slate-300 font-mono">
+    <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border border-zinc-800 bg-zinc-900/30 text-xs">
+      <Badge variant="outline" className="border-zinc-700 text-zinc-300 font-mono">{product}</Badge>
+      <Badge variant="outline" className="border-zinc-700 text-zinc-300 font-mono">Spot ${formatNumber(spot, 2)}</Badge>
+      <Badge variant="outline" className="border-zinc-700 text-zinc-300 font-mono">Strike ${formatNumber(strike, 2)}</Badge>
+      <Badge variant="outline" className="border-zinc-700 text-zinc-300 font-mono">Vade {formatNumber(daysToExpiry, 0)} gün</Badge>
+      <Badge variant="outline" className="border-zinc-700 text-zinc-300 font-mono">
         Vol %{formatNumber(effVol, 2)} {manualVol ? "(manuel)" : "(smile)"}
       </Badge>
       {liveSource && livePrice != null && (

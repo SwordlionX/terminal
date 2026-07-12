@@ -37,11 +37,11 @@ export function HeatMap({ customers }: HeatMapProps) {
   const sorted = [...customers].sort((a, b) => b.marginUtil - a.marginUtil);
 
   return (
-    <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
+    <Card className="bg-[#09090b] border-zinc-800 shadow-xl">
       <CardHeader>
         <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest flex items-center gap-2">
           Risk Isı Haritası (Müşteri Limitleri)
-          <div className="flex gap-2 ml-auto text-[10px] font-normal tracking-normal text-slate-400">
+          <div className="flex gap-2 ml-auto text-[10px] font-normal tracking-normal text-zinc-400">
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>Düşük (&lt;40%)</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span>Orta (40-60%)</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span>Yüksek (60-80%)</span>
@@ -65,7 +65,7 @@ export function HeatMap({ customers }: HeatMapProps) {
           })}
         </div>
         {sorted.length === 0 && (
-          <div className="text-sm text-slate-500 text-center py-6">Müşteri verisi bulunamadı.</div>
+          <div className="text-sm text-zinc-500 text-center py-6">Müşteri verisi bulunamadı.</div>
         )}
       </CardContent>
     </Card>

@@ -2,9 +2,9 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 const alertVariants = {
-  default: "bg-slate-900 border-slate-800 text-slate-100",
+  default: "bg-zinc-900 border-zinc-800 text-zinc-100",
   destructive: "border-rose-500/50 text-rose-500 bg-rose-500/10",
-  outline: "border-slate-700 text-slate-300"
+  outline: "border-zinc-700 text-zinc-300"
 }
 
 export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useMarketData, useSettings } from "@/store/marketData";
 import { MARGIN_MATURITY_BUCKETS, COLLATERAL_HAIRCUT_RATES, RISK_THRESHOLDS } from "@/lib/margin/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,39 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export default function SettingsPage() {
   const s = useSettings();
   const md = useMarketData();
+
+  // Teminat motorunun (1M TL onay eşiği) kullandığı kalıcı kur — sunucuda kv tablosunda saklanır,
+  // bu yüzden tarayıcı ayarlarından (s.usdtry) ayrı yüklenip ayrı kaydedilir.
+  const [activeServerRate, setActiveServerRate] = useState<number | null>(null);
+  const [savingRate, setSavingRate] = useState(false);
+  const [rateMsg, setRateMsg] = useState<{ text: string; error: boolean } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/settings/usdtry')
+      .then(r => r.json())
+      .then(d => setActiveServerRate(d.usdtry))
+      .catch(() => {});
+  }, []);
+
+  const saveUsdTryToServer = async () => {
+    setSavingRate(true);
+    setRateMsg(null);
+    try {
+      const res = await fetch('/api/settings/usdtry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usdtry: s.usdtry }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
+      setActiveServerRate(d.usdtry);
+      setRateMsg({ text: 'Teminat motoruna kaydedildi.', error: false });
+    } catch (e) {
+      setRateMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
+    } finally {
+      setSavingRate(false);
+    }
+  };
 
   const applyToPricing = () => {
     md.setField('rate', s.rate);
@@ -38,6 +72,17 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>USD/TRY Kuru</Label>
                 <Input type="number" step="0.01" value={s.usdtry} onChange={e => s.setSetting('usdtry', parseFloat(e.target.value) || 0)} />
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <p className="text-[11px] text-zinc-500">
+                    Teminat motorunda aktif: {activeServerRate != null ? activeServerRate.toFixed(2) : "…"}
+                  </p>
+                  <Button type="button" variant="outline" size="sm" onClick={saveUsdTryToServer} disabled={savingRate} className="h-7 px-2 text-xs">
+                    {savingRate ? "Kaydediliyor…" : "Teminat Motoruna Kaydet"}
+                  </Button>
+                </div>
+                {rateMsg && (
+                  <p className={`text-[11px] ${rateMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{rateMsg.text}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Altın Kira Oranı (%)</Label>
@@ -59,7 +104,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <Button onClick={applyToPricing} className="w-full">Fiyatlama Ekranına Uygula</Button>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-zinc-500">
               Ayarlar tarayıcıda saklanır. &quot;Uygula&quot; ile mevcut fiyatlama oturumuna aktarılır.
             </p>
           </CardContent>
@@ -88,7 +133,7 @@ export default function SettingsPage() {
                 <span className="font-mono">{RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL.toLocaleString('tr-TR')}</span>
               </div>
             </div>
-            <p className="text-[11px] text-slate-500 mt-4">
+            <p className="text-[11px] text-zinc-500 mt-4">
               Bu eşikler prosedür dokümanından gelir; değiştirilmesi gerekirse kod içinde
               <span className="font-mono"> lib/margin/config.ts</span> güncellenir.
             </p>

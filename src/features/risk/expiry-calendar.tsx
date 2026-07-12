@@ -48,22 +48,22 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
   const renderGroup = (title: string, catItems: ExpiryItem[] = [], color: string) => {
     return (
       <div className="space-y-3">
-        <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex justify-between border-b border-slate-800 pb-2">
+        <h4 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex justify-between border-b border-zinc-800 pb-2">
           <span>{title}</span>
           <Badge variant="outline" className={color}>{catItems.length}</Badge>
         </h4>
         <div className="space-y-2 h-[200px] overflow-y-auto pr-1 custom-scrollbar">
           {catItems.length === 0 ? (
-            <div className="text-xs text-slate-600 italic py-4 text-center border border-dashed border-slate-800 rounded">İşlem Yok</div>
+            <div className="text-xs text-zinc-600 italic py-4 text-center border border-dashed border-zinc-800 rounded">İşlem Yok</div>
           ) : catItems.sort((a,b)=>a.date.getTime()-b.date.getTime()).map((it, i) => (
-            <div key={i} className="p-2 bg-slate-900/40 border border-slate-800 rounded flex justify-between items-center hover:bg-slate-800 transition-colors cursor-pointer">
+            <div key={i} className="p-2 bg-zinc-900/40 border border-zinc-800 rounded flex justify-between items-center hover:bg-zinc-800 transition-colors cursor-pointer">
               <div>
-                <div className="text-[11px] font-bold text-slate-300 truncate w-24 sm:w-32" title={it.customerName}>{it.customerName}</div>
-                <div className="text-[10px] text-slate-500 uppercase">{it.product} {it.position}</div>
+                <div className="text-[11px] font-bold text-zinc-300 truncate w-24 sm:w-32" title={it.customerName}>{it.customerName}</div>
+                <div className="text-[10px] text-zinc-500 uppercase">{it.product} {it.position}</div>
               </div>
               <div className="text-right">
-                <div className="font-mono text-xs text-slate-300">{formatCurrency(it.notional)}</div>
-                <div className="text-[10px] text-slate-500 font-mono">{it.date.toLocaleDateString('tr-TR')}</div>
+                <div className="font-mono text-xs text-zinc-300">{formatCurrency(it.notional)}</div>
+                <div className="text-[10px] text-zinc-500 font-mono">{it.date.toLocaleDateString('tr-TR')}</div>
               </div>
             </div>
           ))}
@@ -73,8 +73,8 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
   };
 
   return (
-    <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
-      <CardHeader className="pb-3 border-b border-slate-800">
+    <Card className="bg-[#09090b] border-zinc-800 shadow-xl">
+      <CardHeader className="pb-3 border-b border-zinc-800">
         <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Vade Takvimi (Yaklaşan Vadeler)</CardTitle>
       </CardHeader>
       <CardContent className="pt-5">

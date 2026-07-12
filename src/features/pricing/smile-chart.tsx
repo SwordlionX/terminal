@@ -100,23 +100,23 @@ export function SmileChart({ surface, spot, strike, daysToExpiry }: Props) {
         <div className="w-full overflow-x-auto">
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[360px]" role="img" aria-label="Volatilite smile grafiği">
             {/* çerçeve */}
-            <rect x={padL} y={padT} width={plotW} height={plotH} fill="none" stroke="currentColor" className="text-slate-800" strokeWidth={1} />
+            <rect x={padL} y={padT} width={plotW} height={plotH} fill="none" stroke="currentColor" className="text-zinc-800" strokeWidth={1} />
 
             {/* y grid + etiketler */}
             {yTicks.map((t, i) => (
               <g key={`y${i}`}>
-                <line x1={padL} x2={padL + plotW} y1={yOf(t)} y2={yOf(t)} stroke="currentColor" className="text-slate-800/60" strokeWidth={1} strokeDasharray="2 3" />
-                <text x={padL - 6} y={yOf(t) + 3} textAnchor="end" className="fill-slate-500" fontSize={9}>%{t.toFixed(1)}</text>
+                <line x1={padL} x2={padL + plotW} y1={yOf(t)} y2={yOf(t)} stroke="currentColor" className="text-zinc-800/60" strokeWidth={1} strokeDasharray="2 3" />
+                <text x={padL - 6} y={yOf(t) + 3} textAnchor="end" className="fill-zinc-500" fontSize={9}>%{t.toFixed(1)}</text>
               </g>
             ))}
 
             {/* x etiketleri */}
             {xTicks.map((t, i) => (
-              <text key={`x${i}`} x={xOf(t)} y={H - padB + 14} textAnchor="middle" className="fill-slate-500" fontSize={9}>
+              <text key={`x${i}`} x={xOf(t)} y={H - padB + 14} textAnchor="middle" className="fill-zinc-500" fontSize={9}>
                 {t.toFixed(3)}
               </text>
             ))}
-            <text x={padL + plotW / 2} y={H - 4} textAnchor="middle" className="fill-slate-400" fontSize={9}>Moneyness (K / S)</text>
+            <text x={padL + plotW / 2} y={H - 4} textAnchor="middle" className="fill-zinc-400" fontSize={9}>Moneyness (K / S)</text>
 
             {/* smile eğrisi + noktalar */}
             <polyline points={line} fill="none" stroke="currentColor" className="text-emerald-500" strokeWidth={1.5} />
@@ -128,24 +128,24 @@ export function SmileChart({ surface, spot, strike, daysToExpiry }: Props) {
             <line
               x1={markerX} x2={markerX} y1={padT} y2={padT + plotH}
               stroke="currentColor" strokeWidth={1.5} strokeDasharray="4 3"
-              className={inRange ? "text-sky-400" : "text-rose-500"}
+              className={inRange ? "text-zinc-200" : "text-rose-500"}
             />
             {inRange && isFinite(iv0) && (
-              <circle cx={markerX} cy={yOf(iv0 * 100)} r={3.5} className="fill-sky-400 stroke-slate-950" strokeWidth={1} />
+              <circle cx={markerX} cy={yOf(iv0 * 100)} r={3.5} className="fill-zinc-100 stroke-zinc-950" strokeWidth={1} />
             )}
             <text
               x={markerX + (m0 > (mMin + mMax) / 2 ? -4 : 4)}
               y={padT + 10}
               textAnchor={m0 > (mMin + mMax) / 2 ? "end" : "start"}
               fontSize={9}
-              className={inRange ? "fill-sky-300" : "fill-rose-400"}
+              className={inRange ? "fill-zinc-300" : "fill-rose-400"}
             >
               strike {m0.toFixed(3)}{inRange ? "" : " · kapsam dışı"}
             </text>
           </svg>
         </div>
 
-        <div className="mt-2 text-[11px] text-slate-500 space-y-0.5">
+        <div className="mt-2 text-[11px] text-zinc-500 space-y-0.5">
           <div>Kote moneyness aralığı: {mMin.toFixed(3)} – {mMax.toFixed(3)} · {pts.length} nokta</div>
           {inRange
             ? <div className="text-emerald-500/80">Strike aralık içinde — vol smile&apos;dan türetildi{isFinite(iv0) ? ` (%${(iv0 * 100).toFixed(2)})` : ""}.</div>

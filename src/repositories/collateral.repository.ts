@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { CollateralItem } from "@/types/collateral";
 import { dbc } from "@/lib/db";
 import type { Row } from "@libsql/client";
@@ -15,11 +16,22 @@ function rowToItem(r: Row): CollateralItem {
   };
 }
 
+// React cache(): tek istek içinde tekrar eden findAll/findByCustomerId çağrılarını tek sorguya indirger.
+const findByCustomerIdCached = cache(async (customerId: string): Promise<CollateralItem[]> => {
+  const c = await dbc();
+  const r = await c.execute({ sql: 'SELECT * FROM collaterals WHERE customerId = ?', args: [customerId] });
+  return r.rows.map(rowToItem);
+});
+
+const findAllCached = cache(async (): Promise<CollateralItem[]> => {
+  const c = await dbc();
+  const r = await c.execute('SELECT * FROM collaterals');
+  return r.rows.map(rowToItem);
+});
+
 export class CollateralRepository {
   async findByCustomerId(customerId: string): Promise<CollateralItem[]> {
-    const c = await dbc();
-    const r = await c.execute({ sql: 'SELECT * FROM collaterals WHERE customerId = ?', args: [customerId] });
-    return r.rows.map(rowToItem);
+    return findByCustomerIdCached(customerId);
   }
 
   async addCollateral(item: Omit<CollateralItem, 'id' | 'addedAt'>): Promise<CollateralItem> {
@@ -34,9 +46,7 @@ export class CollateralRepository {
   }
 
   async findAll(): Promise<CollateralItem[]> {
-    const c = await dbc();
-    const r = await c.execute('SELECT * FROM collaterals');
-    return r.rows.map(rowToItem);
+    return findAllCached();
   }
 
   async deleteCollateral(id: string): Promise<void> {

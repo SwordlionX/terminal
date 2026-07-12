@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { gk, greeks } from "@/lib/math";
@@ -61,20 +61,20 @@ export function ScenarioAnalysis({
     const roi = prm !== 0 ? (pnlUnit / prm) : 0;
 
     return (
-      <div className="space-y-3 p-4 border border-slate-800 rounded-md bg-slate-900/30 shadow-inner">
-        <div className="border-b border-slate-800 pb-2">
-          <div className="text-[13px] font-bold text-slate-300">{title}</div>
-          <div className="text-[11px] text-slate-500">{sub}</div>
+      <div className="space-y-3 p-4 border border-zinc-800 rounded-md bg-zinc-900/30 shadow-inner">
+        <div className="border-b border-zinc-800 pb-2">
+          <div className="text-[13px] font-bold text-zinc-300">{title}</div>
+          <div className="text-[11px] text-zinc-500">{sub}</div>
         </div>
         <div className="space-y-2.5 text-xs">
-          <div className="flex justify-between"><span className="text-slate-400">Azami Kazanç</span><span>{maxP}</span></div>
-          <div className="flex justify-between"><span className="text-slate-400">Azami Kayıp</span><span>{maxL}</span></div>
-          <div className="flex justify-between"><span className="text-slate-400">Başabaş (Breakeven)</span><span className="font-mono">{formatCurrency(be)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-400">Mevcut İçsel Değer</span><span className="font-mono">{formatCurrency(currentIv)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-400">Mevcut Zaman Değeri</span><span className="font-mono">{formatCurrency(tv)}</span></div>
-          <div className="flex justify-between mt-3 pt-3 border-t border-slate-800"><span className="text-slate-400">Net K/Z (ons)</span><span className={cn("font-mono", pnlUnit >= 0 ? "text-emerald-400" : "text-rose-400")}>{formatCurrency(pnlUnit)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-400">Net K/Z (toplam $)</span><span className={cn("font-mono font-bold text-[13px]", pnlTotal >= 0 ? "text-emerald-400" : "text-rose-400")}>{pnlTotal >= 0 ? "+" : ""}{formatCurrency(pnlTotal)}</span></div>
-          <div className="flex justify-between"><span className="text-slate-400">Getiri (ROI)</span><span className={cn("font-mono", roi >= 0 ? "text-emerald-400" : "text-rose-400")}>{formatPercent(roi)}%</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Azami Kazanç</span><span>{maxP}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Azami Kayıp</span><span>{maxL}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Başabaş (Breakeven)</span><span className="font-mono">{formatCurrency(be)}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Mevcut İçsel Değer</span><span className="font-mono">{formatCurrency(currentIv)}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Mevcut Zaman Değeri</span><span className="font-mono">{formatCurrency(tv)}</span></div>
+          <div className="flex justify-between mt-3 pt-3 border-t border-zinc-800"><span className="text-zinc-400">Net K/Z (ons)</span><span className={cn("font-mono", pnlUnit >= 0 ? "text-emerald-400" : "text-rose-400")}>{formatCurrency(pnlUnit)}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Net K/Z (toplam $)</span><span className={cn("font-mono font-bold text-[13px]", pnlTotal >= 0 ? "text-emerald-400" : "text-rose-400")}>{pnlTotal >= 0 ? "+" : ""}{formatCurrency(pnlTotal)}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-400">Getiri (ROI)</span><span className={cn("font-mono", roi >= 0 ? "text-emerald-400" : "text-rose-400")}>{formatPercent(roi)}%</span></div>
         </div>
       </div>
     );
@@ -95,18 +95,17 @@ export function ScenarioAnalysis({
 
   return (
     <div className="space-y-6 mt-6">
-      <Card className="bg-[#0b1120] border-slate-800 text-slate-100 shadow-xl">
+      <Card className="bg-[#09090b] border-zinc-800 text-zinc-100 shadow-xl">
         <CardHeader className="pb-4">
           <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Vade Sonu Senaryo Analizi</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center gap-5 p-4 rounded-lg bg-slate-900/50 border border-slate-800">
-            <span className="text-sm font-semibold whitespace-nowrap text-slate-300">Senaryo Fiyatı (Vade Sonu)</span>
-            <Input 
-              type="number" 
-              value={scenarioSpot.toFixed(2)} 
-              onChange={e => setScenarioSpot(Number(e.target.value))} 
-              className="w-28 bg-[#0b1120] border-slate-700 text-center font-mono" 
+          <div className="flex items-center gap-5 p-4 rounded-lg bg-zinc-900/50 border border-zinc-800">
+            <span className="text-sm font-semibold whitespace-nowrap text-zinc-300">Senaryo Fiyatı (Vade Sonu)</span>
+            <NumberInput
+              value={scenarioSpot}
+              onValueChange={setScenarioSpot}
+              className="w-28 bg-[#09090b] border-zinc-700 text-center font-mono"
             />
             <Slider 
               value={[scenarioSpot]} 
@@ -128,40 +127,40 @@ export function ScenarioAnalysis({
         </CardContent>
       </Card>
 
-      <Card className="bg-[#0b1120] border-slate-800 text-slate-100 shadow-xl overflow-hidden">
-        <CardHeader className="bg-slate-900/30 border-b border-slate-800 pb-3 pt-4">
+      <Card className="bg-[#09090b] border-zinc-800 text-zinc-100 shadow-xl overflow-hidden">
+        <CardHeader className="bg-zinc-900/30 border-b border-zinc-800 pb-3 pt-4">
           <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest flex justify-between">
             <span>Senaryo Tablosu (Long Call)</span>
-            <span className="text-slate-500 text-[10px]">{steps + 1} Fiyat Seviyesi</span>
+            <span className="text-zinc-500 text-[10px]">{steps + 1} Fiyat Seviyesi</span>
           </CardTitle>
         </CardHeader>
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-slate-900/10">
-              <TableRow className="border-slate-800 hover:bg-transparent">
-                <TableHead className="text-slate-400 text-xs">Spot</TableHead>
-                <TableHead className="text-slate-400 text-xs text-right">İçsel Değer</TableHead>
-                <TableHead className="text-slate-400 text-xs text-right">Opsiyon Değeri</TableHead>
-                <TableHead className="text-slate-400 text-xs text-right">Kâr/Zarar ($)</TableHead>
-                <TableHead className="text-slate-400 text-xs text-right">Delta</TableHead>
-                <TableHead className="text-slate-400 text-xs text-right">Gamma</TableHead>
-                <TableHead className="text-slate-400 text-xs text-right">Theta</TableHead>
-                <TableHead className="text-slate-400 text-xs text-right">Vega</TableHead>
+            <TableHeader className="bg-zinc-900/10">
+              <TableRow className="border-zinc-800 hover:bg-transparent">
+                <TableHead className="text-zinc-400 text-xs">Spot</TableHead>
+                <TableHead className="text-zinc-400 text-xs text-right">İçsel Değer</TableHead>
+                <TableHead className="text-zinc-400 text-xs text-right">Opsiyon Değeri</TableHead>
+                <TableHead className="text-zinc-400 text-xs text-right">Kâr/Zarar ($)</TableHead>
+                <TableHead className="text-zinc-400 text-xs text-right">Delta</TableHead>
+                <TableHead className="text-zinc-400 text-xs text-right">Gamma</TableHead>
+                <TableHead className="text-zinc-400 text-xs text-right">Theta</TableHead>
+                <TableHead className="text-zinc-400 text-xs text-right">Vega</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tableRows.map((r, i) => (
-                <TableRow key={i} className="border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                  <TableCell className="font-mono text-xs font-bold text-slate-200">{formatCurrency(r.spot)}</TableCell>
-                  <TableCell className="text-right font-mono text-xs text-slate-400">{formatCurrency(r.iv)}</TableCell>
+                <TableRow key={i} className="border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                  <TableCell className="font-mono text-xs font-bold text-zinc-200">{formatCurrency(r.spot)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs text-zinc-400">{formatCurrency(r.iv)}</TableCell>
                   <TableCell className="text-right font-mono text-xs text-zinc-200 font-semibold">{formatCurrency(r.price)}</TableCell>
                   <TableCell className={cn("text-right font-mono text-xs font-bold", r.pnl >= 0 ? "text-emerald-500" : "text-rose-500")}>
                     {r.pnl >= 0 ? "+" : ""}{formatCurrency(r.pnl)}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-[11px] text-slate-500">{r.delta.toFixed(4)}</TableCell>
-                  <TableCell className="text-right font-mono text-[11px] text-slate-500">{r.gamma.toFixed(6)}</TableCell>
-                  <TableCell className="text-right font-mono text-[11px] text-slate-500">{r.theta.toFixed(4)}</TableCell>
-                  <TableCell className="text-right font-mono text-[11px] text-slate-500">{r.vega.toFixed(4)}</TableCell>
+                  <TableCell className="text-right font-mono text-[11px] text-zinc-500">{r.delta.toFixed(4)}</TableCell>
+                  <TableCell className="text-right font-mono text-[11px] text-zinc-500">{r.gamma.toFixed(6)}</TableCell>
+                  <TableCell className="text-right font-mono text-[11px] text-zinc-500">{r.theta.toFixed(4)}</TableCell>
+                  <TableCell className="text-right font-mono text-[11px] text-zinc-500">{r.vega.toFixed(4)}</TableCell>
                 </TableRow>
                  ))}
             </TableBody>

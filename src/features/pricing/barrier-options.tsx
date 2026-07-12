@@ -57,16 +57,16 @@ export function BarrierOptions({
   };
 
   return (
-    <Card className="bg-[#0b1120] border-slate-800 text-slate-100 mt-6 shadow-xl">
-      <CardHeader className="pb-3 border-b border-slate-800">
+    <Card className="bg-[#09090b] border-zinc-800 text-zinc-100 mt-6 shadow-xl">
+      <CardHeader className="pb-3 border-b border-zinc-800">
         <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Bariyer Opsiyonları (Knock-Out / Knock-In)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6 pt-5">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
-            <Label className="text-slate-400 text-xs uppercase tracking-wider">Bariyer Tipi</Label>
+            <Label className="text-zinc-400 text-xs uppercase tracking-wider">Bariyer Tipi</Label>
             <Select value={barrierType} onValueChange={(v) => setBarrierType(v || "cuo")}>
-              <SelectTrigger className="bg-slate-900 border-slate-700 text-slate-200"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="cuo">Call Up & Out (cuo)</SelectItem>
                 <SelectItem value="cdo">Call Down & Out (cdo)</SelectItem>
@@ -80,21 +80,21 @@ export function BarrierOptions({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label className="text-slate-400 text-xs uppercase tracking-wider">Bariyer (H)</Label>
+            <Label className="text-zinc-400 text-xs uppercase tracking-wider">Bariyer (H)</Label>
             <Input 
               type="number" 
               value={barrierH || ''} 
               onChange={e => setBarrierH(Number(e.target.value))} 
-              className="bg-slate-900 border-slate-700 font-mono text-slate-200" 
+              className="bg-zinc-900 border-zinc-700 font-mono text-zinc-200" 
             />
           </div>
           <div className="space-y-2">
-            <Label className="text-slate-400 text-xs uppercase tracking-wider">Rebate (R)</Label>
+            <Label className="text-zinc-400 text-xs uppercase tracking-wider">Rebate (R)</Label>
             <Input 
               type="number" 
               value={rebateR || ''} 
               onChange={e => setRebateR(Number(e.target.value))} 
-              className="bg-slate-900 border-slate-700 font-mono text-slate-200" 
+              className="bg-zinc-900 border-zinc-700 font-mono text-zinc-200" 
             />
           </div>
           <div className="flex items-end">
@@ -112,20 +112,20 @@ export function BarrierOptions({
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
               <div>
-                <div className="text-xs text-slate-500 uppercase">Delta</div>
-                <div className="font-mono text-sm text-slate-300">{calcResult.greeks.delta.toFixed(4)}</div>
+                <div className="text-xs text-zinc-500 uppercase">Delta</div>
+                <div className="font-mono text-sm text-zinc-300">{calcResult.greeks.delta.toFixed(4)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 uppercase">Gamma</div>
-                <div className="font-mono text-sm text-slate-300">{calcResult.greeks.gamma.toFixed(6)}</div>
+                <div className="text-xs text-zinc-500 uppercase">Gamma</div>
+                <div className="font-mono text-sm text-zinc-300">{calcResult.greeks.gamma.toFixed(6)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 uppercase">Theta</div>
-                <div className="font-mono text-sm text-slate-300">{calcResult.greeks.theta.toFixed(4)}</div>
+                <div className="text-xs text-zinc-500 uppercase">Theta</div>
+                <div className="font-mono text-sm text-zinc-300">{calcResult.greeks.theta.toFixed(4)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 uppercase">Vega</div>
-                <div className="font-mono text-sm text-slate-300">{calcResult.greeks.vega.toFixed(4)}</div>
+                <div className="text-xs text-zinc-500 uppercase">Vega</div>
+                <div className="font-mono text-sm text-zinc-300">{calcResult.greeks.vega.toFixed(4)}</div>
               </div>
             </div>
 

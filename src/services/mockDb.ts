@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { Customer, Trade, Portfolio, CustomerTimelineEvent } from '../types';
 import { dbc } from '@/lib/db';
 import type { Row } from '@libsql/client';
@@ -56,13 +57,25 @@ function rowToTrade(r: Row): Trade {
   };
 }
 
+// React cache(): aynı sunucu isteği içinde birden fazla sayfa/servis aynı listeyi çekerse
+// (örn. risk sayfasında customers/trades 2-3 kez fetch ediliyordu) tek DB sorgusuna indirger.
+// İstekler arası paylaşılmaz — yazma işlemleri (create/update/delete) hep ayrı bir server action
+// isteğinde çalıştığından, bu önbellek stale veri riski taşımaz.
+const findManyCustomersCached = cache(async (): Promise<Customer[]> => {
+  const c = await dbc();
+  const r = await c.execute('SELECT * FROM customers ORDER BY companyName');
+  return r.rows.map(rowToCustomer);
+});
+
+const findManyTradesCached = cache(async (): Promise<Trade[]> => {
+  const c = await dbc();
+  const r = await c.execute('SELECT * FROM trades ORDER BY tradeDate DESC');
+  return r.rows.map(rowToTrade);
+});
+
 export const db = {
   customers: {
-    findMany: async (): Promise<Customer[]> => {
-      const c = await dbc();
-      const r = await c.execute('SELECT * FROM customers ORDER BY companyName');
-      return r.rows.map(rowToCustomer);
-    },
+    findMany: findManyCustomersCached,
     findById: async (id: string): Promise<Customer | null> => {
       const c = await dbc();
       const r = await c.execute({ sql: 'SELECT * FROM customers WHERE id = ?', args: [id] });
@@ -91,11 +104,7 @@ export const db = {
     },
   },
   trades: {
-    findMany: async (): Promise<Trade[]> => {
-      const c = await dbc();
-      const r = await c.execute('SELECT * FROM trades ORDER BY tradeDate DESC');
-      return r.rows.map(rowToTrade);
-    },
+    findMany: findManyTradesCached,
     findByCustomerId: async (customerId: string): Promise<Trade[]> => {
       const c = await dbc();
       const r = await c.execute({ sql: 'SELECT * FROM trades WHERE customerId = ? ORDER BY tradeDate DESC', args: [customerId] });

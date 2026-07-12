@@ -67,7 +67,7 @@ export default async function BranchManagerDashboard() {
                     <TableCell className="text-right font-mono text-rose-500">{fc(margin.totalMtmLoss)}</TableCell>
                     <TableCell className="text-right font-mono">{fc(margin.totalCollateralValue)}</TableCell>
                     <TableCell className="text-center font-mono">%{(margin.marginCallRatio * 100).toFixed(1)}</TableCell>
-                    <TableCell className={`text-right font-mono ${margin.cureAmount > 0 ? "text-rose-500" : "text-slate-500"}`}>{margin.cureAmount > 0 ? fc(margin.cureAmount) : "-"}</TableCell>
+                    <TableCell className={`text-right font-mono ${margin.cureAmount > 0 ? "text-rose-500" : "text-zinc-500"}`}>{margin.cureAmount > 0 ? fc(margin.cureAmount) : "-"}</TableCell>
                     <TableCell>
                       {margin.status === 'SAFE' && <Badge variant="outline" className="border-emerald-500 text-emerald-500">GÜVENLİ</Badge>}
                       {margin.status === 'MARGIN_CALL' && <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500">TEMİNAT ÇAĞRISI</Badge>}

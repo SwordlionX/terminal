@@ -15,23 +15,23 @@ export function ExposureDashboard({ data }: { data: ExposureData }) {
     const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
     
     return (
-      <div className="space-y-3 p-4 border border-slate-800 bg-slate-900/30 rounded-lg shadow-inner">
-        <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{title}</h4>
-        <div className="flex w-full h-3 rounded-full overflow-hidden bg-slate-900 border border-slate-800">
+      <div className="space-y-3 p-4 border border-zinc-800 bg-zinc-900/30 rounded-lg shadow-inner">
+        <h4 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">{title}</h4>
+        <div className="flex w-full h-3 rounded-full overflow-hidden bg-zinc-900 border border-zinc-800">
           {items.map((item, i) => {
             const pct = (item.value / total) * 100;
             if (pct === 0) return null;
             return <div key={i} className={cn("h-full transition-all duration-500", item.color)} style={{ width: `${pct}%` }} title={`${item.name}: ${pct.toFixed(1)}%`} />
           })}
         </div>
-        <div className="flex gap-4 text-xs mt-2 flex-wrap pt-2 border-t border-slate-800/50">
+        <div className="flex gap-4 text-xs mt-2 flex-wrap pt-2 border-t border-zinc-800/50">
           {items.map((item, i) => {
             const pct = (item.value / total) * 100;
             if (pct === 0) return null;
             return (
               <div key={i} className="flex items-center gap-1.5">
                 <span className={cn("w-2 h-2 rounded-full", item.color)} />
-                <span className="text-slate-300 font-medium">{item.name} <span className="text-slate-500 font-mono">({pct.toFixed(1)}%)</span></span>
+                <span className="text-zinc-300 font-medium">{item.name} <span className="text-zinc-500 font-mono">({pct.toFixed(1)}%)</span></span>
               </div>
             )
           })}
@@ -41,8 +41,8 @@ export function ExposureDashboard({ data }: { data: ExposureData }) {
   };
 
   return (
-    <Card className="bg-[#0b1120] border-slate-800 shadow-xl">
-      <CardHeader className="pb-3 border-b border-slate-800">
+    <Card className="bg-[#09090b] border-zinc-800 shadow-xl">
+      <CardHeader className="pb-3 border-b border-zinc-800">
         <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Risk & Dağılım Paneli</CardTitle>
       </CardHeader>
       <CardContent className="space-y-8 pt-5">

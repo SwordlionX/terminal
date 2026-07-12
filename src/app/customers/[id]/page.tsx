@@ -50,6 +50,14 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
   const openTrades = portfolioTrades.filter(t => t.status === 'Open' || t.status === 'Near Expiry');
   const closedTrades = portfolioTrades.filter(t => t.status === 'Closed');
 
+  // Açık işlemler için tabloda gösterilen PnL artık DB'ye yazılmıyor (bkz. portfolio.service.ts) —
+  // canlı hesaplanan değeri burada işlem listesine bindiriyoruz. Kapalı işlemlerde stored pnl kalır
+  // (settleTradeAction'ın gerçekleşen K/Z'si, geçmişe dönük değişmemeli).
+  const livePnlById = new Map(myEnriched.map(e => [e.trade.id, e.pnl]));
+  const tradesForManagement = pnlError
+    ? portfolioTrades
+    : portfolioTrades.map(t => (livePnlById.has(t.id) ? { ...t, pnl: livePnlById.get(t.id) ?? t.pnl } : t));
+
   const unrealizedPnl = myEnriched.reduce((sum, e) => sum + (e.pnl || 0), 0);
   const usdNotional = myEnriched.reduce((sum, e) => sum + e.notional, 0);
   const realizedPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
@@ -110,7 +118,7 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
           </Card>
 
           {/* İşlem Yönetimi Modülü */}
-          <TradeManagement customerId={customer.id} trades={portfolioTrades} />
+          <TradeManagement customerId={customer.id} trades={tradesForManagement} />
 
           <CustomerNotes customerId={customer.id} initialNotes={customer.notes} />
         </div>
