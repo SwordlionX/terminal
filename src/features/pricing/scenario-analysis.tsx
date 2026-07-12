@@ -26,6 +26,7 @@ export function ScenarioAnalysis({
   const minSpot = Math.max(1, strike * 0.75);
   const maxSpot = strike * 1.25;
   const [scenarioSpot, setScenarioSpot] = useState(spot);
+  const [selectedPosition, setSelectedPosition] = useState<"Long Call" | "Short Call" | "Long Put" | "Short Put">("Long Call");
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
   const formatPercent = (val: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val * 100);
@@ -60,8 +61,19 @@ export function ScenarioAnalysis({
     const pnlTotal = pnlUnit * contractSize;
     const roi = prm !== 0 ? (pnlUnit / prm) : 0;
 
+    const isSelected = selectedPosition === pos;
+
     return (
-      <div className="space-y-3 p-4 border border-zinc-800 rounded-md bg-zinc-900/30 shadow-inner">
+      <button
+        type="button"
+        onClick={() => setSelectedPosition(pos)}
+        className={cn(
+          "w-full text-left space-y-3 p-4 border rounded-md shadow-inner transition-colors cursor-pointer",
+          isSelected
+            ? "border-emerald-600 bg-emerald-950/20 ring-1 ring-emerald-600/50"
+            : "border-zinc-800 bg-zinc-900/30 hover:border-zinc-600 hover:bg-zinc-800/40"
+        )}
+      >
         <div className="border-b border-zinc-800 pb-2">
           <div className="text-[13px] font-bold text-zinc-300">{title}</div>
           <div className="text-[11px] text-zinc-500">{sub}</div>
@@ -76,9 +88,13 @@ export function ScenarioAnalysis({
           <div className="flex justify-between"><span className="text-zinc-400">Net K/Z (toplam $)</span><span className={cn("font-mono font-bold text-[13px]", pnlTotal >= 0 ? "text-emerald-400" : "text-rose-400")}>{pnlTotal >= 0 ? "+" : ""}{formatCurrency(pnlTotal)}</span></div>
           <div className="flex justify-between"><span className="text-zinc-400">Getiri (ROI)</span><span className={cn("font-mono", roi >= 0 ? "text-emerald-400" : "text-rose-400")}>{formatPercent(roi)}%</span></div>
         </div>
-      </div>
+      </button>
     );
   };
+
+  const isPut = selectedPosition.includes("Put");
+  const isShort = selectedPosition.startsWith("Short");
+  const selectedPremium = isPut ? putPremium : callPremium;
 
   const steps = 15;
   const stepSize = (maxSpot - minSpot) / steps;
@@ -88,9 +104,21 @@ export function ScenarioAnalysis({
     const g = gk(s, strike, tYears, rate / 100, lease / 100, vol / 100);
     const gr = greeks(s, strike, tYears, rate / 100, lease / 100, vol / 100, 365);
     if (!gr) continue;
-    const intrinsicValue = Math.max(0, s - strike);
-    const pnl = (g.call - callPremium) * contractSize;
-    tableRows.push({ spot: s, iv: intrinsicValue, price: g.call, pnl, delta: gr.call.delta, gamma: gr.call.gamma, theta: gr.call.theta, vega: gr.call.vega });
+    const price = isPut ? g.put : g.call;
+    const legGreeks = isPut ? gr.put : gr.call;
+    const intrinsicValue = isPut ? Math.max(0, strike - s) : Math.max(0, s - strike);
+    const sign = isShort ? -1 : 1;
+    const pnl = sign * (price - selectedPremium) * contractSize;
+    tableRows.push({
+      spot: s,
+      iv: intrinsicValue,
+      price,
+      pnl,
+      delta: sign * legGreeks.delta,
+      gamma: sign * legGreeks.gamma,
+      theta: sign * legGreeks.theta,
+      vega: sign * legGreeks.vega,
+    });
   }
 
   return (
@@ -130,7 +158,7 @@ export function ScenarioAnalysis({
       <Card className="bg-[#09090b] border-zinc-800 text-zinc-100 shadow-xl overflow-hidden">
         <CardHeader className="bg-zinc-900/30 border-b border-zinc-800 pb-3 pt-4">
           <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest flex justify-between">
-            <span>Senaryo Tablosu (Long Call)</span>
+            <span>Senaryo Tablosu ({selectedPosition})</span>
             <span className="text-zinc-500 text-[10px]">{steps + 1} Fiyat Seviyesi</span>
           </CardTitle>
         </CardHeader>
