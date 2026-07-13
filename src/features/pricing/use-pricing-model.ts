@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMarketData } from "@/store/marketData";
 import { useMarketFeed } from "@/hooks/use-market-feed";
 import { surfaceVol } from "@/lib/vol/surface";
@@ -15,13 +15,25 @@ import { gk, greeks } from "@/lib/math";
 export function usePricingModel() {
   const md = useMarketData();
   const feed = useMarketFeed(md.product, md.rate / 100);
+  const prevProduct = useRef(md.product);
 
   // Canlı spot geldiğinde otomatik uygula (5 dk'da bir tazelenir).
   // "Manuel" tiki işaretliyse canlı veri kullanıcının girdiği spotu EZMEZ.
+  // Ürün değişmişse (ör. XAU -> XAG) strike de yeni spota (ATM) çekilir — aksi halde
+  // eski ürünün ölçeğinde kalan strike, forward-moneyness'i kote aralığın dışına
+  // taşıyıp sessizce "kote opsiyon yok"a düşürüyordu (surface.ts ekstrapolasyon yapmaz).
   useEffect(() => {
     if (!md.manualSpot && feed.spot?.price) {
-      md.setField("spot", Math.round(feed.spot.price * 100) / 100);
+      const price = Math.round(feed.spot.price * 100) / 100;
+      md.setField("spot", price);
+      if (prevProduct.current !== md.product) {
+        md.setField("strike", price);
+      }
     }
+    prevProduct.current = md.product;
+    // Kasıtlı: md.product BURADA yok. Ürün değişince feed.spot bir an eski ürünün
+    // (bayat) verisini tutar; efekt yalnızca feed.spot GERÇEKTEN değiştiğinde (yeni
+    // ürünün fetch'i tamamlandığında) çalışmalı, md.product'ın kendisi değiştiğinde değil.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feed.spot?.at, feed.spot?.price, md.manualSpot]);
 
