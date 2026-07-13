@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { marginService } from "@/services/margin.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { MarginStatusBadge, MarginRatioValue } from "@/features/margin/margin-status-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -71,9 +72,9 @@ export default async function GlobalMarginDashboard() {
               {allEvaluations.map(({ customer, margin }) => (
                 <TableRow key={customer.id}>
                   <TableCell className="font-medium">
-                    <a href={`/customers/${customer.id}/margin`} className="text-primary hover:underline">
+                    <Link href={`/customers/${customer.id}/margin`} className="text-primary hover:underline">
                       {customer.companyName}
-                    </a>
+                    </Link>
                   </TableCell>
                   <TableCell className="text-right text-rose-500">{formatCurrency(margin.totalMtmLoss)}</TableCell>
                   <TableCell className="text-right">{formatCurrency(margin.totalCollateralValue)}</TableCell>
@@ -81,13 +82,10 @@ export default async function GlobalMarginDashboard() {
                     {margin.cureAmount > 0 ? formatCurrency(margin.cureAmount) : '-'}
                   </TableCell>
                   <TableCell className="text-center font-mono">
-                    %{(margin.marginCallRatio * 100).toFixed(1)}
+                    <MarginRatioValue margin={margin} />
                   </TableCell>
                   <TableCell>
-                    {margin.status === 'SAFE' && <Badge variant="outline" className="border-emerald-500 text-emerald-500">GÜVENLİ</Badge>}
-                    {margin.status === 'MARGIN_CALL' && <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500">TEMİNAT ÇAĞRISI (&gt;%39)</Badge>}
-                    {margin.status === 'WARNING_60' && <Badge variant="secondary" className="bg-orange-500/20 text-orange-500">STOP UYARISI (&gt;%60)</Badge>}
-                    {margin.status === 'STOP_LOSS_80' && <Badge variant="destructive">ANINDA STOP (&gt;%80)</Badge>}
+                    <MarginStatusBadge status={margin.status} withThresholds />
                   </TableCell>
                 </TableRow>
               ))}

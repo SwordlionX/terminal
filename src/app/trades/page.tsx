@@ -4,6 +4,7 @@ import { db } from "@/services/mockDb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { CustomerMarginSummaryTable } from "@/features/margin/customer-margin-summary-table";
 
 export const dynamic = "force-dynamic";
 
@@ -64,47 +65,7 @@ export default async function TradesBlotterPage() {
           <CardTitle>Müşteri Bazlı Özet</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Müşteri</TableHead>
-                <TableHead className="text-center">Açık İşlem</TableHead>
-                <TableHead className="text-right" title="Açık pozisyonların büyüklüğü: canlı spot × kontrat">Nominal</TableHead>
-                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Gerçek kâr/zarar: intrinsic − prim (primi netler). Müşteri bugün kapatsa net sonuç.">Açık Poz. K/Z</TableHead>
-                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Teminat için BRÜT zarar: intrinsic, prim HARİÇ. Sadece müşteri aleyhine (>0). Zarar/Teminat oranı bunu kullanır.">Zarar</TableHead>
-                <TableHead className="text-right" title="Yatırılan teminatın canlı USD değeri (haircut sonrası)">Mevcut Teminat</TableHead>
-                <TableHead className="text-center underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Ana risk metriği = Zarar ÷ Mevcut Teminat. %39 çağrı, %60/%80 kapatma.">Zarar / Teminat</TableHead>
-                <TableHead>Durum</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {marginResults.map(({ customer, margin }) => {
-                const pnl = pnlByCustomer.get(customer.id);
-                return (
-                  <TableRow key={customer.id}>
-                    <TableCell className="font-medium">
-                      <a href={`/customers/${customer.id}`} className="text-primary hover:underline">{customer.companyName}</a>
-                    </TableCell>
-                    <TableCell className="text-center">{pnl ? pnl.openTrades : "—"}</TableCell>
-                    <TableCell className="text-right font-mono">{pnl ? fc(pnl.totalNotional) : "—"}</TableCell>
-                    <TableCell className={`text-right font-mono ${pnl && pnl.totalPnl >= 0 ? "text-emerald-500" : pnl ? "text-rose-500" : ""}`}>{pnl ? fc(pnl.totalPnl) : "—"}</TableCell>
-                    <TableCell className="text-right font-mono text-rose-500">{fc(margin.totalMtmLoss)}</TableCell>
-                    <TableCell className="text-right font-mono">{fc(margin.totalCollateralValue)}</TableCell>
-                    <TableCell className="text-center font-mono">%{(margin.marginCallRatio * 100).toFixed(1)}</TableCell>
-                    <TableCell>
-                      {margin.status === 'SAFE' && <Badge variant="outline" className="border-emerald-500 text-emerald-500">GÜVENLİ</Badge>}
-                      {margin.status === 'MARGIN_CALL' && <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-500">TEMİNAT ÇAĞRISI</Badge>}
-                      {margin.status === 'WARNING_60' && <Badge variant="secondary" className="bg-orange-500/20 text-orange-500">STOP UYARISI</Badge>}
-                      {margin.status === 'STOP_LOSS_80' && <Badge variant="destructive">ANINDA STOP</Badge>}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-              {marginResults.length === 0 && (
-                <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Müşteri yok.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <CustomerMarginSummaryTable rows={marginResults} pnlByCustomer={pnlByCustomer} />
         </CardContent>
       </Card>
 
@@ -114,7 +75,8 @@ export default async function TradesBlotterPage() {
           <CardTitle>Açık Pozisyonlar</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          {/* 12 sütun laptop ekranına sığmaz; min-width verince tablo taşar ve kapsayıcı yatay kayar (sütunlar sıkışmaz). */}
+          <Table className="min-w-[1100px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Müşteri</TableHead>

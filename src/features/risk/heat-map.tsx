@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -54,13 +55,13 @@ export function HeatMap({ customers }: HeatMapProps) {
           {sorted.map((c) => {
             const level = getRiskLevel(c.marginUtil);
             return (
-              <a href={`/customers/${c.id}/margin`} key={c.id} className={cn("block p-3 rounded-md border transition-all cursor-pointer", getRiskColor(level))}>
+              <Link href={`/customers/${c.id}/margin`} key={c.id} className={cn("block p-3 rounded-md border transition-all cursor-pointer", getRiskColor(level))}>
                 <div className="font-bold text-sm truncate" title={c.name}>{c.name}</div>
                 <div className="flex justify-between items-end mt-2">
                   <div className="text-xs opacity-80">Util: <span className="font-mono font-bold text-sm">{c.marginUtil.toFixed(1)}%</span></div>
                 </div>
                 <div className="text-xs opacity-80 mt-1">K/Z: <span className="font-mono">{formatCurrency(c.pnl)}</span></div>
-              </a>
+              </Link>
             );
           })}
         </div>

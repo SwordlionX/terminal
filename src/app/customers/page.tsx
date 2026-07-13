@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { db } from "@/services/mockDb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -47,9 +48,9 @@ export default async function CustomersPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-4">
-                      <a href={`/customers/${c.id}`} className="text-sm font-medium text-emerald-500 hover:underline">
+                      <Link href={`/customers/${c.id}`} className="text-sm font-medium text-emerald-500 hover:underline">
                         Detay
-                      </a>
+                      </Link>
                       <DeleteCustomerButton id={c.id} name={c.companyName} />
                     </div>
                   </TableCell>

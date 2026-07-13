@@ -24,7 +24,9 @@ export interface MarginResult {
   totalMtmLoss: number;           // Brüt intrinsic zarar (prim HARİÇ), müşteri aleyhine — Short pozisyonlar
   marginCallRatio: number;        // Zarar / Teminat — TEK headline metrik; risk eşikleri bunun üzerinden
   cureAmount: number;             // Oranı CURE_TARGET'a indirmek için gereken ek teminat = max(0, zarar/hedef − teminat)
-  status: 'SAFE' | 'MARGIN_CALL' | 'WARNING_60' | 'STOP_LOSS_80';
+  // UNCOLLATERALIZED: teminat sıfır ama zarar var → oran matematiksel olarak sonsuz.
+  // Ayrı durum olarak işaretlenir; "%100" gibi sınırlı bir sayı olarak göstermek yanıltıcı olur.
+  status: 'SAFE' | 'MARGIN_CALL' | 'WARNING_60' | 'STOP_LOSS_80' | 'UNCOLLATERALIZED';
   isDeficitOver1Million: boolean; // cureAmount × usdTry > 1M TL (Şube Müdürü vs Genel Müdür onay eşiği)
 }
 
@@ -107,7 +109,10 @@ export class MarginEngine {
       : 0;
 
     let status: MarginResult['status'] = 'SAFE';
-    if (marginCallRatio > RISK_THRESHOLDS.STOP_LOSS_IMMEDIATE) {
+    if (totalCollateralValue <= 0 && totalMtmLoss > 0) {
+      // Teminatsız: zarar var, karşılık gösterilen teminat yok. En ağır durum.
+      status = 'UNCOLLATERALIZED';
+    } else if (marginCallRatio > RISK_THRESHOLDS.STOP_LOSS_IMMEDIATE) {
       status = 'STOP_LOSS_80';
     } else if (marginCallRatio > RISK_THRESHOLDS.STOP_LOSS_WARNING) {
       status = 'WARNING_60';

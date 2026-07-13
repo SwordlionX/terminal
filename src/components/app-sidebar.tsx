@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Calculator, Briefcase,
@@ -66,10 +67,10 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton isActive={isActive} render={
-                        <a href={item.url} className="flex items-center gap-2">
+                        <Link href={item.url} className="flex items-center gap-2">
                           <item.icon />
                           <span>{item.title}</span>
-                        </a>
+                        </Link>
                       } />
                     </SidebarMenuItem>
                   );
@@ -94,10 +95,10 @@ export function AppSidebar() {
                               <SidebarMenuSubButton
                                 isActive={childActive}
                                 render={
-                                  <a href={child.url} className="flex items-center gap-2">
+                                  <Link href={child.url} className="flex items-center gap-2">
                                     {"icon" in child && child.icon ? <child.icon /> : null}
                                     <span>{child.title}</span>
-                                  </a>
+                                  </Link>
                                 }
                               />
                             </SidebarMenuSubItem>

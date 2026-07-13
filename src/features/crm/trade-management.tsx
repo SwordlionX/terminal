@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { deleteTradeAction, settleTradeAction, addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { MarginEngine } from "@/lib/margin/engine";
@@ -171,11 +172,12 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
         </Table>
       </CardContent>
 
-      {/* Add Trade Modal (Simple Overlay) */}
-      {isAddOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 border border-zinc-700 p-6 rounded-lg w-full max-w-lg">
-            <h2 className="text-xl font-bold mb-4">Manuel İşlem (Opsiyon) Ekle</h2>
+      {/* Add Trade Modal — erişilebilir Dialog (Escape/dışa tıklama/odak tuzağı base-ui'den gelir) */}
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="mb-4">
+              <DialogTitle>Manuel İşlem (Opsiyon) Ekle</DialogTitle>
+            </DialogHeader>
             <form onSubmit={handleAddTrade} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -309,18 +311,18 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Settle Trade Modal */}
-      {settleTrade && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 border border-zinc-700 p-6 rounded-lg w-full max-w-sm">
-            <h2 className="text-xl font-bold mb-4">Vade Sonu Kapat</h2>
-            <p className="text-sm text-zinc-400 mb-4">
-              {settleTrade.underlying} {settleTrade.position} {settleTrade.type} Strike: {settleTrade.strike}
-            </p>
+      {/* Settle Trade Modal — erişilebilir Dialog */}
+      <Dialog open={settleTrade !== null} onOpenChange={(o) => { if (!o) setSettleTrade(null); }}>
+        <DialogContent className="sm:max-w-sm">
+            <DialogHeader className="mb-4">
+              <DialogTitle>Vade Sonu Kapat</DialogTitle>
+              <DialogDescription>
+                {settleTrade && `${settleTrade.underlying} ${settleTrade.position} ${settleTrade.type} Strike: ${settleTrade.strike}`}
+              </DialogDescription>
+            </DialogHeader>
             <form onSubmit={handleSettleTrade} className="space-y-4">
               <div>
                 <label className="text-xs text-zinc-400">Kapanış Spot Fiyatı (Vade Sonu)</label>
@@ -342,9 +344,8 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                 </Button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

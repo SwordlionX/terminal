@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { db } from "@/services/mockDb";
 import { evaluatePortfolio } from "@/services/portfolio.service";
 import { marginService } from "@/services/margin.service";
@@ -65,7 +66,8 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
   const realizedPnl = closedTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
   const riskLabel = marginResult.status === 'SAFE' ? 'Düşük'
     : marginResult.status === 'MARGIN_CALL' ? 'Teminat Çağrısı'
-    : marginResult.status === 'WARNING_60' ? 'Yüksek' : 'Kritik';
+    : marginResult.status === 'WARNING_60' ? 'Yüksek'
+    : marginResult.status === 'UNCOLLATERALIZED' ? 'Teminatsız' : 'Kritik';
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
   return (
@@ -76,10 +78,10 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
           <p className="text-muted-foreground mt-1">Müşteri No: {customer.customerNumber} | Segment: {customer.customerSegment}</p>
         </div>
         <div className="flex items-center gap-3">
-          <a href={`/customers/${customer.id}/margin`} className={buttonVariants({ variant: "outline" })}>
+          <Link href={`/customers/${customer.id}/margin`} className={buttonVariants({ variant: "outline" })}>
             <PieChart className="mr-1.5 size-4" />
             Teminat Yönetimi
-          </a>
+          </Link>
           <Badge variant={customer.status === 'Active' ? 'default' : 'secondary'}>{customer.status}</Badge>
         </div>
       </div>
