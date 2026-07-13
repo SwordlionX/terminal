@@ -6,6 +6,8 @@ import { notFound } from "next/navigation";
 export const dynamic = "force-dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { PieChart } from "lucide-react";
 import { CustomerTimeline } from "@/features/crm/customer-timeline";
 import { CustomerNotes } from "@/features/crm/customer-notes";
 import { TradeManagement } from "@/features/crm/trade-management";
@@ -73,7 +75,11 @@ export default async function CustomerDashboard(props: { params: Promise<{ id: s
           <h1 className="text-3xl font-bold tracking-tight">{customer.companyName}</h1>
           <p className="text-muted-foreground mt-1">Müşteri No: {customer.customerNumber} | Segment: {customer.customerSegment}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <a href={`/customers/${customer.id}/margin`} className={buttonVariants({ variant: "outline" })}>
+            <PieChart className="mr-1.5 size-4" />
+            Teminat Yönetimi
+          </a>
           <Badge variant={customer.status === 'Active' ? 'default' : 'secondary'}>{customer.status}</Badge>
         </div>
       </div>
