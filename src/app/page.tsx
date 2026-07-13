@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
@@ -10,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PositionCard } from "@/features/pricing/position-card";
 import { ScenarioAnalysis } from "@/features/pricing/scenario-analysis";
 import { BarrierOptions } from "@/features/pricing/barrier-options";
@@ -68,6 +70,7 @@ export default function PricingPage() {
   const [bookPosition, setBookPosition] = useState<"Long" | "Short">("Long");
   const [bookMsg, setBookMsg] = useState<{ text: string; error: boolean } | null>(null);
   const [booking, setBooking] = useState(false);
+  const [bookOpen, setBookOpen] = useState(false);
   const [showBarrier, setShowBarrier] = useState(false);
 
   // Müşteri listesi (kaydetme formu için)
@@ -245,6 +248,16 @@ export default function PricingPage() {
                 <NumberInput value={md.lease} onValueChange={v => md.setField('lease', v)} />
               </div>
             </div>
+
+            {/* Bariyer aç/kapa — işaretlenince prim kartında bariyer paneli görünür */}
+            <div className="flex items-center gap-2 pt-2 border-t border-border/50 mt-2">
+              <Checkbox
+                id="showBarrier"
+                checked={showBarrier}
+                onChange={(e) => setShowBarrier(e.target.checked)}
+              />
+              <Label htmlFor="showBarrier" className="text-sm cursor-pointer">Bariyer Opsiyonu Ekle (Knock-In / Knock-Out)</Label>
+            </div>
           </CardContent>
         </Card>
 
@@ -311,36 +324,27 @@ export default function PricingPage() {
                 </div>
               )}
 
-              {/* İşlem Kaydetme */}
-              <div className="mt-4 p-4 rounded-lg border border-zinc-800 space-y-3">
-                <div className="text-sm font-semibold text-zinc-300">İşlemi Müşteriye Kaydet</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Select value={customerId} onValueChange={(v) => setCustomerId(v || "")}>
-                    <SelectTrigger><SelectValue placeholder="Müşteri..." /></SelectTrigger>
-                    <SelectContent>
-                      {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={bookPosition} onValueChange={(v) => setBookPosition((v as "Long" | "Short") || "Long")}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Long">Long</SelectItem>
-                      <SelectItem value="Short">Short</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Select value={bookType} onValueChange={(v) => setBookType((v as "Call" | "Put") || "Call")}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Call">Call</SelectItem>
-                      <SelectItem value="Put">Put</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Bariyer Opsiyonu — sol karttaki tik işaretliyken Call/Put priminin altında */}
+              {showBarrier && (
+                <div className="mt-4 pt-4 border-t border-zinc-800">
+                  <BarrierOptions
+                    spot={md.spot}
+                    strike={md.strike}
+                    tYears={tYears}
+                    rate={md.rate}
+                    lease={md.lease}
+                    vol={effVol}
+                  />
                 </div>
-                <Button className="w-full" onClick={handleBookTrade} disabled={!priceable || booking}>
-                  {booking ? "Kaydediliyor..." : "İşlemi Kaydet (Book Trade)"}
+              )}
+
+              {/* İşlemi Müşteriye Kaydet — kompakt buton, form Dialog'da */}
+              <div className="mt-4 pt-4 border-t border-zinc-800">
+                <Button variant="outline" className="w-full" onClick={() => { setBookMsg(null); setBookOpen(true); }}>
+                  İşlemi Müşteriye Kaydet
                 </Button>
-                {bookMsg && (
-                  <p className={`text-xs ${bookMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{bookMsg.text}</p>
+                {bookMsg && !bookOpen && (
+                  <p className={`text-xs mt-2 ${bookMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{bookMsg.text}</p>
                 )}
               </div>
             </div>
@@ -381,26 +385,6 @@ export default function PricingPage() {
         daysToExpiry={daysToExpiry}
       />
 
-      {/* Bariyer Opsiyonu — ayrı bir menü yerine ana fiyatlamanın altında açılıp kapanan opsiyonel bölüm */}
-      <div className="flex items-center gap-2 pt-2">
-        <Checkbox
-          id="showBarrier"
-          checked={showBarrier}
-          onChange={(e) => setShowBarrier(e.target.checked)}
-        />
-        <Label htmlFor="showBarrier" className="text-sm cursor-pointer">Bariyer Opsiyonu Ekle (Knock-In / Knock-Out)</Label>
-      </div>
-      {showBarrier && (
-        <BarrierOptions
-          spot={md.spot}
-          strike={md.strike}
-          tYears={tYears}
-          rate={md.rate}
-          lease={md.lease}
-          vol={effVol}
-        />
-      )}
-
       <div className="mt-6">
         <PositionCard
           spot={md.spot}
@@ -428,7 +412,7 @@ export default function PricingPage() {
         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Detaylı Fiyatlama Araçları</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {pricingTools.map((tool) => (
-            <a
+            <Link
               key={tool.href}
               href={tool.href}
               className="flex items-start gap-3 p-4 rounded-lg border border-zinc-800 bg-zinc-900/30 hover:bg-zinc-800/60 hover:border-zinc-700 transition-colors"
@@ -438,10 +422,55 @@ export default function PricingPage() {
                 <div className="text-sm font-semibold text-zinc-200">{tool.title}</div>
                 <div className="text-xs text-zinc-500 mt-1">{tool.desc}</div>
               </div>
-            </a>
+            </Link>
           ))}
         </div>
       </div>
+
+      {/* İşlemi Müşteriye Kaydet — Dialog (fiyatla → tek tıkla kaydet akışı korunur) */}
+      <Dialog open={bookOpen} onOpenChange={setBookOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>İşlemi Müşteriye Kaydet</DialogTitle>
+            <DialogDescription>
+              Hesaplanan prim ve volatilite ile seçilen müşteriye opsiyon işlemi kaydedilir.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <Select value={customerId} onValueChange={(v) => setCustomerId(v || "")}>
+                <SelectTrigger><SelectValue placeholder="Müşteri..." /></SelectTrigger>
+                <SelectContent>
+                  {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={bookPosition} onValueChange={(v) => setBookPosition((v as "Long" | "Short") || "Long")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Long">Long</SelectItem>
+                  <SelectItem value="Short">Short</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={bookType} onValueChange={(v) => setBookType((v as "Call" | "Put") || "Call")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Call">Call</SelectItem>
+                  <SelectItem value="Put">Put</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button className="w-full" onClick={handleBookTrade} disabled={!priceable || booking}>
+              {booking ? "Kaydediliyor..." : "İşlemi Kaydet (Book Trade)"}
+            </Button>
+            {!priceable && (
+              <p className="text-xs text-amber-500">Fiyat üretilemiyor — önce fiyatlanabilir bir opsiyon seçin (kote opsiyon yok / vol türetilemedi).</p>
+            )}
+            {bookMsg && (
+              <p className={`text-xs ${bookMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{bookMsg.text}</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
