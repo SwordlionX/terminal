@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMarketData } from "@/store/marketData";
 import { useMarketFeed } from "@/hooks/use-market-feed";
-import { surfaceVol } from "@/lib/vol/surface";
+import { surfaceVol, surfaceForward, surfaceForwardCarry } from "@/lib/vol/surface";
 import { gk, greeks } from "@/lib/math";
 
 /**
@@ -45,16 +45,26 @@ export function usePricingModel() {
   const daysToExpiry = dateValid ? validDaysToExpiry : 90;
   const tYears = Math.max(daysToExpiry / md.basis, 0.001);
 
+  // Fiyatlama forward'ı. CME yüzeyi vade-başına GÖZLEMLENEN futures forward'ı taşır (m = K/f);
+  // varsa (ve kullanıcı spotu manuel sabitlememişse) forward doğrudan futures'tan alınır —
+  // böylece bozuk spot proxy'sinin sapması ne vol seçimine ne prime girer. Yoksa forward
+  // eskisi gibi spottan türetilir (Yahoo/ETF yolu birebir korunur).
+  const carry = (md.rate - md.lease) / 100;
+  const fwdExp = Math.exp(carry * (daysToExpiry / 365)); // yüzey konvansiyonuyla (365) aynı taban
+  const cmeFwd = feed.surface && !md.manualSpot ? surfaceForward(feed.surface, daysToExpiry) : null;
+  const usingCmeFwd = cmeFwd != null && cmeFwd > 0;
+  const fwd = usingCmeFwd ? cmeFwd : md.spot * fwdExp;
+  // gk/greeks spot-tabanlı çalışır. Futures forward'ıyla tutarlı "efektif spot":
+  // pricingSpot·e^{(r−q)T} = fwd  ⇒  gk'nın kurduğu forward tam olarak futures forward olur.
+  const pricingSpot = usingCmeFwd ? cmeFwd / fwdExp : md.spot;
+
   // Volatilite: manuel tik yoksa smile'dan (de-Amerikanize IV), tik varsa kullanıcı girer.
-  // Sorgu forward-moneyness ile yapılır: yüzey K/F ekseninde tutulduğundan lease
-  // oranı burada, fiyatlanan ürünün forward çapasında (S·e^{(r−lease)T}) devreye girer.
+  // Sorgu forward-moneyness (m = K/fwd) ile yapılır; yukarıdaki forward çapasını kullanır.
   const smileIv = useMemo(() => {
-    if (!feed.surface || md.spot <= 0) return null;
-    const fwdT = daysToExpiry / 365; // yüzey konvansiyonuyla (365) aynı taban
-    const fwd = md.spot * Math.exp((md.rate / 100 - md.lease / 100) * fwdT);
+    if (!feed.surface || fwd <= 0) return null;
     const iv = surfaceVol(feed.surface, md.strike / fwd, daysToExpiry);
     return iv != null && isFinite(iv) ? iv * 100 : null;
-  }, [feed.surface, md.strike, md.spot, md.rate, md.lease, daysToExpiry]);
+  }, [feed.surface, md.strike, fwd, daysToExpiry]);
 
   // Otomatik (smile) modda vol sadece kote strike/vade aralığında türetilir.
   // Aralık dışıysa smileIv null gelir; bu durumda fiyat UYDURULMAZ — kullanıcı
@@ -71,10 +81,14 @@ export function usePricingModel() {
       ? "Smile verisi yok — opsiyon zincirini yenileyin veya manuel vol girin."
       : "Bu strike/vade için kote opsiyon yok — güvenilir vol türetilemiyor.";
 
-  const result = gk(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100);
-  const gr = greeks(md.spot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100, md.basis);
+  const result = gk(pricingSpot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100);
+  const gr = greeks(pricingSpot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100, md.basis);
 
-  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason };
+  // CME forward aktifken forward futures'tan gelir → kira prime girmez; piyasa carry'si
+  // (forward eğrisinden) ekranda bilgi olarak gösterilir.
+  const cmeCarry = usingCmeFwd && feed.surface ? surfaceForwardCarry(feed.surface) : null;
+
+  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry };
 }
 
 export const formatCurrency = (val: number) =>

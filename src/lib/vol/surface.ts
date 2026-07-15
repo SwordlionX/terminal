@@ -35,6 +35,12 @@ export interface ExpirySmile {
   days: number;
   date: string;
   points: SmilePoint[];
+  /**
+   * Vade-başına GÖZLEMLENEN forward. CME yüzeyinde dayanak futures'ın settlement fiyatı
+   * (yüzeyin moneyness çapası: m = K/f). Yahoo/ETF yüzeyinde tanımsız — o yolda forward
+   * spottan türetilmeye devam eder.
+   */
+  f?: number;
 }
 
 export interface VolSurface {
@@ -170,6 +176,44 @@ export function surfaceVol(surface: VolSurface, m: number, days: number): number
     }
   }
   return null;
+}
+
+/**
+ * Yüzeyin vade-başına gözlemlenen forward'ı (gün için interpole edilir).
+ * Yalnız CME yüzeyinde tanımlı (expiries[].f); Yahoo/ETF yüzeyinde `null` döner —
+ * çağıran taraf o durumda forward'ı spottan türetmeye devam eder.
+ * Kote vade aralığının dışında en yakın uca sabitlenir (vol zaten aralık dışında
+ * null döndüğünden fiyat üretilmez; burada yalnız güvenli bir sayı sağlanır).
+ */
+export function surfaceForward(surface: VolSurface, days: number): number | null {
+  const exps = surface.expiries;
+  if (exps.length === 0 || exps[0].f == null) return null; // Yahoo yüzeyi
+  if (days <= exps[0].days) return exps[0].f ?? null;
+  const lastE = exps[exps.length - 1];
+  if (days >= lastE.days) return lastE.f ?? null;
+  for (let i = 0; i < exps.length - 1; i++) {
+    const a = exps[i], b = exps[i + 1];
+    if (days >= a.days && days <= b.days) {
+      if (a.f == null || b.f == null) return null;
+      const w = (days - a.days) / (b.days - a.days || 1);
+      return a.f + w * (b.f - a.f);
+    }
+  }
+  return null;
+}
+
+/**
+ * Forward eğrisinin ima ettiği yıllık (log) carry — ön ve arka vadedeki gözlemlenen
+ * futures forward'larından: ln(F_arka/F_ön) / ΔT. Yalnız CME yüzeyinde tanımlı (f gerekir),
+ * ekranda "piyasa carry'si ≈ %X" bilgisi için. Yahoo yüzeyinde null.
+ */
+export function surfaceForwardCarry(surface: VolSurface): number | null {
+  const withF = surface.expiries.filter(e => e.f != null && e.f > 0);
+  if (withF.length < 2) return null;
+  const a = withF[0], b = withF[withF.length - 1];
+  const dt = (b.days - a.days) / 365;
+  if (dt <= 0) return null;
+  return Math.log((b.f as number) / (a.f as number)) / dt;
 }
 
 /** Ürün sembolü -> snapshot yüzey sembolü eşlemesi (XAU fiyatlaması GLD smile'ını kullanır). */

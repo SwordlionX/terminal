@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { dbc } from '@/lib/db';
 import { YahooSnapshot, SnapshotProduct, VolSurface, buildSurface, PRODUCT_SURFACE_MAP } from '@/lib/vol/surface';
+import { getDataSource, loadCmeSurface } from './cme.service';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 const SPOT_TTL_MS = 5 * 60 * 1000; // 5 dakika önbellek — sayfa açıkken tekrar tekrar Yahoo'ya gidilmez
@@ -120,9 +121,18 @@ export async function saveSnapshot(snap: YahooSnapshot): Promise<void> {
   } catch { /* salt-okunur FS (Vercel) — sorun değil */ }
 }
 
-/** Ürün için de-Amerikanize IV yüzeyi (bellekte tutulur, snapshot değişince yenilenir). */
+/**
+ * Ürün için de-Amerikanize IV yüzeyi.
+ * Aktif kaynak 'cme' ise DB'deki CME settlement yüzeyi doğrudan döner (refresh anında
+ * kurulmuştur — burada yeniden hesaplama yok). Aksi halde Yahoo/ETF yüzeyi kurulur.
+ */
 export async function getSurface(product: string, r: number): Promise<VolSurface | null> {
-  const sym = PRODUCT_SURFACE_MAP[product.toUpperCase()];
+  const key = product.toUpperCase();
+  if ((await getDataSource(key)) === 'cme') {
+    return loadCmeSurface(key);
+  }
+
+  const sym = PRODUCT_SURFACE_MAP[key];
   if (!sym) return null;
   const cacheKey = `${sym}@${r.toFixed(4)}`;
   if (surfaceMem[cacheKey]) return surfaceMem[cacheKey];

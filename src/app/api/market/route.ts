@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     product,
     spot,
     surface,
-    snapshotISO: snap?.fetchedISO || null,
+    // CME kaynağında yüzeyin kendi settlement tarihi geçerli etikettir; yoksa Yahoo snapshot'ı.
+    snapshotISO: surface?.fetchedISO || snap?.fetchedISO || null,
   });
 }

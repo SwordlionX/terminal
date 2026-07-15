@@ -60,7 +60,7 @@ function isUsMarketLikelyOpen(now: Date = new Date()): boolean {
 }
 
 export default function PricingPage() {
-  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason } = usePricingModel();
+  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry } = usePricingModel();
   const spotInfo = feed.spot ? spotKind(feed.spot.source) : null;
 
   // Kaydetme formu durumu
@@ -242,10 +242,28 @@ export default function PricingPage() {
               <div className="space-y-2">
                 <Label>Faiz Oranı (%)</Label>
                 <NumberInput value={md.rate} onValueChange={v => md.setField('rate', v)} />
+                {usingCmeFwd && (
+                  <p className="text-[11px] text-zinc-500">
+                    Faiz yalnız primi iskontoda kullanılır (forward CME futures&apos;tan gelir).
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Kira / Temettü (%)</Label>
-                <NumberInput value={md.lease} onValueChange={v => md.setField('lease', v)} />
+                <NumberInput
+                  value={md.lease}
+                  onValueChange={v => md.setField('lease', v)}
+                  className={usingCmeFwd ? "opacity-60 font-mono" : ""}
+                />
+                {usingCmeFwd ? (
+                  <p className="text-[11px] text-amber-500">
+                    CME forward&apos;ı aktif — kira prime girmiyor{cmeCarry != null ? ` (piyasa carry'si ≈ %${(cmeCarry * 100).toFixed(1)})` : ""}.
+                  </p>
+                ) : feed.surface?.symbol === md.product && (
+                  <p className="text-[11px] text-zinc-500">
+                    Forward spot+kira&apos;dan türetiliyor (bu vade için CME forward yok).
+                  </p>
+                )}
               </div>
             </div>
 
@@ -297,9 +315,15 @@ export default function PricingPage() {
                       <span className="text-muted-foreground">Kullanılan Vol</span>
                       <span className="font-mono">% {formatNumber(effVol, 2)} {md.manualVol ? "(manuel)" : "(smile)"}</span>
                     </div>
+                    {usingCmeFwd && (
+                      <div className="flex justify-between text-sm py-1 border-t">
+                        <span className="text-muted-foreground">Fiyatlama Forward&apos;ı (CME futures)</span>
+                        <span className="font-mono text-amber-500">{formatNumber(fwd, 2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm py-1 border-t">
                       <span className="text-muted-foreground">Kontrat Değeri ({md.contractSize} ons)</span>
-                      <span className="font-mono">{formatCurrency(md.spot * md.contractSize)}</span>
+                      <span className="font-mono">{formatCurrency(pricingSpot * md.contractSize)}</span>
                     </div>
                     <div className="flex justify-between text-sm py-1 border-t">
                       <span className="text-muted-foreground">Toplam Call Primi</span>
@@ -328,7 +352,7 @@ export default function PricingPage() {
               {showBarrier && (
                 <div className="mt-4 pt-4 border-t border-zinc-800">
                   <BarrierOptions
-                    spot={md.spot}
+                    spot={pricingSpot}
                     strike={md.strike}
                     tYears={tYears}
                     rate={md.rate}
@@ -387,7 +411,7 @@ export default function PricingPage() {
 
       <div className="mt-6">
         <PositionCard
-          spot={md.spot}
+          spot={pricingSpot}
           strike={md.strike}
           callPremium={result.call}
           putPremium={result.put}
@@ -396,7 +420,7 @@ export default function PricingPage() {
       </div>
 
       <ScenarioAnalysis
-        spot={md.spot}
+        spot={pricingSpot}
         strike={md.strike}
         tYears={Math.max(daysToExpiry / md.basis, 0.001)}
         rate={md.rate}

@@ -20,12 +20,53 @@ export default function SettingsPage() {
   const [savingRate, setSavingRate] = useState(false);
   const [rateMsg, setRateMsg] = useState<{ text: string; error: boolean } | null>(null);
 
+  // Veri kaynağı (Yahoo/CME) durumu — sunucuda kv tablosunda saklanır.
+  interface DsItem { product: string; source: 'yahoo' | 'cme'; cmeSupported: boolean; cmeFetchedISO: string | null; cmeExpiries: number }
+  const [dsItems, setDsItems] = useState<DsItem[]>([]);
+  const [dsBusy, setDsBusy] = useState<string | null>(null); // yenilenen ürün
+  const [dsMsg, setDsMsg] = useState<{ text: string; error: boolean } | null>(null);
+
+  const loadDataSources = () =>
+    fetch('/api/settings/datasource').then(r => r.json()).then(d => setDsItems(d.items || [])).catch(() => {});
+
   useEffect(() => {
     fetch('/api/settings/usdtry')
       .then(r => r.json())
       .then(d => setActiveServerRate(d.usdtry))
       .catch(() => {});
+    loadDataSources();
   }, []);
+
+  const changeSource = async (product: string, source: 'yahoo' | 'cme') => {
+    setDsMsg(null);
+    try {
+      const res = await fetch('/api/settings/datasource', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product, source }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
+      await loadDataSources();
+    } catch (e) {
+      setDsMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
+    }
+  };
+
+  const refreshCme = async (product: string) => {
+    setDsBusy(product);
+    setDsMsg(null);
+    try {
+      const res = await fetch(`/api/market/refresh/cme?product=${product}`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error || 'Yenileme başarısız');
+      await loadDataSources();
+      setDsMsg({ text: `${product}: ${d.expiries} vade çekildi (${d.fetchedISO}).`, error: false });
+    } catch (e) {
+      setDsMsg({ text: e instanceof Error ? e.message : 'Yenileme başarısız', error: true });
+    } finally {
+      setDsBusy(null);
+    }
+  };
 
   const saveUsdTryToServer = async () => {
     setSavingRate(true);
@@ -140,6 +181,51 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Veri Kaynağı (IV Yüzeyi)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-[11px] text-zinc-500">
+            Her ürünün oynaklık yüzeyi Yahoo (ETF opsiyonları, canlıya yakın) veya CME COMEX
+            (vadeli settlement, günlük) kaynağından üretilir. CME settlement günde bir kez
+            (seans kapanışında) oluşur; &quot;CME&apos;den Yenile&quot; ile çekilen yüzey veritabanına
+            yazılır ve site her açılışta anında oradan okur.
+          </p>
+          {dsItems.map(item => (
+            <div key={item.product} className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">
+              <div className="min-w-[120px]">
+                <p className="font-medium text-sm">{item.product}</p>
+                <p className="text-[11px] text-zinc-500">
+                  {item.source === 'cme'
+                    ? (item.cmeFetchedISO ? `CME: ${item.cmeFetchedISO} · ${item.cmeExpiries} vade` : 'CME: henüz veri çekilmedi')
+                    : 'Yahoo (ETF) yüzeyi aktif'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select value={item.source} onValueChange={v => changeSource(item.product, v === 'cme' ? 'cme' : 'yahoo')}>
+                  <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="yahoo">Yahoo (ETF)</SelectItem>
+                    <SelectItem value="cme" disabled={!item.cmeSupported}>CME COMEX</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button" variant="outline" size="sm"
+                  onClick={() => refreshCme(item.product)}
+                  disabled={!item.cmeSupported || dsBusy === item.product}
+                >
+                  {dsBusy === item.product ? 'Çekiliyor…' : "CME'den Yenile"}
+                </Button>
+              </div>
+            </div>
+          ))}
+          {dsMsg && (
+            <p className={`text-[11px] ${dsMsg.error ? 'text-rose-500' : 'text-emerald-500'}`}>{dsMsg.text}</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
