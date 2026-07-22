@@ -335,6 +335,10 @@ export default function PricingPage() {
                     </div>
                   </div>
                 </>
+              ) : feed.loading ? (
+                <div className="p-4 rounded-lg border border-zinc-800 bg-zinc-900/30 flex items-center gap-2.5">
+                  <span className="text-sm text-zinc-400 animate-pulse">Piyasa verisi yükleniyor…</span>
+                </div>
               ) : (
                 <div className="p-4 rounded-lg border border-amber-900/50 bg-amber-950/20 flex items-start gap-2.5">
                   <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500 mt-0.5" />
@@ -394,7 +398,7 @@ export default function PricingPage() {
                </div>
                      ) : (
                <div className="text-muted-foreground text-sm">
-                 {priceable ? "Hesaplanamıyor" : "Kote opsiyon yok — Greeks üretilmiyor."}
+                 {feed.loading ? "Yükleniyor…" : priceable ? "Hesaplanamıyor" : "Kote opsiyon yok — Greeks üretilmiyor."}
                </div>
              )}
           </CardContent>
