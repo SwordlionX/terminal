@@ -110,7 +110,7 @@ export async function addManualTradeAction(customerId: string, data: ManualTrade
 
   revalidatePath(`/customers/${customerId}`);
   revalidatePath("/customers");
-  revalidatePath("/risk");
+  revalidatePath("/margin");
 }
 
 export async function deleteTradeAction(customerId: string, tradeId: string) {
@@ -118,7 +118,7 @@ export async function deleteTradeAction(customerId: string, tradeId: string) {
   await db.activity.log(customerId, "Other", "İşlem silindi.");
   revalidatePath(`/customers/${customerId}`);
   revalidatePath("/customers");
-  revalidatePath("/risk");
+  revalidatePath("/margin");
 }
 
 export async function settleTradeAction(customerId: string, tradeId: string, expirySpot: number) {
@@ -150,5 +150,5 @@ export async function settleTradeAction(customerId: string, tradeId: string, exp
 
   revalidatePath(`/customers/${customerId}`);
   revalidatePath("/customers");
-  revalidatePath("/risk");
+  revalidatePath("/margin");
 }

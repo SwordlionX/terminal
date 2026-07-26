@@ -281,11 +281,23 @@ export async function loadCmeSurface(product: string): Promise<VolSurface | null
   return val;
 }
 
-/** Ürünün aktif veri kaynağı ('yahoo' | 'cme'). Varsayılan: yahoo. Önbelleklenmez (bkz. yukarı). */
+/**
+ * Ürünün aktif veri kaynağı. VARSAYILAN: CME COMEX (destekleniyorsa).
+ *
+ * CME, vadeli settlement'tan gelen gözlemlenen forward'ı taşır ve ETF vekili üzerinden
+ * geçmez — asıl kaynak odur. Yahoo/ETF yolu bilinçli bir tercih olarak kalır: yalnız
+ * kv'de açıkça 'yahoo' yazıyorsa kullanılır. CME'yi desteklemeyen bir ürün eklenirse
+ * (ör. platin) o üründe otomatik olarak Yahoo'ya düşer.
+ *
+ * Önbelleklenmez (bkz. yukarı): önbelleklenirse Ayarlar'dan kaynak değiştirmek ekrana
+ * TTL boyunca yansımıyordu.
+ */
 export async function getDataSource(product: string): Promise<'yahoo' | 'cme'> {
+  const key = product.toUpperCase();
   const c = await dbc();
-  const r = await c.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [srcKey(product.toUpperCase())] });
-  return r.rows.length && String(r.rows[0].v) === 'cme' ? 'cme' : 'yahoo';
+  const r = await c.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [srcKey(key)] });
+  if (r.rows.length && String(r.rows[0].v) === 'yahoo') return 'yahoo';
+  return cmeSupported(key) ? 'cme' : 'yahoo';
 }
 
 export async function setDataSource(product: string, src: 'yahoo' | 'cme'): Promise<void> {

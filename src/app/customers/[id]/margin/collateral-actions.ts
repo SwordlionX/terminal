@@ -36,7 +36,7 @@ export async function addCustomerCollateral(customerId: string, data: {
 
   revalidatePath(`/customers/${customerId}/margin`);
   revalidatePath(`/customers/${customerId}`);
-  revalidatePath("/risk");
+  revalidatePath("/margin");
   revalidatePath("/dashboard");
 }
 
@@ -46,6 +46,6 @@ export async function removeCustomerCollateral(customerId: string, collateralId:
 
   revalidatePath(`/customers/${customerId}/margin`);
   revalidatePath(`/customers/${customerId}`);
-  revalidatePath("/risk");
+  revalidatePath("/margin");
   revalidatePath("/dashboard");
 }

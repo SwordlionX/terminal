@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PositionCard } from "@/features/pricing/position-card";
 import { ScenarioAnalysis } from "@/features/pricing/scenario-analysis";
-import { BarrierOptions } from "@/features/pricing/barrier-options";
+import { BarrierInputs, BarrierResult, useBarrierPricing } from "@/features/pricing/barrier-options";
 import { SmileChart } from "@/features/pricing/smile-chart";
 import { usePricingModel, formatCurrency, formatNumber } from "@/features/pricing/use-pricing-model";
 import { TrendingUpDown, Shield, AlertTriangle } from "lucide-react";
@@ -72,6 +72,17 @@ export default function PricingPage() {
   const [booking, setBooking] = useState(false);
   const [bookOpen, setBookOpen] = useState(false);
   const [showBarrier, setShowBarrier] = useState(false);
+
+  // Bariyer durumu BURADA tutulur: girdi paneli sol kartta, prim sağ kartta duruyor.
+  const barrier = useBarrierPricing({
+    spot: barrierSpot,
+    strike: md.strike,
+    tYears,
+    rate: md.rate,
+    lease: barrierLease,
+    vol: effVol,
+    volAtLevel,
+  });
 
   // Müşteri listesi (kaydetme formu için)
   useEffect(() => {
@@ -169,8 +180,11 @@ export default function PricingPage() {
               <Select value={md.product} onValueChange={(v) => md.setField('product', v || 'XAU')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="XAU">XAU/USD (Altın — GLD smile)</SelectItem>
-                  <SelectItem value="XAG">XAG/USD (Gümüş — SLV smile)</SelectItem>
+                  {/* Yüzeyin kaynağı burada YAZILMAZ (eskiden "GLD smile" / "SLV smile" yazıyordu):
+                      kaynak artık Ayarlar'dan seçiliyor ve varsayılan CME. Aktif kaynak, altta
+                      smile kartının başlığında gerçek haliyle gösteriliyor. */}
+                  <SelectItem value="XAU">XAU/USD (Altın)</SelectItem>
+                  <SelectItem value="XAG">XAG/USD (Gümüş)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -281,7 +295,8 @@ export default function PricingPage() {
               </div>
             </div>
 
-            {/* Bariyer aç/kapa — işaretlenince prim kartında bariyer paneli görünür */}
+            {/* Bariyer aç/kapa — işaretlenince GİRDİ paneli hemen altta, PRİM ise
+                sağdaki "Prim & Değerleme" kartında vanilya priminin ardında görünür. */}
             <div className="flex items-center gap-2 pt-2 border-t border-border/50 mt-2">
               <Checkbox
                 id="showBarrier"
@@ -290,6 +305,12 @@ export default function PricingPage() {
               />
               <Label htmlFor="showBarrier" className="text-sm cursor-pointer">Bariyer Opsiyonu Ekle (Knock-In / Knock-Out)</Label>
             </div>
+
+            {showBarrier && (
+              <div className="pt-3 border-t border-border/50">
+                <BarrierInputs state={barrier} />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -366,18 +387,11 @@ export default function PricingPage() {
                 </div>
               )}
 
-              {/* Bariyer Opsiyonu — sol karttaki tik işaretliyken Call/Put priminin altında */}
-              {showBarrier && (
+              {/* Bariyer primi — girdiler sol karttaki panelde, sonuç burada vanilya
+                  priminin hemen ardında (aynı dil: ons + yüzde + toplam + vanilya farkı). */}
+              {showBarrier && barrier.calcResult && (
                 <div className="mt-4 pt-4 border-t border-zinc-800">
-                  <BarrierOptions
-                    spot={barrierSpot}
-                    strike={md.strike}
-                    tYears={tYears}
-                    rate={md.rate}
-                    lease={barrierLease}
-                    vol={effVol}
-                    volAtLevel={volAtLevel}
-                  />
+                  <BarrierResult state={barrier} contractSize={md.contractSize} detailed />
                 </div>
               )}
 

@@ -37,9 +37,18 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
   const [error, setError] = useState<{ product: string; message: string } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Faiz gecikmeli izlenir: alandaki her tuş vuruşu ayrı bir istek açmasın. Faiz yüzeyi
+  // artık yeniden kurmuyor (yüzey önceden kurulu gelir), yalnız "hangi faizle kuruldu"
+  // uyarısının karşılaştırmasına giriyor — 400 ms beklemek bedelsiz.
+  const [debouncedRate, setDebouncedRate] = useState(rate);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedRate(rate), 400);
+    return () => clearTimeout(id);
+  }, [rate]);
+
   const fetchFeed = useCallback(async () => {
     try {
-      const res = await fetch(`/api/market?product=${product}&rate=${rate}`, { cache: 'no-store' });
+      const res = await fetch(`/api/market?product=${product}&rate=${debouncedRate}`, { cache: 'no-store' });
       const j = await res.json();
       // Cevap, isteği açan ürünle etiketlenerek saklanır. Geç dönen bir XAU cevabı artık
       // XAG ekranına sızamaz — eskiden bu yüzden gümüşteyken ekrana PAXG (altın) fiyatı
@@ -58,7 +67,7 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
     } catch {
       setError({ product: product.toUpperCase(), message: 'Piyasa verisi alınamadı' });
     }
-  }, [product, rate]);
+  }, [product, debouncedRate]);
 
   useEffect(() => {
     const initial = setTimeout(fetchFeed, 0);

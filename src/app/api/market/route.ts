@@ -23,13 +23,13 @@ export async function GET(request: Request) {
         const r = isFinite(rate) ? rate : 0.05;
         const surface = await getSurface(product, r);
         const snap = await loadSnapshot();
-        // CME yüzeyi yenileme anında SABİT bir faizle kurulur ve istek anında yeniden
-        // kurulamaz (ham settlement verisi saklanmıyor). Kullanıcı faizi değiştirdiğinde
-        // Yahoo yolu yeniden kurar, CME yolu kuramaz — bu fark artık YUTULMUYOR, ekrana
-        // taşınıyor. IV'ler yüzeyin kendi faiziyle çözüldü; sapma küçük ama gerçektir.
+        // Yüzeyler (HEM CME HEM Yahoo) yenileme anında sabit bir faizle kurulur; istek
+        // yolunda yeniden kurulmazlar — o iş ölçülen 11 saniyeydi ve ekranın açılışını
+        // bekletiyordu. Girili faiz farklıysa bu YUTULMAZ, ekrana taşınır: hem IV'ler hem
+        // moneyness ekseninin forward'ı yüzeyin kendi faiziyle hesaplanmıştır.
         const builtR = surface?.builtWithR;
         const rateNote = builtR != null && Math.abs(builtR - r) > 0.0025
-          ? `Bu vol yüzeyi %${(builtR * 100).toFixed(2)} faizle kuruldu; ekranda %${(r * 100).toFixed(2)} girili. IV'ler yüzeyin faiziyle çözülmüştür (yüzey istek anında yeniden kurulamaz).`
+          ? `Bu vol yüzeyi %${(builtR * 100).toFixed(2)} faizle kuruldu; ekranda %${(r * 100).toFixed(2)} girili. IV'ler ve moneyness ekseni yüzeyin faiziyle hesaplandı — yüzey istek anında yeniden kurulmuyor (ekran açılışını 11 sn bekletiyordu).`
           : null;
         return { surface, snapshotISO: surface?.fetchedISO || snap?.fetchedISO || null, dataError: null as string | null, rateNote };
       } catch (e) {

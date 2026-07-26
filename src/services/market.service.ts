@@ -22,12 +22,35 @@ interface SpotCacheEntry { price: number; at: number; source: string }
 const spotCache: Record<string, SpotCacheEntry> = {};
 
 let snapshotMem: YahooSnapshot | null = null;
-const surfaceMem: Record<string, VolSurface> = {};
+
+/**
+ * Kurulmuş Yahoo/ETF yüzeyleri — süreç-içi önbellek (sembol -> yüzey).
+ * ÖNBELLEK ANAHTARI ARTIK FAİZ İÇERMİYOR: yüzey yenileme anında REF_RATE ile bir kez
+ * kurulup veritabanına yazılıyor (CME yolundaki gibi). Eskiden anahtar `sembol@faiz`'di
+ * ve kullanıcı faiz alanında tek rakam değiştirdiğinde 11 saniyelik binom inversiyonu
+ * baştan koşuyordu. Faiz uyuşmazlığı artık /api/market'in `rateNote`'uyla bildiriliyor.
+ */
+const surfaceMem: Record<string, { at: number; val: VolSurface }> = {};
+const SURFACE_TTL_MS = 60 * 1000;
+
+/** Yüzeyin kurulduğu referans faiz. Değiştirilirse yeni yenilemede geçerli olur. */
+const REF_RATE = 0.05;
+
+const ySurfKey = (sym: string) => `yahoo_surface_${sym.toUpperCase()}`;
+
+// Spot çağrısı ölçüldü: sağlıklı durumda ~250 ms. Zaman aşımı OLMADAN Yahoo takıldığında
+// tüm /api/market isteği (dolayısıyla ekranın açılışı) onu bekliyordu. Sınır konunca en
+// kötü durumda sıradaki sembole, o da olmazsa eski önbelleğe düşülür.
+const SPOT_TIMEOUT_MS = 4000;
 
 async function fetchChartPrice(symbol: string): Promise<number | null> {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
-    const res = await fetch(url, { headers: { 'User-Agent': UA }, cache: 'no-store' });
+    const res = await fetch(url, {
+      headers: { 'User-Agent': UA },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
+    });
     if (!res.ok) return null;
     const j = await res.json();
     const p = j?.chart?.result?.[0]?.meta?.regularMarketPrice;
@@ -105,10 +128,41 @@ export async function saveSnapshot(snap: YahooSnapshot): Promise<void> {
   });
 }
 
+/** Kurulmuş Yahoo/ETF yüzeyini kalıcı yazar (ham zincirlerin yanına, ayrı anahtara). */
+async function saveYahooSurface(sym: string, surface: VolSurface): Promise<void> {
+  surfaceMem[sym] = { at: Date.now(), val: surface };
+  const c = await dbc();
+  await c.execute({
+    sql: 'INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v',
+    args: [ySurfKey(sym), JSON.stringify(surface)],
+  });
+}
+
+async function loadYahooSurface(sym: string): Promise<VolSurface | null> {
+  const hit = surfaceMem[sym];
+  if (hit && Date.now() - hit.at < SURFACE_TTL_MS) return hit.val;
+
+  const c = await dbc();
+  const r = await c.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [ySurfKey(sym)] });
+  if (!r.rows.length) return null;
+  const val = JSON.parse(String(r.rows[0].v)) as VolSurface;
+  surfaceMem[sym] = { at: Date.now(), val };
+  return val;
+}
+
 /**
- * Ürün için de-Amerikanize IV yüzeyi.
- * Aktif kaynak 'cme' ise DB'deki CME settlement yüzeyi doğrudan döner (refresh anında
- * kurulmuştur — burada yeniden hesaplama yok). Aksi halde Yahoo/ETF yüzeyi kurulur.
+ * Ürün için de-Amerikanize IV yüzeyi. HER İKİ kaynakta da yüzey ÖNCEDEN KURULMUŞTUR;
+ * burada ağır hesap yapılmaz — istek yolunda yalnız okuma vardır.
+ *
+ * Neden: Yahoo yüzeyi eskiden her istekte sıfırdan kuruluyordu. Amerikan opsiyonlarının
+ * de-Amerikanizasyonu (200 adımlı binom + bisection, ~1900 kotasyon) ÖLÇÜLDÜ: GLD 11.3 sn,
+ * SLV 5.4 sn. Üstelik önbellek anahtarı faiz içerdiği için faiz alanında tek rakam
+ * değiştirmek bunu baştan tetikliyordu. Artık yüzey yenileme anında bir kez kurulup
+ * `yahoo_surface_<SEMBOL>` anahtarına yazılıyor; okuma milisaniyeler sürüyor.
+ *
+ * `r` yalnızca eski veriden (bu değişiklikten önce alınmış snapshot) yüzey kurmak
+ * gerekirse kullanılır. Kurulu yüzeyin faizi `builtWithR`'da taşınır ve ekranda girili
+ * faizle uyuşmuyorsa /api/market bunu `rateNote` olarak bildirir.
  */
 export async function getSurface(product: string, r: number): Promise<VolSurface | null> {
   const key = product.toUpperCase();
@@ -118,15 +172,18 @@ export async function getSurface(product: string, r: number): Promise<VolSurface
 
   const sym = PRODUCT_SURFACE_MAP[key];
   if (!sym) return null;
-  const cacheKey = `${sym}@${r.toFixed(4)}`;
-  if (surfaceMem[cacheKey]) return surfaceMem[cacheKey];
 
+  const stored = await loadYahooSurface(sym);
+  if (stored) return stored;
+
+  // Kurulu yüzey yok (bu değişiklikten önce çekilmiş snapshot). Bir kez kurulur ve
+  // KALICI olarak yazılır — sonraki açılışlar yeniden beklemez.
   const snap = await loadSnapshot();
   const prod = snap?.products?.[sym];
   if (!snap || !prod) return null;
 
   const surface = buildSurface(prod, r, snap.fetchedISO);
-  surfaceMem[cacheKey] = surface;
+  await saveYahooSurface(sym, surface);
   return surface;
 }
 
@@ -221,5 +278,15 @@ export async function refreshSnapshot(): Promise<YahooSnapshot> {
   }
 
   await saveSnapshot(out);
+
+  // Ağır iş BURADA yapılır, kullanıcının önünde değil: de-Amerikanize yüzeyler yenileme
+  // anında bir kez kurulup kalıcı yazılır (CME yolundaki modelin aynısı). Bir sembol
+  // kurulamazsa diğeri yine de yazılır — yenilemenin tamamı çöpe gitmez.
+  for (const [sym, prod] of Object.entries(out.products)) {
+    try {
+      await saveYahooSurface(sym, buildSurface(prod, REF_RATE, out.fetchedISO));
+    } catch { /* bu sembolde yüzey kurulamadı; getSurface gerekirse tekrar dener */ }
+  }
+
   return out;
 }

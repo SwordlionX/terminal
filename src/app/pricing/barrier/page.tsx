@@ -36,6 +36,8 @@ export default function BarrierPricingPage() {
         lease={barrierLease}
         vol={effVol}
         volAtLevel={volAtLevel}
+        contractSize={md.contractSize}
+        detailed
       />
     </div>
   );

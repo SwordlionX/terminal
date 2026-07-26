@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Calculator, Briefcase,
-  ShieldAlert, Settings, PieChart, ChevronDown,
+  ShieldAlert, Settings, ChevronDown,
   TrendingUpDown, Shield
 } from "lucide-react";
 import {
@@ -38,8 +38,7 @@ const items = [
       { title: "Delta Hedge", url: "/pricing/delta-hedge", icon: Shield },
     ],
   },
-  { title: "Risk Merkezi", url: "/risk", icon: ShieldAlert },
-  { title: "Teminat (Margin)", url: "/margin", icon: PieChart },
+  { title: "Risk ve Teminat", url: "/margin", icon: ShieldAlert },
   { title: "İşlemler", url: "/trades", icon: Briefcase },
   { title: "Ayarlar", url: "/settings", icon: Settings },
 ];

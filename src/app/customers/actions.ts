@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 export async function deleteCustomerAction(id: string) {
   await db.customers.delete(id);
   revalidatePath("/customers");
-  revalidatePath("/risk");
+  revalidatePath("/margin");
 }
 
 export async function createCustomerAction(formData: FormData) {
@@ -32,6 +32,6 @@ export async function createCustomerAction(formData: FormData) {
   await db.activity.log(customer.id, "Customer Created", "Müşteri sisteme eklendi.");
 
   revalidatePath("/customers");
-  revalidatePath("/risk");
+  revalidatePath("/margin");
   revalidatePath("/dashboard");
 }

@@ -16,6 +16,11 @@ export function usePricingModel() {
   const md = useMarketData();
   const feed = useMarketFeed(md.product, md.rate / 100);
   const prevProduct = useRef(md.product);
+  // Canlı spot bu oturumda HİÇ uygulanmadı mı? Strike'ın ATM'ye çekilmesi eskiden yalnız
+  // ÜRÜN DEĞİŞİMİNE bağlıydı; açılışta ürün zaten varsayılan (XAU) olduğu için koşul hiç
+  // saglanmıyor ve strike store'daki eski varsayılanda (3700) kalıyordu — spot 4058 iken
+  // ekranda derin ITM bir opsiyon fiyatlanıyordu.
+  const spotApplied = useRef(false);
 
   // Canlı spot geldiğinde otomatik uygula (5 dk'da bir tazelenir).
   // "Manuel" tiki işaretliyse canlı veri kullanıcının girdiği spotu EZMEZ.
@@ -26,9 +31,12 @@ export function usePricingModel() {
     if (!md.manualSpot && feed.spot?.price) {
       const price = Math.round(feed.spot.price * 100) / 100;
       md.setField("spot", price);
-      if (prevProduct.current !== md.product) {
+      // Strike ATM'ye çekilir: (a) ürün değiştiyse, (b) canlı spot bu oturumda İLK kez
+      // uygulanıyorsa. (b) olmadan açılışta store'un varsayılan strike'ı ekranda kalıyordu.
+      if (prevProduct.current !== md.product || !spotApplied.current) {
         md.setField("strike", price);
       }
+      spotApplied.current = true;
       // prevProduct SADECE yeni ürünün fiyatı uygulandığında ilerletilir. Besleme ürün
       // değişiminde bir an boşalıyor (use-market-feed eski ürünün verisini göstermez);
       // burada koşulsuz güncellersek, asıl fiyat geldiğinde strike ATM'ye çekilmezdi.
