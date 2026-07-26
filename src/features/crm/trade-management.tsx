@@ -33,7 +33,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
     isBarrier: false,
     barrierType: "Knock Out Up",
     barrierLevel: "",
-    barrierStyle: "Avrupa",
+    barrierStyle: "Amerikan", // tüm bariyerlerimiz sürekli gözlemli (bkz. forma düşen not)
   });
 
   const [settleSpot, setSettleSpot] = useState("");
@@ -244,12 +244,15 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                       <label className="text-[10px] text-zinc-400 uppercase tracking-wider">Bariyer Değeri</label>
                       <input type="number" step="any" className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-xs mt-1" value={formData.barrierLevel} onChange={e => setFormData({...formData, barrierLevel: e.target.value})} required={formData.isBarrier} />
                     </div>
+                    {/* Gözlem tipi SEÇİLMİYOR: bu masanın tüm bariyerleri sürekli (Amerikan)
+                        gözlemli — vade boyunca herhangi bir anda seviyeye değerse işlem ölür.
+                        Seçenek olarak durduğunda yanlışlıkla "Avrupa" kaydedilebiliyordu ve
+                        kayıt sözleşmeyle çelişiyordu; alan sabit yazılıyor. */}
                     <div>
                       <label className="text-[10px] text-zinc-400 uppercase tracking-wider">Gözlem Tipi</label>
-                      <select className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1.5 text-xs mt-1" value={formData.barrierStyle} onChange={e => setFormData({...formData, barrierStyle: e.target.value})}>
-                        <option>Avrupa</option>
-                        <option>Amerikan</option>
-                      </select>
+                      <div className="w-full bg-zinc-900/60 border border-zinc-700 rounded px-2 py-1.5 text-xs mt-1 text-zinc-300">
+                        Amerikan (sürekli)
+                      </div>
                     </div>
                   </div>
                 )}

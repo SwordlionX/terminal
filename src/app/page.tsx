@@ -60,7 +60,7 @@ function isUsMarketLikelyOpen(now: Date = new Date()): boolean {
 }
 
 export default function PricingPage() {
-  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry, volAtLevel } = usePricingModel();
+  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, barrierSpot, barrierLease, surfaceSourceLabel } = usePricingModel();
   const spotInfo = feed.spot ? spotKind(feed.spot.source) : null;
 
   // Kaydetme formu durumu
@@ -247,6 +247,9 @@ export default function PricingPage() {
                     Faiz yalnız primi iskontoda kullanılır (forward CME futures&apos;tan gelir).
                   </p>
                 )}
+                {feed.rateNote && (
+                  <p className="text-[11px] text-amber-500">{feed.rateNote}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Kira / Temettü (%)</Label>
@@ -256,8 +259,19 @@ export default function PricingPage() {
                   className={usingCmeFwd ? "opacity-60 font-mono" : ""}
                 />
                 {usingCmeFwd ? (
+                  // Buradaki "piyasa carry'si ≈ %X" sayısı KALDIRILDI: birden çok opsiyon
+                  // vadesi aynı futures'a yazıldığı için opsiyon vadelerinden ölçülen carry
+                  // sistematik olarak şişiyordu (bkz. surfaceForwardCarry). Forward zaten
+                  // futures'tan geldiği için fiyatı etkilemiyor, yalnız bilgi notuydu.
                   <p className="text-[11px] text-amber-500">
-                    CME forward&apos;ı aktif — kira prime girmiyor{cmeCarry != null ? ` (piyasa carry'si ≈ %${(cmeCarry * 100).toFixed(1)})` : ""}.
+                    CME forward&apos;ı aktif — kira prime girmiyor (forward futures settlement&apos;ından geliyor).
+                  </p>
+                ) : md.manualSpot ? (
+                  // Manuel spot açıkken CME forward'ı bilinçli olarak DEVRE DIŞI bırakılır
+                  // (kullanıcının sabitlediği spot ezilmesin). Sebebi "CME forward yok"
+                  // diye göstermek yanıltıcıydı — gerçek sebep bu tik.
+                  <p className="text-[11px] text-zinc-500">
+                    Manuel spot girili — forward girdiğiniz spot + kira&apos;dan türetiliyor.
                   </p>
                 ) : feed.surface?.symbol === md.product && (
                   <p className="text-[11px] text-zinc-500">
@@ -356,11 +370,11 @@ export default function PricingPage() {
               {showBarrier && (
                 <div className="mt-4 pt-4 border-t border-zinc-800">
                   <BarrierOptions
-                    spot={pricingSpot}
+                    spot={barrierSpot}
                     strike={md.strike}
                     tYears={tYears}
                     rate={md.rate}
-                    lease={md.lease}
+                    lease={barrierLease}
                     vol={effVol}
                     volAtLevel={volAtLevel}
                   />
@@ -409,9 +423,10 @@ export default function PricingPage() {
       {/* Volatilite smile kaynağı — kullanılan vol'ün hangi gözlemlenen noktalardan geldiği */}
       <SmileChart
         surface={feed.surface}
-        spot={md.spot}
+        fwd={fwd}
         strike={md.strike}
         daysToExpiry={daysToExpiry}
+        sourceLabel={surfaceSourceLabel}
       />
 
       <div className="mt-6">

@@ -21,7 +21,16 @@ export default function SettingsPage() {
   const [rateMsg, setRateMsg] = useState<{ text: string; error: boolean } | null>(null);
 
   // Veri kaynağı (Yahoo/CME) durumu — sunucuda kv tablosunda saklanır.
-  interface DsItem { product: string; source: 'yahoo' | 'cme'; cmeSupported: boolean; cmeFetchedISO: string | null; cmeExpiries: number }
+  interface DsItem {
+    product: string;
+    source: 'yahoo' | 'cme';
+    cmeSupported: boolean;
+    cmeFetchedISO: string | null;
+    cmeExpiries: number;
+    yahooSymbol: string | null;
+    yahooFetchedISO: string | null;
+    yahooExpiries: number;
+  }
   const [dsItems, setDsItems] = useState<DsItem[]>([]);
   const [dsBusy, setDsBusy] = useState<string | null>(null); // yenilenen ürün
   const [dsMsg, setDsMsg] = useState<{ text: string; error: boolean } | null>(null);
@@ -37,6 +46,36 @@ export default function SettingsPage() {
     loadDataSources();
   }, []);
 
+  /**
+   * Seçili kaynaktan veriyi ÇEKER ve yüzeyi yeniden kurar.
+   * - Yahoo: ETF opsiyon zincirleri baştan çekilir; tek istek HEM altını (GLD) HEM gümüşü
+   *   (SLV) yeniler — snapshot ortak olduğu için ürün ayrımı yok.
+   * - CME: yalnız o ürünün settlement yüzeyi yeniden kurulur.
+   * İki kaynak veritabanında ayrı yazılır; biri diğerini ezmez.
+   */
+  const refreshSource = async (product: string, source: 'yahoo' | 'cme') => {
+    setDsBusy(product);
+    setDsMsg(null);
+    try {
+      const url = source === 'cme' ? `/api/market/refresh/cme?product=${product}` : '/api/market/refresh';
+      const res = await fetch(url, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error || 'Yenileme başarısız');
+      await loadDataSources();
+      setDsMsg({
+        text: source === 'cme'
+          ? `${product}: CME'den ${d.expiries} vade çekildi (${d.fetchedISO}).`
+          : `Yahoo zincirleri yenilendi (${d.fetchedISO}) — ${Object.entries(d.expiries || {}).map(([k, v]) => `${k}: ${v} vade`).join(', ')}.`,
+        error: false,
+      });
+    } catch (e) {
+      setDsMsg({ text: e instanceof Error ? e.message : 'Yenileme başarısız', error: true });
+    } finally {
+      setDsBusy(null);
+    }
+  };
+
+  /** Kaynağı değiştirir ve HEMEN o kaynaktan taze veri çekip yüzeyi yeniden kurar. */
   const changeSource = async (product: string, source: 'yahoo' | 'cme') => {
     setDsMsg(null);
     try {
@@ -47,24 +86,9 @@ export default function SettingsPage() {
       const d = await res.json();
       if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
       await loadDataSources();
+      await refreshSource(product, source);
     } catch (e) {
       setDsMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
-    }
-  };
-
-  const refreshCme = async (product: string) => {
-    setDsBusy(product);
-    setDsMsg(null);
-    try {
-      const res = await fetch(`/api/market/refresh/cme?product=${product}`, { method: 'POST' });
-      const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d.error || 'Yenileme başarısız');
-      await loadDataSources();
-      setDsMsg({ text: `${product}: ${d.expiries} vade çekildi (${d.fetchedISO}).`, error: false });
-    } catch (e) {
-      setDsMsg({ text: e instanceof Error ? e.message : 'Yenileme başarısız', error: true });
-    } finally {
-      setDsBusy(null);
     }
   };
 
@@ -192,6 +216,10 @@ export default function SettingsPage() {
             (vadeli settlement, günlük) kaynağından üretilir. CME settlement günde bir kez
             (seans kapanışında) oluşur; kurulan yüzey veritabanına yazılır ve site her açılışta
             anında oradan okur — sayfa açılışında vol hesabı beklenmez.
+            <span className="text-zinc-400"> Kaynağı değiştirdiğinizde o kaynaktan hemen taze veri
+            çekilir ve yüzey baştan kurulur.</span> İki kaynak veritabanında ayrı saklanır; biri
+            yenilenince diğeri bozulmaz. Yahoo yenilemesi tek seferde hem altını (GLD) hem
+            gümüşü (SLV) tazeler.
           </p>
           <p className="text-[11px] text-zinc-500">
             <span className="text-zinc-400">Günlük yenileme GitHub Actions&apos;ta koşar</span> (hafta içi 21:00 UTC).
@@ -201,12 +229,14 @@ export default function SettingsPage() {
           </p>
           {dsItems.map(item => (
             <div key={item.product} className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">
-              <div className="min-w-[120px]">
-                <p className="font-medium text-sm">{item.product}</p>
-                <p className="text-[11px] text-zinc-500">
-                  {item.source === 'cme'
-                    ? (item.cmeFetchedISO ? `CME: ${item.cmeFetchedISO} · ${item.cmeExpiries} vade` : 'CME: henüz veri çekilmedi')
-                    : 'Yahoo (ETF) yüzeyi aktif'}
+              <div className="min-w-[180px]">
+                <p className="font-medium text-sm">{item.product === 'XAU' ? 'XAU (Altın)' : item.product === 'XAG' ? 'XAG (Gümüş)' : item.product}</p>
+                {/* İki kaynağın durumu da gösterilir; aktif olan vurgulanır. */}
+                <p className={`text-[11px] ${item.source === 'cme' ? 'text-emerald-500' : 'text-zinc-600'}`}>
+                  CME COMEX: {item.cmeFetchedISO ? `${item.cmeFetchedISO} · ${item.cmeExpiries} vade` : 'veri yok'}
+                </p>
+                <p className={`text-[11px] ${item.source === 'yahoo' ? 'text-emerald-500' : 'text-zinc-600'}`}>
+                  Yahoo {item.yahooSymbol ?? ''}: {item.yahooFetchedISO ? `${item.yahooFetchedISO} · ${item.yahooExpiries} vade` : 'veri yok'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -219,10 +249,12 @@ export default function SettingsPage() {
                 </Select>
                 <Button
                   type="button" variant="outline" size="sm"
-                  onClick={() => refreshCme(item.product)}
-                  disabled={!item.cmeSupported || dsBusy === item.product}
+                  onClick={() => refreshSource(item.product, item.source)}
+                  disabled={dsBusy === item.product}
                 >
-                  {dsBusy === item.product ? 'Çekiliyor…' : "CME'den Yenile"}
+                  {dsBusy === item.product
+                    ? 'Çekiliyor…'
+                    : item.source === 'cme' ? "CME'den Yenile" : "Yahoo'dan Yenile"}
                 </Button>
               </div>
             </div>

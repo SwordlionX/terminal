@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useMarketData } from "@/store/marketData";
 import { useMarketFeed } from "@/hooks/use-market-feed";
-import { surfaceVol, surfaceForward, surfaceForwardCarry } from "@/lib/vol/surface";
+import { surfaceVol, surfaceForward } from "@/lib/vol/surface";
 import { gk, greeks } from "@/lib/math";
 
 /**
@@ -89,7 +89,9 @@ export function usePricingModel() {
 
   // CME forward aktifken forward futures'tan gelir → kira prime girmez; piyasa carry'si
   // (forward eğrisinden) ekranda bilgi olarak gösterilir.
-  const cmeCarry = usingCmeFwd && feed.surface ? surfaceForwardCarry(feed.surface) : null;
+  // NOT: "piyasa carry'si" gösterimi kaldırıldı — metallerde birden çok opsiyon vadesi aynı
+  // futures'a yazıldığı için opsiyon vadelerinden ölçülen carry sistematik olarak şişiyor
+  // (bkz. surfaceForwardCarry). Forward zaten futures'tan geldiğinden fiyata etkisi yok.
 
   /**
    * Herhangi bir FİYAT SEVİYESİ için smile vol'ü (%). Bariyer paneli bunu bariyer
@@ -103,7 +105,36 @@ export function usePricingModel() {
     return iv != null && isFinite(iv) ? iv * 100 : null;
   };
 
-  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry, volAtLevel };
+  /**
+   * Yüzeyin hangi kaynaktan geldiği (ekranda smile başlığında gösterilir). Gözlemlenen
+   * futures forward'ı (`f`) YALNIZ CME yüzeyinde bulunur — ayrı bir alan/istek
+   * gerektirmeden güvenilir ayırt edici budur.
+   */
+  const surfaceIsCme = !!feed.surface?.expiries?.[0]?.f;
+  const surfaceSourceLabel = feed.surface
+    ? (surfaceIsCme ? `CME COMEX ${feed.surface.symbol} settlement` : `Yahoo ${feed.surface.symbol} (ETF) yüzeyi`)
+    : undefined;
+
+  /**
+   * BARİYER için spot/carry. Vanilyada forward'ı sentetik spotla (pricingSpot) kurmak
+   * zararsızdır — fiyat yalnız forward'a bakar. Bariyer ise GERÇEK spot yolunu izler:
+   * hem "bariyere değdi mi" eşiği hem de bariyere olan mesafe gerçek seviyeyle ölçülür.
+   * Sentetik spot gerçek spottan ~%0.3 sapıyordu ve bu sapma bariyere yaklaştıkça
+   * primde %1–9'a kadar büyüyordu.
+   *
+   * Çözüm: spot GERÇEK kalır, carry forward'dan ima edilir — q = r − ln(F/S)/T. Bu, aynı
+   * forward'ı (dolayısıyla aynı vanilya fiyatını) verirken bariyer mesafesini bozmaz.
+   * CME forward'ı yoksa ima edilen q zaten kullanıcının girdiği kiraya eşit çıkar.
+   */
+  const barrierSpot = md.spot;
+  const impliedQ = (() => {
+    if (!(barrierSpot > 0) || !(fwd > 0) || tYears <= 0) return md.lease / 100;
+    const q = md.rate / 100 - Math.log(fwd / barrierSpot) / tYears;
+    return isFinite(q) ? q : md.lease / 100;
+  })();
+  const barrierLease = impliedQ * 100; // BarrierOptions yüzde bekler
+
+  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, barrierSpot, barrierLease, surfaceSourceLabel };
 }
 
 export const formatCurrency = (val: number) =>

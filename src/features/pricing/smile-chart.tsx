@@ -6,9 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Props {
   surface: VolSurface | null;
-  spot: number;
+  /** Fiyatlamada kullanılan FORWARD. Yüzeyin ekseni forward-moneyness (K/F) olduğu için
+   *  işaretçi de K/F ile konumlanmalı; K/S kullanmak markörü eğriden kaydırıyordu. */
+  fwd: number;
   strike: number;
   daysToExpiry: number;
+  /** Aktif kaynak etiketi (ör. "CME COMEX" / "Yahoo GLD"). */
+  sourceLabel?: string;
 }
 
 /** points içinde m'e göre lineer IV (aralık dışında NaN — smileAt ile aynı davranış). */
@@ -30,9 +34,9 @@ function interpIv(points: { m: number; iv: number }[], m: number): number {
  * seçilen vadeye en yakın kote smile'ın gerçek IV noktaları + girilen strike'ın
  * moneyness konumu. Strike kote aralığın dışındaysa net biçimde "kapsam dışı" gösterir.
  */
-export function SmileChart({ surface, spot, strike, daysToExpiry }: Props) {
+export function SmileChart({ surface, fwd, strike, daysToExpiry, sourceLabel }: Props) {
   const view = useMemo(() => {
-    if (!surface || surface.expiries.length === 0 || spot <= 0) return null;
+    if (!surface || surface.expiries.length === 0 || fwd <= 0) return null;
 
     // Seçilen vadeye en yakın kote vade
     let near: ExpirySmile = surface.expiries[0];
@@ -42,7 +46,9 @@ export function SmileChart({ surface, spot, strike, daysToExpiry }: Props) {
     const pts = near.points;
     if (pts.length < 2) return null;
 
-    const m0 = strike / spot;
+    // Yüzeyle AYNI koordinat: forward-moneyness. Böylece "kapsam dışı" uyarısı ekranda
+    // fiyatlayıcının (surfaceVol) gerçekten null döndüğü noktada çıkar.
+    const m0 = strike / fwd;
     const mMin = pts[0].m, mMax = pts[pts.length - 1].m;
     const inRange = m0 >= mMin && m0 <= mMax;
     const iv0 = interpIv(pts, m0);
@@ -52,7 +58,7 @@ export function SmileChart({ surface, spot, strike, daysToExpiry }: Props) {
     const ivPad = Math.max((ivMax - ivMin) * 0.15, 0.5);
 
     return { symbol: surface.symbol, near, pts, m0, mMin, mMax, inRange, iv0, ivMin: ivMin - ivPad, ivMax: ivMax + ivPad };
-  }, [surface, spot, strike, daysToExpiry]);
+  }, [surface, fwd, strike, daysToExpiry]);
 
   if (!view) {
     return (
@@ -92,7 +98,7 @@ export function SmileChart({ surface, spot, strike, daysToExpiry }: Props) {
         <CardTitle className="flex flex-wrap items-baseline gap-2">
           <span>Volatilite Smile (kaynak)</span>
           <span className="text-xs font-normal text-muted-foreground">
-            {symbol} yüzeyi · en yakın kote vade: {near.date} ({near.days.toFixed(0)}g)
+            {sourceLabel ?? `${symbol} yüzeyi`} · en yakın kote vade: {near.date} ({near.days.toFixed(0)}g)
           </span>
         </CardTitle>
       </CardHeader>
@@ -116,7 +122,7 @@ export function SmileChart({ surface, spot, strike, daysToExpiry }: Props) {
                 {t.toFixed(3)}
               </text>
             ))}
-            <text x={padL + plotW / 2} y={H - 4} textAnchor="middle" className="fill-zinc-400" fontSize={9}>Moneyness (K / S)</text>
+            <text x={padL + plotW / 2} y={H - 4} textAnchor="middle" className="fill-zinc-400" fontSize={9}>Forward-moneyness (K / F)</text>
 
             {/* smile eğrisi + noktalar */}
             <polyline points={line} fill="none" stroke="currentColor" className="text-emerald-500" strokeWidth={1.5} />

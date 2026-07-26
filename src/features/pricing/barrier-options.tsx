@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { barrierPrice, barrierGreeks } from "@/lib/math";
+import { barrierPrice, barrierGreeks, spotFiniteDiff } from "@/lib/math";
 import { vannaVolgaBarrier } from "@/lib/math/vanna-volga";
 
 interface BarrierOptionsProps {
@@ -72,16 +72,18 @@ export function BarrierOptions({
     // yoksa mevcut BS tabanlı hesaplayıcı.
     let greeks: BarrierGreekResult;
     if (vvRes) {
-      const hS = spot * 0.002, dv = 0.005, dt = 1 / 365;
-      const pu = priceAt(spot + hS, 0), pd = priceAt(spot - hS, 0);
+      const dv = 0.005, dt = 1 / 365;
+      // Delta/Gamma bariyer-korumalı sonlu farkla (bkz. spotFiniteDiff): bariyere yakınken
+      // adımlar tek taraflı atılır, süreksizlik örneklenmez.
+      const { delta, gamma } = spotFiniteDiff(spot, barrierH, s => priceAt(s, 0));
       const pT = (() => {
         const sm = smile as (k: number) => number | null;
         const res = vannaVolgaBarrier(spot, strike, barrierH, rebateR, Math.max(tYears - dt, 1e-8), r, q, barrierType, sm);
         return res ? res.price : price;
       })();
       greeks = {
-        delta: (pu - pd) / (2 * hS),
-        gamma: (pu - 2 * price + pd) / (hS * hS),
+        delta,
+        gamma,
         vega: (priceAt(spot, dv) - priceAt(spot, -dv)) / (2 * dv) / 100,
         theta: pT - price,
       };

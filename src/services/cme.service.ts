@@ -21,7 +21,7 @@ const DATASET = 'GLBX.MDP3';
 const MIN_FUT_SETTLE = 10;
 
 /**
- * Faz 1 kapsamı: yalnız gümüş.
+ * CME COMEX kökleri — altın ve gümüş.
  *  - optRoot     : ANA (aylık) opsiyon kökü — bulunamazsa o gün geçersiz sayılır.
  *  - weeklyRoots : haftalık opsiyon kökleri — yüzeyin KISA VADE ucunu doldururlar.
  *                  Aylıklar tek başına kaldığında en yakın vade ~29 güne kadar çıkabiliyor
@@ -32,6 +32,11 @@ const MIN_FUT_SETTLE = 10;
  *  - futRoot     : dayanak futures kökü (forward kaynağı).
  */
 const CME_PRODUCTS: Record<string, { optRoot: string; weeklyRoots: string[]; futRoot: string }> = {
+  XAU: {
+    optRoot: 'OG.OPT',
+    weeklyRoots: ['OG1.OPT', 'OG2.OPT', 'OG3.OPT', 'OG4.OPT', 'OG5.OPT'],
+    futRoot: 'GC.FUT',
+  },
   XAG: {
     optRoot: 'SO.OPT',
     weeklyRoots: ['SO1.OPT', 'SO2.OPT', 'SO3.OPT', 'SO4.OPT', 'SO5.OPT'],

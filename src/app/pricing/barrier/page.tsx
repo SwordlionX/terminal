@@ -5,7 +5,7 @@ import { PricingContextBar } from "@/features/pricing/pricing-context-bar";
 import { BarrierOptions } from "@/features/pricing/barrier-options";
 
 export default function BarrierPricingPage() {
-  const { md, feed, daysToExpiry, tYears, effVol } = usePricingModel();
+  const { md, feed, daysToExpiry, tYears, effVol, volAtLevel, barrierSpot, barrierLease } = usePricingModel();
 
   return (
     <div className="space-y-6">
@@ -25,13 +25,17 @@ export default function BarrierPricingPage() {
         livePrice={feed.spot?.price}
       />
 
+      {/* Girdiler ana Fiyatlama ekranıyla BİREBİR aynı olmalı: aynı bariyer iki ekranda
+          iki farklı prim veremez. Önceden burada ham kira + smile'sız (düz BS) yol
+          kullanılıyordu; artık ikisi de gerçek spot + ima edilen carry + Vanna-Volga. */}
       <BarrierOptions
-        spot={md.spot}
+        spot={barrierSpot}
         strike={md.strike}
         tYears={tYears}
         rate={md.rate}
-        lease={md.lease}
+        lease={barrierLease}
         vol={effVol}
+        volAtLevel={volAtLevel}
       />
     </div>
   );

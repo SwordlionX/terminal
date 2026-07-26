@@ -12,9 +12,8 @@ on:
         description: 'Belirli bir settlement günü (YYYY-MM-DD) — boş bırakılırsa otomatik'
         required: false
       product:
-        description: 'Ürün'
+        description: 'Ürün (boş = XAU ve XAG birlikte)'
         required: false
-        default: 'XAG'
 
 jobs:
   refresh:
@@ -30,12 +29,20 @@ jobs:
 
       - run: npm ci
 
+      # Ürün belirtilmezse ALTIN VE GÜMÜŞ ayrı ayrı yenilenir. Biri hata verirse (ör. o gün
+      # settlement yok) diğeri yine de denenir; adım sonunda hepsi başarısızsa iş kırmızı olur.
       - name: Yüzeyi yenile
         env:
           DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          PRODUCTS: ${{ github.event.inputs.product || 'XAU XAG' }}
+          DATE_ARG: ${{ github.event.inputs.date && format('--date={0}', github.event.inputs.date) || '' }}
         run: |
-          npm run refresh:cme -- \
-            --product=${{ github.event.inputs.product || 'XAG' }} \
-            ${{ github.event.inputs.date && format('--date={0}', github.event.inputs.date) || '' }}
+          ok=0
+          for p in $PRODUCTS; do
+            echo "::group::$p"
+            if npm run refresh:cme -- --product=$p $DATE_ARG; then ok=1; else echo "::warning::$p yenilenemedi"; fi
+            echo "::endgroup::"
+          done
+          [ "$ok" = "1" ] || { echo "::error::hiçbir ürün yenilenemedi"; exit 1; }

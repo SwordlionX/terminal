@@ -20,14 +20,24 @@ export async function GET(request: Request) {
     getSpot(product),
     (async () => {
       try {
-        const surface = await getSurface(product, isFinite(rate) ? rate : 0.05);
+        const r = isFinite(rate) ? rate : 0.05;
+        const surface = await getSurface(product, r);
         const snap = await loadSnapshot();
-        return { surface, snapshotISO: surface?.fetchedISO || snap?.fetchedISO || null, dataError: null as string | null };
+        // CME yüzeyi yenileme anında SABİT bir faizle kurulur ve istek anında yeniden
+        // kurulamaz (ham settlement verisi saklanmıyor). Kullanıcı faizi değiştirdiğinde
+        // Yahoo yolu yeniden kurar, CME yolu kuramaz — bu fark artık YUTULMUYOR, ekrana
+        // taşınıyor. IV'ler yüzeyin kendi faiziyle çözüldü; sapma küçük ama gerçektir.
+        const builtR = surface?.builtWithR;
+        const rateNote = builtR != null && Math.abs(builtR - r) > 0.0025
+          ? `Bu vol yüzeyi %${(builtR * 100).toFixed(2)} faizle kuruldu; ekranda %${(r * 100).toFixed(2)} girili. IV'ler yüzeyin faiziyle çözülmüştür (yüzey istek anında yeniden kurulamaz).`
+          : null;
+        return { surface, snapshotISO: surface?.fetchedISO || snap?.fetchedISO || null, dataError: null as string | null, rateNote };
       } catch (e) {
         return {
           surface: null,
           snapshotISO: null,
           dataError: e instanceof Error ? e.message : 'Yüzey verisi okunamadı',
+          rateNote: null as string | null,
         };
       }
     })(),
@@ -40,5 +50,7 @@ export async function GET(request: Request) {
     // CME kaynağında yüzeyin kendi settlement tarihi geçerli etikettir; yoksa Yahoo snapshot'ı.
     snapshotISO: surfaceRes.snapshotISO,
     dataError: surfaceRes.dataError,
+    // Yüzeyin kurulduğu faiz ile istenen faiz uyuşmuyorsa açıklama (yoksa null).
+    rateNote: surfaceRes.rateNote,
   });
 }

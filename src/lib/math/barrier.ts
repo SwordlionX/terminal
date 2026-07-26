@@ -78,15 +78,41 @@ export function barrierPrice(S: number, K: number, H: number, R: number, T: numb
   return inVal + knockInRebate(S, H, R, T, r, q, v, isUp);
 }
 
+/**
+ * Spot'a göre Delta/Gamma — sonlu fark, bariyer süreksizliğine karşı korumalı.
+ *
+ * Merkezi fark (S±h) bariyere yakınken uçlardan biri bariyerin ÖTESİNE düşüyor ve fiyat
+ * süreksizliğin diğer tarafından okunuyordu; gamma anlamsız biçimde patlıyordu (ölçüm:
+ * H=72 iken S=71.95'te gamma 2.38, S=71.99'da 6.69). Mesafe adımdan küçükse fark TEK
+ * TARAFLI alınır — üç nokta da bariyerin aynı tarafında kalır, süreksizlik hiç örneklenmez.
+ *
+ * @param f fiyat fonksiyonu (verilen spot için opsiyon değeri)
+ */
+export function spotFiniteDiff(S: number, H: number, f: (s: number) => number): { delta: number; gamma: number } {
+  const h0 = S * 0.002;
+  const gap = Math.abs(S - H);
+  if (!(H > 0) || gap > 2.5 * h0) {
+    const fu = f(S + h0), fd = f(S - h0), f0 = f(S);
+    return { delta: (fu - fd) / (2 * h0), gamma: (fu - 2 * f0 + fd) / (h0 * h0) };
+  }
+  const away = S < H ? -1 : 1;                       // adımlar bariyerden UZAĞA atılır
+  const h = Math.min(h0, Math.max(gap * 0.4, S * 1e-4));
+  const f0 = f(S), f1 = f(S + away * h), f2 = f(S + 2 * away * h);
+  return {
+    // uçtan (S) tek taraflı ikinci mertebe türev; `away` yönü işareti düzeltir
+    delta: away * (-3 * f0 + 4 * f1 - f2) / (2 * h),
+    gamma: (f2 - 2 * f1 + f0) / (h * h),
+  };
+}
+
 export function barrierGreeks(S: number, K: number, H: number, R: number, T: number, r: number, q: number, v: number, code: string, basis: number = 365) {
-  const hS = S * 0.001, dv = 0.005, dt = 1 / basis;
+  const dv = 0.005, dt = 1 / basis;
   const p = barrierPrice(S, K, H, R, T, r, q, v, code);
-  const pu = barrierPrice(S + hS, K, H, R, T, r, q, v, code);
-  const pd = barrierPrice(S - hS, K, H, R, T, r, q, v, code);
+  const { delta, gamma } = spotFiniteDiff(S, H, s => barrierPrice(s, K, H, R, T, r, q, v, code));
   return {
     price: p,
-    delta: (pu - pd) / (2 * hS),
-    gamma: (pu - 2 * p + pd) / (hS * hS),
+    delta,
+    gamma,
     vega: (barrierPrice(S, K, H, R, T, r, q, v + dv, code) - barrierPrice(S, K, H, R, T, r, q, v - dv, code)) / (2 * dv) / 100,
     theta: (barrierPrice(S, K, H, R, Math.max(T - dt, 1e-8), r, q, v, code) - p)
   };

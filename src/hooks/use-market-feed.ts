@@ -9,6 +9,8 @@ export interface MarketFeed {
   spot: { price: number; at: number; source: string } | null;
   surface: VolSurface | null;
   snapshotISO: string | null;
+  /** Yüzey, ekranda girili olandan farklı bir faizle kurulduysa açıklama (yoksa null). */
+  rateNote: string | null;
   loading: boolean;
   refreshing: boolean;
   error: string | null;
@@ -22,6 +24,7 @@ interface FeedData {
   spot: MarketFeed['spot'];
   surface: VolSurface | null;
   snapshotISO: string | null;
+  rateNote: string | null;
 }
 
 /** Fiyatlama ekranı piyasa beslemesi: güncel spot + de-Amerikanize IV yüzeyi. */
@@ -47,6 +50,7 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
         spot: j.spot ?? null,
         surface: j.surface ?? null,
         snapshotISO: j.snapshotISO ?? null,
+        rateNote: j.rateNote ?? null,
       });
       // Yüzey okunamadıysa (ör. veritabanına erişilemedi) sessizce geçilmez — spot yine
       // gösterilir ama sebep ekranda yazar. Bayat yedek veriye düşülmez.
@@ -92,6 +96,7 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
     spot: fresh?.spot ?? null,
     surface: fresh?.surface ?? null,
     snapshotISO: fresh?.snapshotISO ?? null,
+    rateNote: fresh?.rateNote ?? null,
     loading: !fresh && !activeError,
     refreshing,
     error: activeError,

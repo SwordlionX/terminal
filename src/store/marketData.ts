@@ -20,7 +20,7 @@ export interface MarketDataState {
   setProduct: (prod: string, spot: number, lease: number, vol: number) => void;
 }
 
-export const useMarketData = create<MarketDataState>((set) => {
+export const useMarketData = create<MarketDataState>()(persist((set) => {
   const today = new Date();
   const exp = new Date(today.getTime() + 90 * 24 * 3600 * 1000);
 
@@ -49,7 +49,14 @@ export const useMarketData = create<MarketDataState>((set) => {
       vol
     }))
   };
-});
+}, {
+  name: 'ucan-finans-market',
+  // YALNIZ ürün kalıcı. Sayfa yenilendiğinde gümüşten altına düşmek yanlış ölçekte
+  // strike/spot gösteriyordu. Fiyat/tarih alanları BİLİNÇLİ olarak kalıcı DEĞİL:
+  // bayat bir spot ya da geçmiş bir işlem tarihi geri yüklenirse ekran güncel
+  // görünürken eski veriyle fiyat üretir — canlı besleme her açılışta taze doldurur.
+  partialize: (s) => ({ product: s.product }),
+}));
 
 /* Ayarlar — tarayıcıda kalıcı (localStorage) */
 export interface SettingsState {

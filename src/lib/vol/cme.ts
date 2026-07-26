@@ -39,12 +39,13 @@ export interface CmeInputs {
 // kanatları eler hem de vade başına binom inversiyon sayısını sınırlar.
 const MONEY_LO = 0.75, MONEY_HI = 1.30;
 const BINOM_STEPS = 72;
-// Vade başına en fazla bu kadar strike ters çevrilir. Ham settlement 150+ strike içerebilir;
-// smile'ı temsil için bu gereksiz (ve her biri ağır Amerikan binom inversiyonu). ATM'i saran
-// dar bant tam çözünürlükte tutulur, kanatlar seyreltilir — ATM doğruluğu korunur, refresh hızlanır.
+// Kanat seyreltme yoğunluğu. Ham settlement 150+ strike içerebilir; smile'ı temsil için bu
+// gereksiz (ve her biri ağır Amerikan binom inversiyonu). ATM'i saran dar bant TAM
+// çözünürlükte tutulur, kanatlar seyreltilir — ATM doğruluğu korunur, refresh hızlanır.
+// DİKKAT: bu bir ÜST SINIR DEĞİLDİR; korunan ATM bandı buna eklenir (gözlenen: ~60 strike).
 const MAX_STRIKES = 40;
 
-/** Sıralı (m'e göre) adaylardan ATM bandını koruyup kanatları seyrelterek en fazla MAX_STRIKES seçer. */
+/** Sıralı (m'e göre) adaylardan ATM bandını TAM koruyup kanatları MAX_STRIKES yoğunluğuna seyreltir. */
 function subsampleStrikes<T extends { m: number }>(sorted: T[]): T[] {
   if (sorted.length <= MAX_STRIKES) return sorted;
   const kept: T[] = [];
@@ -121,5 +122,8 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
   }
 
   expiries.sort((a, b) => a.days - b.days);
+  // DİKKAT: `spot` alanı burada gerçek spot DEĞİL, ön vadenin futures settlement'ıdır
+  // (F). Yüzey forward-moneyness ekseninde tutulduğu için downstream bu alanı fiyatlamada
+  // kullanmaz; yalnız payload'da bilgi amaçlıdır. Gerçek spot Yahoo'dan ayrıca gelir.
   return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries, builtWithR: r };
 }

@@ -210,14 +210,44 @@ export function surfaceForward(surface: VolSurface, days: number): number | null
 }
 
 /**
- * Forward eğrisinin ima ettiği yıllık (log) carry — ön ve arka vadedeki gözlemlenen
- * futures forward'larından: ln(F_arka/F_ön) / ΔT. Yalnız CME yüzeyinde tanımlı (f gerekir),
- * ekranda "piyasa carry'si ≈ %X" bilgisi için. Yahoo yüzeyinde null.
+ * Forward eğrisinin ima ettiği yıllık (log) carry: ln(F_uzak/F_yakın) / ΔT. Yalnız CME
+ * yüzeyinde tanımlı (f gerekir), ekranda "piyasa carry'si ≈ %X" bilgisi için.
+ *
+ * `days` verilirse carry, O VADEYİ SARAN iki farklı forward gözleminden ölçülür.
+ *
+ * SINIR: zaman ekseni olarak OPSİYON vade günleri kullanılır, oysa forward farkı iki
+ * FUTURES kontratı arasındadır ve futures'lar opsiyonlardan sonra vadelidir. Bu yüzden ΔT
+ * olduğundan kısa, sonuç da SİSTEMATİK OLARAK YÜKSEK çıkar (gümüşte ~1.5 kat). Doğru
+ * hesap için futures'ın kendi vade tarihi saklanmalı — bkz. buildCmeSurface. Bu değer
+ * kaba bir gösterge olarak kullanılabilir, ekranda sayı olarak gösterilmemelidir.
  */
-export function surfaceForwardCarry(surface: VolSurface): number | null {
-  const withF = surface.expiries.filter(e => e.f != null && e.f > 0);
+export function surfaceForwardCarry(surface: VolSurface, days?: number): number | null {
+  // DİKKAT: Metallerde birden çok opsiyon vadesi AYNI dayanak futures'a yazılır (seri
+  // aylıklar ve haftalıklar aynı GC/SI kontratına exercise olur). Bu yüzden ardışık
+  // vadelerin f'i çoğu zaman BİREBİR AYNIDIR; onları çift olarak kullanmak carry'yi
+  // sıfır gösterir (gözlendi: XAG 90 günde %0.00). Yalnız FARKLI forward'lar kullanılır.
+  const withF: ExpirySmile[] = [];
+  for (const e of surface.expiries) {
+    if (e.f == null || !(e.f > 0)) continue;
+    const prev = withF[withF.length - 1];
+    if (prev && prev.f === e.f) continue;
+    withF.push(e);
+  }
   if (withF.length < 2) return null;
-  const a = withF[0], b = withF[withF.length - 1];
+
+  let a = withF[0], b = withF[withF.length - 1];
+  if (days != null && isFinite(days)) {
+    if (days <= withF[0].days) {
+      a = withF[0]; b = withF[1];
+    } else if (days >= withF[withF.length - 1].days) {
+      a = withF[withF.length - 2]; b = withF[withF.length - 1];
+    } else {
+      for (let i = 0; i < withF.length - 1; i++) {
+        if (days >= withF[i].days && days <= withF[i + 1].days) { a = withF[i]; b = withF[i + 1]; break; }
+      }
+    }
+  }
+
   const dt = (b.days - a.days) / 365;
   if (dt <= 0) return null;
   return Math.log((b.f as number) / (a.f as number)) / dt;
