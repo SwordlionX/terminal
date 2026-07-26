@@ -190,8 +190,14 @@ export default function SettingsPage() {
           <p className="text-[11px] text-zinc-500">
             Her ürünün oynaklık yüzeyi Yahoo (ETF opsiyonları, canlıya yakın) veya CME COMEX
             (vadeli settlement, günlük) kaynağından üretilir. CME settlement günde bir kez
-            (seans kapanışında) oluşur; &quot;CME&apos;den Yenile&quot; ile çekilen yüzey veritabanına
-            yazılır ve site her açılışta anında oradan okur.
+            (seans kapanışında) oluşur; kurulan yüzey veritabanına yazılır ve site her açılışta
+            anında oradan okur — sayfa açılışında vol hesabı beklenmez.
+          </p>
+          <p className="text-[11px] text-zinc-500">
+            <span className="text-zinc-400">Günlük yenileme GitHub Actions&apos;ta koşar</span> (hafta içi 21:00 UTC).
+            Databento ~3 dakika sürebildiği için Vercel fonksiyon limitine sığmıyor. Aşağıdaki
+            &quot;CME&apos;den Yenile&quot; butonu elle tetikleme içindir; canlı ortamda zaman aşımına
+            düşerse yenilemeyi GitHub Actions panelinden çalıştırın.
           </p>
           {dsItems.map(item => (
             <div key={item.product} className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">

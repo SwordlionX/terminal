@@ -1,0 +1,41 @@
+name: CME vol yüzeyi (günlük)
+
+# COMEX metalleri ~13:25 CT'de settle olur (18:25/19:25 UTC). Databento'nun veriyi
+# yayınlaması için pay bırakıp 21:00 UTC'de koşuyoruz. Hafta içi yeterli: Cts/Paz
+# settlement oluşmaz (script zaten son settlement'lı güne kendisi düşer).
+on:
+  schedule:
+    - cron: '0 21 * * 1-5'
+  workflow_dispatch:        # panelden elle de tetiklenebilir
+    inputs:
+      date:
+        description: 'Belirli bir settlement günü (YYYY-MM-DD) — boş bırakılırsa otomatik'
+        required: false
+      product:
+        description: 'Ürün'
+        required: false
+        default: 'XAG'
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20     # iş ~3 dk; Databento yavaşlarsa pay olsun
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Yüzeyi yenile
+        env:
+          DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          npm run refresh:cme -- \
+            --product=${{ github.event.inputs.product || 'XAG' }} \
+            ${{ github.event.inputs.date && format('--date={0}', github.event.inputs.date) || '' }}

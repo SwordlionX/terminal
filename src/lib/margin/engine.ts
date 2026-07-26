@@ -6,7 +6,12 @@ import {
 } from './config';
 
 export interface TradePosition {
-  position: 'Long' | 'Short'; // Bankanın yönü: Long = banka aldı (müşteri yazdı/sattı), Short = banka sattı (müşteri aldı)
+  // MÜŞTERİNİN yönü (bankanın değil): Short = müşteri opsiyonu YAZDI/SATTI → aleyhine zarar
+  // oluşabilir, teminat gerekir. Long = müşteri opsiyonu ALDI → primi peşin ödedi, ek
+  // yükümlülüğü yok (zarar 0, ödediği prim teminata sayılır).
+  // DİKKAT: Bu alan ters kaydedilirse teminat tamamen yanlış çıkar — hesap tarafı
+  // (intrinsicLossFor / calculatePortfolioMargin) bu tanımı varsayar.
+  position: 'Long' | 'Short';
   intrinsicLoss: number; // Müşteri aleyhine BRÜT intrinsic zarar (prim hariç, canlı spot vs strike × contractSize); yalnız Short'ta >0
   premium: number; // Müşterinin ödediği/aldığı prim (Long'da teminata sayılır)
 }

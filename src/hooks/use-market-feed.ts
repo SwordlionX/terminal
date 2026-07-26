@@ -33,7 +33,9 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
       setSpot(j.spot);
       setSurface(j.surface);
       setSnapshotISO(j.snapshotISO);
-      setError(null);
+      // Yüzey okunamadıysa (ör. veritabanına erişilemedi) sessizce geçilmez — spot yine
+      // gösterilir ama sebep ekranda yazar. Bayat yedek veriye düşülmez.
+      setError(j.dataError ?? null);
     } catch {
       setError('Piyasa verisi alınamadı');
     } finally {

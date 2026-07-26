@@ -1,10 +1,15 @@
 import { createClient, Client } from '@libsql/client';
-import fs from 'fs';
 
 /**
- * Veritabanı istemcisi — Turso (bulut, Vercel için) veya yerel dosya (geliştirme).
- * Vercel'de env değişkenleri: TURSO_DATABASE_URL + TURSO_AUTH_TOKEN
- * Yerelde env yoksa otomatik olarak file:data/local.db kullanılır.
+ * Veritabanı istemcisi — TEK kaynak: Turso.
+ *
+ * Yerel dosya yedeği (file:data/local.db) bilinçli olarak KALDIRILDI. Eskiden env yoksa
+ * sessizce yerel bir kopyaya düşülüyordu; o kopya kimse tarafından güncellenmediği için
+ * "güncel veriyle çalışıyorum" yanılsaması yaratıyor ve yanlış analize yol açıyordu.
+ * Artık env yoksa açık hata verilir — hangi veriyi okuduğumuz her zaman belli.
+ *
+ * Gerekli env değişkenleri (Vercel projesinde ve yerelde .env.local'de):
+ *   TURSO_DATABASE_URL, TURSO_AUTH_TOKEN
  */
 
 let client: Client | null = null;
@@ -12,9 +17,13 @@ let readyPromise: Promise<void> | null = null;
 
 function getClient(): Client {
   if (!client) {
-    const url = process.env.TURSO_DATABASE_URL || 'file:data/local.db';
-    if (url.startsWith('file:')) {
-      try { fs.mkdirSync('data', { recursive: true }); } catch { /* salt-okunur FS */ }
+    const url = process.env.TURSO_DATABASE_URL;
+    if (!url) {
+      throw new Error(
+        'TURSO_DATABASE_URL tanımlı değil. Veritabanı yalnızca Turso üzerinden çalışır; ' +
+        'yerel dosya yedeği kaldırıldı. .env.local (yerel) veya Vercel proje env ayarlarına ' +
+        'TURSO_DATABASE_URL ve TURSO_AUTH_TOKEN ekleyin.'
+      );
     }
     client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
   }

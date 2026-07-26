@@ -44,3 +44,6 @@ next-env.d.ts
 data/local.db
 .env*.local
 .env
+
+# yerel veri kopyasi tutulmaz — Turso tek kaynak
+data/

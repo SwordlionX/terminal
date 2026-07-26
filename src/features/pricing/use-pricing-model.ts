@@ -88,7 +88,19 @@ export function usePricingModel() {
   // (forward eğrisinden) ekranda bilgi olarak gösterilir.
   const cmeCarry = usingCmeFwd && feed.surface ? surfaceForwardCarry(feed.surface) : null;
 
-  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry };
+  /**
+   * Herhangi bir FİYAT SEVİYESİ için smile vol'ü (%). Bariyer paneli bunu bariyer
+   * seviyesinin (H) vol'ünü öğrenmek için kullanır: bariyerli opsiyonun değeri yalnız
+   * strike'ın değil, bariyer civarındaki oynaklığın da fonksiyonudur (skew). Kote
+   * aralığın dışındaysa null döner.
+   */
+  const volAtLevel = (level: number): number | null => {
+    if (!feed.surface || !(level > 0) || fwd <= 0) return null;
+    const iv = surfaceVol(feed.surface, level / fwd, daysToExpiry);
+    return iv != null && isFinite(iv) ? iv * 100 : null;
+  };
+
+  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry, volAtLevel };
 }
 
 export const formatCurrency = (val: number) =>

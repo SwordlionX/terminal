@@ -20,9 +20,23 @@ const DATASET = 'GLBX.MDP3';
 // Cari (yarım) seansta yalnız birkaç enstrüman settle olmuş olur; bu eşik onu eler.
 const MIN_FUT_SETTLE = 10;
 
-// Faz 1 kapsamı: yalnız gümüş. XAG -> opsiyon kökü SO.OPT, dayanak futures kökü SI.FUT.
-const CME_PRODUCTS: Record<string, { optRoot: string; futRoot: string }> = {
-  XAG: { optRoot: 'SO.OPT', futRoot: 'SI.FUT' },
+/**
+ * Faz 1 kapsamı: yalnız gümüş.
+ *  - optRoot     : ANA (aylık) opsiyon kökü — bulunamazsa o gün geçersiz sayılır.
+ *  - weeklyRoots : haftalık opsiyon kökleri — yüzeyin KISA VADE ucunu doldururlar.
+ *                  Aylıklar tek başına kaldığında en yakın vade ~29 güne kadar çıkabiliyor
+ *                  ve ondan kısa opsiyonlar "kote yok"a düşüyordu. Haftalıklar belirli
+ *                  haftalarda listelendiği için bir kısmı her gün çözülmeyebilir —
+ *                  bulunamayan kök sessizce atlanır (refresh'i bozmaz).
+ *                  Maliyet ihmal edilebilir (~aylık kökün %5'i).
+ *  - futRoot     : dayanak futures kökü (forward kaynağı).
+ */
+const CME_PRODUCTS: Record<string, { optRoot: string; weeklyRoots: string[]; futRoot: string }> = {
+  XAG: {
+    optRoot: 'SO.OPT',
+    weeklyRoots: ['SO1.OPT', 'SO2.OPT', 'SO3.OPT', 'SO4.OPT', 'SO5.OPT'],
+    futRoot: 'SI.FUT',
+  },
 };
 
 export function cmeSupported(product: string): boolean {
@@ -153,9 +167,14 @@ export async function refreshCmeSurface(
   // (cari seans henüz kapanmadı → yetersiz futures; ya da Databento o tarihte parent
   // sembolü geçici çözemiyor → 422) bir ÖNCEKİ güne düşülür. Böylece hem yarım seans
   // hem de tarih-bazlı Databento hıçkırıkları sessizce atlanır.
+  // Hafta sonları elenir: COMEX metallerde Cts/Paz settlement oluşmaz, o günleri denemek
+  // yalnızca boşa istek demek (Databento'nun timeseries ucu istek başına ~20sn gecikmeli).
+  // Resmi tatiller yine de denenir — onları eleyen, aşağıdaki MIN_FUT_SETTLE kontrolü.
   const candidates = opts.date
     ? [opts.date]
-    : Array.from({ length: 6 }, (_, i) => isoDate(Date.parse(availableEnd.slice(0, 10) + 'T00:00:00Z') - i * 86400000));
+    : Array.from({ length: 8 }, (_, i) => isoDate(Date.parse(availableEnd.slice(0, 10) + 'T00:00:00Z') - i * 86400000))
+        .filter(d => { const wd = new Date(`${d}T00:00:00Z`).getUTCDay(); return wd !== 0 && wd !== 6; })
+        .slice(0, 5);
 
   let lastErr = 'aday gün yok';
   for (const cand of candidates) {
@@ -167,12 +186,17 @@ export async function refreshCmeSurface(
       const futSettle = await streamSettlements(rangeUrl('statistics', cfg.futRoot, start, end));
       if (futSettle.size < MIN_FUT_SETTLE) { lastErr = `${cand}: yetersiz futures settlement (${futSettle.size})`; continue; }
 
-      // 2) Opsiyon tanımları — strike/vade/underlying_id eşlemesi (422 burada fırlar → catch)
-      const options = parseDefinitions(await fetchCsvLines(rangeUrl('definition', cfg.optRoot, start, end)));
+      // 2) Opsiyon TANIMLARI — aylık + haftalık kökler TEK istekte.
+      //    Databento'nun timeseries uçları istek başına ~20sn sabit gecikmeli (48 KB'lık
+      //    istek bile ~22sn); bu yüzden kritik olan indirilen HACİM değil, İSTEK SAYISI.
+      //    Çözülemeyen kök (ör. o hafta listelenmemiş SO3) sorun çıkarmaz: Databento
+      //    yalnız HİÇBİRİ çözülemezse hata verir, kısmi çözümde isteği başarıyla döndürür.
+      const optRoots = [cfg.optRoot, ...cfg.weeklyRoots].join(',');
+      const options = parseDefinitions(await fetchCsvLines(rangeUrl('definition', optRoots, start, end)));
       if (options.size === 0) { lastErr = `${cand}: opsiyon tanımı yok`; continue; }
 
-      // 3) Opsiyon settlement'ları (büyük — akışla süzülür)
-      const optSettle = await streamSettlements(rangeUrl('statistics', cfg.optRoot, start, end));
+      // 3) Opsiyon settlement'ları — yine TEK istek, akışla süzülür.
+      const optSettle = await streamSettlements(rangeUrl('statistics', optRoots, start, end));
 
       const evalSec = Math.floor(Date.parse(`${cand}T00:00:00Z`) / 1000);
       const surface = buildCmeSurface(
@@ -217,37 +241,52 @@ function parseDefinitions(lines: string[]): Map<string, CmeOptionDef> {
 const surfKey = (product: string) => `cme_surface_${product.toUpperCase()}`;
 const srcKey = (product: string) => `datasource_${product.toUpperCase()}`;
 
+/**
+ * Süreç-içi yüzey önbelleği. Sayfa her açılışında ~90KB JSON'ın Turso'dan çekilip parse
+ * edilmesi gecikmenin büyük kısmıydı; yüzey günde bir kez değiştiği için TTL'li memo güvenli.
+ * Yazma yolu (saveCmeSurface) aynı süreçte önbelleği anında tazeler; başka bir sunucu
+ * örneği (serverless) en fazla TTL kadar geç görür.
+ *
+ * NOT: Aktif KAYNAK (yahoo/cme) bilinçli olarak önbelleğe ALINMAZ. Tek satırlık ucuz bir
+ * sorgu, buna karşılık önbelleğe alınırsa Ayarlar'dan kaynak değiştirildiğinde fiyatlama
+ * ekranı TTL boyunca eski kaynağı göstermeye devam ediyordu.
+ */
+const SURFACE_TTL_MS = 5 * 60 * 1000;
+const surfaceCache = new Map<string, { at: number; val: VolSurface | null }>();
+
 export async function saveCmeSurface(product: string, surface: VolSurface): Promise<void> {
+  const key = product.toUpperCase();
   const c = await dbc();
   await c.execute({
     sql: 'INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v',
-    args: [surfKey(product), JSON.stringify(surface)],
+    args: [surfKey(key), JSON.stringify(surface)],
   });
+  surfaceCache.set(key, { at: Date.now(), val: surface });
 }
 
 export async function loadCmeSurface(product: string): Promise<VolSurface | null> {
-  try {
-    const c = await dbc();
-    const r = await c.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [surfKey(product)] });
-    if (r.rows.length) return JSON.parse(String(r.rows[0].v)) as VolSurface;
-  } catch { /* db yoksa null */ }
-  return null;
+  const key = product.toUpperCase();
+  const hit = surfaceCache.get(key);
+  if (hit && Date.now() - hit.at < SURFACE_TTL_MS) return hit.val;
+
+  const c = await dbc();
+  const r = await c.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [surfKey(key)] });
+  const val = r.rows.length ? (JSON.parse(String(r.rows[0].v)) as VolSurface) : null;
+  surfaceCache.set(key, { at: Date.now(), val });
+  return val;
 }
 
-/** Ürünün aktif veri kaynağı ('yahoo' | 'cme'). Varsayılan: yahoo. */
+/** Ürünün aktif veri kaynağı ('yahoo' | 'cme'). Varsayılan: yahoo. Önbelleklenmez (bkz. yukarı). */
 export async function getDataSource(product: string): Promise<'yahoo' | 'cme'> {
-  try {
-    const c = await dbc();
-    const r = await c.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [srcKey(product)] });
-    if (r.rows.length && String(r.rows[0].v) === 'cme') return 'cme';
-  } catch { /* varsayılana düş */ }
-  return 'yahoo';
+  const c = await dbc();
+  const r = await c.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [srcKey(product.toUpperCase())] });
+  return r.rows.length && String(r.rows[0].v) === 'cme' ? 'cme' : 'yahoo';
 }
 
 export async function setDataSource(product: string, src: 'yahoo' | 'cme'): Promise<void> {
   const c = await dbc();
   await c.execute({
     sql: 'INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v',
-    args: [srcKey(product), src],
+    args: [srcKey(product.toUpperCase()), src],
   });
 }

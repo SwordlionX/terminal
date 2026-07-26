@@ -1,12 +1,9 @@
-import fs from 'fs';
-import path from 'path';
 import { dbc } from '@/lib/db';
 import { YahooSnapshot, SnapshotProduct, VolSurface, buildSurface, PRODUCT_SURFACE_MAP } from '@/lib/vol/surface';
 import { getDataSource, loadCmeSurface } from './cme.service';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 const SPOT_TTL_MS = 5 * 60 * 1000; // 5 dakika önbellek — sayfa açıkken tekrar tekrar Yahoo'ya gidilmez
-const SNAPSHOT_FILE = path.join(process.cwd(), 'data', 'yahoo_snapshot.json');
 
 // Ürün -> Yahoo spot sembolleri (sırayla denenir, ilk başarılı kullanılır).
 // Öncelik: fiilen ÇALIŞAN, ons-bazlı token (-USD) başta -> olmazsa vadeli (=F).
@@ -83,43 +80,29 @@ export async function setUsdTryRate(rate: number): Promise<void> {
   });
 }
 
+/**
+ * Yahoo snapshot'ı — TEK kaynak: veritabanı (kv).
+ * Dosya yedeği (data/yahoo_snapshot.json) bilinçli olarak KALDIRILDI: repoyla gelen
+ * bayat bir kopya, DB'ye ulaşılamadığında sessizce devreye girip "güncel veri okuyorum"
+ * yanılsaması yaratıyordu. Artık veri yoksa null döner ve ekran bunu açıkça söyler.
+ */
 export async function loadSnapshot(): Promise<YahooSnapshot | null> {
   if (snapshotMem) return snapshotMem;
-  // 1) Veritabanı (Vercel'de kalıcı olan tek yer)
-  try {
-    const c = await dbc();
-    const r = await c.execute("SELECT v FROM kv WHERE k = 'yahoo_snapshot'");
-    if (r.rows.length) {
-      snapshotMem = JSON.parse(String(r.rows[0].v)) as YahooSnapshot;
-      return snapshotMem;
-    }
-  } catch { /* veritabanına ulaşılamazsa dosyaya düş */ }
-  // 2) Depoyla gelen dosya (ilk kurulum / yerel geliştirme)
-  try {
-    const raw = fs.readFileSync(SNAPSHOT_FILE, 'utf-8');
-    snapshotMem = JSON.parse(raw) as YahooSnapshot;
-    return snapshotMem;
-  } catch {
-    return null;
-  }
+  const c = await dbc();
+  const r = await c.execute("SELECT v FROM kv WHERE k = 'yahoo_snapshot'");
+  if (!r.rows.length) return null;
+  snapshotMem = JSON.parse(String(r.rows[0].v)) as YahooSnapshot;
+  return snapshotMem;
 }
 
 export async function saveSnapshot(snap: YahooSnapshot): Promise<void> {
   snapshotMem = snap;
   Object.keys(surfaceMem).forEach(k => delete surfaceMem[k]);
-  // Veritabanına yaz (kalıcı)
-  try {
-    const c = await dbc();
-    await c.execute({
-      sql: "INSERT INTO kv (k, v) VALUES ('yahoo_snapshot', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-      args: [JSON.stringify(snap)],
-    });
-  } catch { /* db yoksa bellekte kalır */ }
-  // Yerel geliştirmede dosyaya da yaz
-  try {
-    fs.mkdirSync(path.dirname(SNAPSHOT_FILE), { recursive: true });
-    fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify(snap));
-  } catch { /* salt-okunur FS (Vercel) — sorun değil */ }
+  const c = await dbc();
+  await c.execute({
+    sql: "INSERT INTO kv (k, v) VALUES ('yahoo_snapshot', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+    args: [JSON.stringify(snap)],
+  });
 }
 
 /**

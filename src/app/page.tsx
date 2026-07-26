@@ -60,7 +60,7 @@ function isUsMarketLikelyOpen(now: Date = new Date()): boolean {
 }
 
 export default function PricingPage() {
-  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry } = usePricingModel();
+  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, cmeCarry, volAtLevel } = usePricingModel();
   const spotInfo = feed.spot ? spotKind(feed.spot.source) : null;
 
   // Kaydetme formu durumu
@@ -362,6 +362,7 @@ export default function PricingPage() {
                     rate={md.rate}
                     lease={md.lease}
                     vol={effVol}
+                    volAtLevel={volAtLevel}
                   />
                 </div>
               )}

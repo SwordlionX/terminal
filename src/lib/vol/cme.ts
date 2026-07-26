@@ -121,5 +121,5 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
   }
 
   expiries.sort((a, b) => a.days - b.days);
-  return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries };
+  return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries, builtWithR: r };
 }

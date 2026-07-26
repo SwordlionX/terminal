@@ -48,6 +48,13 @@ export interface VolSurface {
   spot: number;
   fetchedISO: string;
   expiries: ExpirySmile[];
+  /**
+   * Yüzeyin KURULDUĞU risksiz faiz. CME yüzeyi refresh anında bir kez kurulup saklandığı
+   * için buradaki IV'ler bu r ile ters çözülmüştür; sonradan ekranda faiz değiştirilse bile
+   * yüzey yeniden kurulmaz (yeniden kurmak günlük Databento çekimi gerektirir). Ekran bu
+   * değeri gösterir ki hangi faizle çalışıldığı belli olsun. Yahoo yüzeyinde istekteki r'dir.
+   */
+  builtWithR?: number;
 }
 
 /**
@@ -119,7 +126,7 @@ export function buildSurface(prod: SnapshotProduct, r: number, fetchedISO: strin
   }
 
   expiries.sort((a, b) => a.days - b.days);
-  return { symbol: prod.symbol, spot: S, fetchedISO, expiries };
+  return { symbol: prod.symbol, spot: S, fetchedISO, expiries, builtWithR: r };
 }
 
 /**

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { refreshCmeSurface, getDataSource } from '@/services/cme.service';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+// Vercel Hobby fonksiyonları 60 saniyede kesilir; daha yükseği yazmak yanıltıcı olur.
+// Günlük yenileme bu yüzden Vercel'de DEĞİL, GitHub Actions'ta koşar
+// (.github/workflows/cme-refresh.yml → scripts/refresh-cme.ts). Bu uç yalnızca elle
+// tetikleme içindir ve Databento yavaşsa Hobby'de zaman aşımına düşebilir.
+export const maxDuration = 60;
 
 async function doRefresh(product: string) {
   try {
