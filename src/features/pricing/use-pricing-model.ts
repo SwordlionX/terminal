@@ -29,8 +29,11 @@ export function usePricingModel() {
       if (prevProduct.current !== md.product) {
         md.setField("strike", price);
       }
+      // prevProduct SADECE yeni ürünün fiyatı uygulandığında ilerletilir. Besleme ürün
+      // değişiminde bir an boşalıyor (use-market-feed eski ürünün verisini göstermez);
+      // burada koşulsuz güncellersek, asıl fiyat geldiğinde strike ATM'ye çekilmezdi.
+      prevProduct.current = md.product;
     }
-    prevProduct.current = md.product;
     // Kasıtlı: md.product BURADA yok. Ürün değişince feed.spot bir an eski ürünün
     // (bayat) verisini tutar; efekt yalnızca feed.spot GERÇEKTEN değiştiğinde (yeni
     // ürünün fetch'i tamamlandığında) çalışmalı, md.product'ın kendisi değiştiğinde değil.

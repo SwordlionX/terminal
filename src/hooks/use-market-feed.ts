@@ -16,30 +16,43 @@ export interface MarketFeed {
   refreshChains: () => Promise<void>;
 }
 
+/** Sunucudan gelen besleme + hangi ürüne ait olduğu (sıra dışı cevapları elemek için). */
+interface FeedData {
+  product: string;
+  spot: MarketFeed['spot'];
+  surface: VolSurface | null;
+  snapshotISO: string | null;
+}
+
 /** Fiyatlama ekranı piyasa beslemesi: güncel spot + de-Amerikanize IV yüzeyi. */
 export function useMarketFeed(product: string, rate: number): MarketFeed {
-  const [spot, setSpot] = useState<MarketFeed['spot']>(null);
-  const [surface, setSurface] = useState<VolSurface | null>(null);
-  const [snapshotISO, setSnapshotISO] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Besleme TEK parça tutulur ve hangi ürüne ait olduğu içinde taşınır. Böylece ürün
+  // değişince eski ürünün spot'u/yüzeyi ekranda kalamaz: aşağıda `data.product !== product`
+  // ise besleme yokmuş gibi davranılır (state sıfırlamak için ekstra efekt gerekmez).
+  const [data, setData] = useState<FeedData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ product: string; message: string } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchFeed = useCallback(async () => {
     try {
       const res = await fetch(`/api/market?product=${product}&rate=${rate}`, { cache: 'no-store' });
       const j = await res.json();
-      setSpot(j.spot);
-      setSurface(j.surface);
-      setSnapshotISO(j.snapshotISO);
+      // Cevap, isteği açan ürünle etiketlenerek saklanır. Geç dönen bir XAU cevabı artık
+      // XAG ekranına sızamaz — eskiden bu yüzden gümüşteyken ekrana PAXG (altın) fiyatı
+      // yazılıyordu. Etiket sunucunun döndürdüğü `product` alanından alınır.
+      const forProduct = String(j.product ?? product).toUpperCase();
+      setData({
+        product: forProduct,
+        spot: j.spot ?? null,
+        surface: j.surface ?? null,
+        snapshotISO: j.snapshotISO ?? null,
+      });
       // Yüzey okunamadıysa (ör. veritabanına erişilemedi) sessizce geçilmez — spot yine
       // gösterilir ama sebep ekranda yazar. Bayat yedek veriye düşülmez.
-      setError(j.dataError ?? null);
+      setError(j.dataError ? { product: forProduct, message: j.dataError } : null);
     } catch {
-      setError('Piyasa verisi alınamadı');
-    } finally {
-      setLoading(false);
+      setError({ product: product.toUpperCase(), message: 'Piyasa verisi alınamadı' });
     }
   }, [product, rate]);
 
@@ -61,11 +74,28 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
       await fetchFeed();
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Zincir yenileme başarısız');
+      setError({
+        product: product.toUpperCase(),
+        message: e instanceof Error ? e.message : 'Zincir yenileme başarısız',
+      });
     } finally {
       setRefreshing(false);
     }
-  }, [fetchFeed]);
+  }, [fetchFeed, product]);
 
-  return { spot, surface, snapshotISO, loading, refreshing, error, refetch: fetchFeed, refreshChains };
+  // Ekrana yalnızca AKTİF ürünün verisi verilir; başka ürünün cevabı elde tutulsa bile
+  // yok sayılır ve besleme "yükleniyor" olarak görünür.
+  const fresh = data && data.product === product.toUpperCase() ? data : null;
+  const activeError = error && error.product === product.toUpperCase() ? error.message : null;
+
+  return {
+    spot: fresh?.spot ?? null,
+    surface: fresh?.surface ?? null,
+    snapshotISO: fresh?.snapshotISO ?? null,
+    loading: !fresh && !activeError,
+    refreshing,
+    error: activeError,
+    refetch: fetchFeed,
+    refreshChains,
+  };
 }
