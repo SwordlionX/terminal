@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Calculator, Briefcase,
   ShieldAlert, Settings, ChevronDown,
-  TrendingUpDown, Shield
+  TrendingUpDown, Shield, Activity
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,6 +40,7 @@ const items = [
   },
   { title: "Risk ve Teminat", url: "/margin", icon: ShieldAlert },
   { title: "İşlemler", url: "/trades", icon: Briefcase },
+  { title: "Portföy Takip", url: "/stock-tracker", icon: Activity },
   { title: "Ayarlar", url: "/settings", icon: Settings },
 ];
 
