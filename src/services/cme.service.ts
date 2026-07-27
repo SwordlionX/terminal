@@ -33,8 +33,8 @@ const MIN_FUT_SETTLE = 10;
  */
 const CME_PRODUCTS: Record<string, { optRoot: string; weeklyRoots: string[]; futRoot: string }> = {
   XAU: {
-    optRoot: 'GC.OPT',
-    weeklyRoots: ['OG.OPT', 'OG1.OPT', 'OG2.OPT', 'OG3.OPT', 'OG4.OPT', 'OG5.OPT'],
+    optRoot: 'OG.OPT',
+    weeklyRoots: ['OG1.OPT', 'OG2.OPT', 'OG3.OPT', 'OG4.OPT', 'OG5.OPT'],
     futRoot: 'GC.FUT',
   },
   XAG: {
