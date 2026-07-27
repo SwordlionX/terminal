@@ -84,9 +84,9 @@ export function useBarrierPricing({
    * bu hook sayfa seviyesinde, canlı spot gelmeden önce kuruluyor — varsayılan, açılış
    * anındaki geçici spota (ör. 3700) çakılıp kalıyordu.
    */
-  const [barrierHRaw, setBarrierH] = useState<number | null>(null);
+  const [barrierHRaw, setBarrierH] = useState<number | string | null>(null);
   const barrierH = barrierHRaw ?? Math.round(spot * 1.1 * 100) / 100;
-  const [rebateR, setRebateR] = useState<number>(0);
+  const [rebateR, setRebateR] = useState<number | string>(0);
   const [variant, setVariant] = useState<string>("uo");
 
   /**
@@ -108,7 +108,7 @@ export function useBarrierPricing({
     // yapısı değişmiş sayılıyor ve kullanıcı hiçbir şeye dokunmadan "girdiler değişti"
     // uyarısı alıyordu. Fiyatlanan bariyerin seviyesi de sessizce oynamamış olur.
     setBarrierH(barrierH);
-    setCommitted({ variant, barrierH, rebateR });
+    setCommitted({ variant, barrierH: Number(barrierH), rebateR: Number(rebateR) });
   };
 
   const calcResult = useMemo<CalcResult | null>(() => {
@@ -118,7 +118,7 @@ export function useBarrierPricing({
 
   /** Kullanıcı formu değiştirdi ama HESAPLA'ya basmadı mı? */
   const stale = !!committed && (
-    committed.variant !== variant || committed.barrierH !== barrierH || committed.rebateR !== rebateR
+    committed.variant !== variant || committed.barrierH !== Number(barrierH) || committed.rebateR !== Number(rebateR)
   );
 
   return { barrierH, setBarrierH, rebateR, setRebateR, variant, setVariant, calcResult, calculate, stale };
@@ -229,9 +229,8 @@ export function BarrierInputs({ state }: { state: BarrierPricing }) {
           <Label className="text-zinc-400 text-xs uppercase tracking-wider">Bariyer (H)</Label>
           <Input
             type="number"
-            value={barrierH || ''}
-            // Alan tamamen silinirse null'a döner ve tekrar canlı spotu (×1.1) izler.
-            onChange={e => setBarrierH(e.target.value === '' ? null : Number(e.target.value))}
+            value={barrierH}
+            onChange={e => setBarrierH(e.target.value)}
             className="bg-zinc-900 border-zinc-700 font-mono text-zinc-200"
           />
         </div>
@@ -239,8 +238,8 @@ export function BarrierInputs({ state }: { state: BarrierPricing }) {
           <Label className="text-zinc-400 text-xs uppercase tracking-wider">Rebate (R)</Label>
           <Input
             type="number"
-            value={rebateR || ''}
-            onChange={e => setRebateR(Number(e.target.value))}
+            value={rebateR}
+            onChange={e => setRebateR(e.target.value)}
             className="bg-zinc-900 border-zinc-700 font-mono text-zinc-200"
           />
         </div>
