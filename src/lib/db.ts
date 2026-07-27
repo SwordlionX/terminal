@@ -52,6 +52,9 @@ async function init(c: Client): Promise<void> {
       id TEXT PRIMARY KEY, customerId TEXT NOT NULL, date TEXT, type TEXT, description TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)`,
+    `CREATE TABLE IF NOT EXISTS stock_positions (
+      symbol TEXT PRIMARY KEY, tradeType TEXT, basePrice REAL, quantity REAL, premium REAL, updatedAt TEXT
+    )`,
   ], 'write');
 
   // Daha önce oluşturulmuş (eski şemalı) veritabanları için göç — kolon zaten varsa hata yutulur.
