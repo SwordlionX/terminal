@@ -1,11 +1,12 @@
 name: CME vol yüzeyi (günlük)
 
-# COMEX metalleri ~13:25 CT'de settle olur (18:25/19:25 UTC). Databento'nun veriyi
-# yayınlaması için pay bırakıp 21:00 UTC'de koşuyoruz. Hafta içi yeterli: Cts/Paz
-# settlement oluşmaz (script zaten son settlement'lı güne kendisi düşer).
+# COMEX metalleri ~13:25 CT'de settle olur ancak Databento veriyi ertesi gün
+# TR saatiyle 15:00 (12:00 UTC) civarında yayınlıyor. Bu yüzden garantili olması
+# adına cron 12:00 UTC'de çalışır. Cuma gününün verisi Cumartesi yayınlanacağı
+# için cron Pazartesi-Cumartesi arası (1-6) ayarlanmıştır.
 on:
   schedule:
-    - cron: '0 21 * * 1-5'
+    - cron: '0 12 * * 1-6'
   workflow_dispatch:        # panelden elle de tetiklenebilir
     inputs:
       date:
