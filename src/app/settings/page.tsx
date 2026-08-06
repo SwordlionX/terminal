@@ -59,8 +59,13 @@ export default function SettingsPage() {
     try {
       const url = source === 'cme' ? `/api/market/refresh/cme?product=${product}` : '/api/market/refresh';
       const res = await fetch(url, { method: 'POST' });
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      if (!isJson) {
+        if (!res.ok) throw new Error(`Sunucu zaman aşımı veya hatası (HTTP ${res.status}). Veri büyük olduğu için uzun sürüyor olabilir.`);
+        throw new Error('Sunucudan JSON formatında yanıt alınamadı.');
+      }
       const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d.error || 'Yenileme başarısız');
+      if (!res.ok || !d.ok) throw new Error(d?.error || 'Yenileme başarısız');
       await loadDataSources();
       setDsMsg({
         text: source === 'cme'

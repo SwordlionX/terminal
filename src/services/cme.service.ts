@@ -182,14 +182,22 @@ export async function refreshCmeSurface(
         .slice(0, 5);
 
   let lastErr = 'aday gün yok';
+  const skippedErrs: string[] = [];
   for (const cand of candidates) {
     try {
       const { start, end } = dayWindow(cand, availableEnd);
+      if (Date.parse(start + 'Z') >= Date.parse(end + 'Z')) {
+        throw new Error(`zaman aralığı geçersiz (start=${start}, end=${end})`);
+      }
 
       // 1) Dayanak futures settlement (F kaynağı). Tamamlanmamış seansta yalnız birkaç
       //    enstrüman settle olmuş olur; eşiğin altındaysa bu gün gerçek bir kapanış değil.
       const futSettle = await streamSettlements(rangeUrl('statistics', cfg.futRoot, start, end));
-      if (futSettle.size < MIN_FUT_SETTLE) { lastErr = `${cand}: yetersiz futures settlement (${futSettle.size})`; continue; }
+      if (futSettle.size < MIN_FUT_SETTLE) { 
+        lastErr = `${cand}: yetersiz futures settlement (${futSettle.size})`; 
+        skippedErrs.push(lastErr);
+        continue; 
+      }
 
       // 2) Opsiyon TANIMLARI — aylık + haftalık kökler TEK istekte.
       //    Databento'nun timeseries uçları istek başına ~20sn sabit gecikmeli (48 KB'lık
@@ -198,21 +206,36 @@ export async function refreshCmeSurface(
       //    yalnız HİÇBİRİ çözülemezse hata verir, kısmi çözümde isteği başarıyla döndürür.
       const optRoots = [cfg.optRoot, ...cfg.weeklyRoots].join(',');
       const options = parseDefinitions(await fetchCsvLines(rangeUrl('definition', optRoots, start, end)));
-      if (options.size === 0) { lastErr = `${cand}: opsiyon tanımı yok`; continue; }
+      if (options.size === 0) { 
+        lastErr = `${cand}: opsiyon tanımı yok`; 
+        skippedErrs.push(lastErr);
+        continue; 
+      }
 
       // 3) Opsiyon settlement'ları — yine TEK istek, akışla süzülür.
       const optSettle = await streamSettlements(rangeUrl('statistics', optRoots, start, end));
 
       const evalSec = Math.floor(Date.parse(`${cand}T00:00:00Z`) / 1000);
+      const fetchedISO = skippedErrs.length > 0 
+        ? `${cand} CME (Atlananlar: ${skippedErrs.slice(0, 2).map(e => e.split(':')[1]?.trim() || 'hata').join(', ')})`
+        : `${cand} CME settlement`;
       const surface = buildCmeSurface(
-        { options, optSettle, futSettle, evalSec, fetchedISO: `${cand} CME settlement` }, key, r,
+        { options, optSettle, futSettle, evalSec, fetchedISO }, key, r,
       );
-      if (surface.expiries.length === 0) { lastErr = `${cand}: geçerli yüzey kurulamadı`; continue; }
+      if (surface.expiries.length === 0) { 
+        lastErr = `${cand}: geçerli yüzey kurulamadı`; 
+        skippedErrs.push(lastErr);
+        continue; 
+      }
 
+      if (skippedErrs.length > 0) {
+        console.warn(`[CME] ${key} - ${cand} tarihine düşüldü. Hatalar:`, skippedErrs.join(' | '));
+      }
       await saveCmeSurface(key, surface);
       return surface;
     } catch (e) {
       lastErr = `${cand}: ${e instanceof Error ? e.message : 'hata'}`;
+      skippedErrs.push(lastErr);
     }
   }
   throw new Error(`Son günlerde CME verisi çekilemedi (${lastErr})`);
