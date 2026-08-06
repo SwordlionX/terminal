@@ -3,7 +3,7 @@ import { YahooSnapshot, SnapshotProduct, VolSurface, buildSurface, PRODUCT_SURFA
 import { getDataSource, loadCmeSurface } from './cme.service';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
-const SPOT_TTL_MS = 5 * 60 * 1000; // 5 dakika önbellek — sayfa açıkken tekrar tekrar Yahoo'ya gidilmez
+const SPOT_TTL_MS = 10 * 1000; // 10 saniye önbellek — fiyat anlık kalsın
 
 // Ürün -> Yahoo spot sembolleri (sırayla denenir, ilk başarılı kullanılır).
 // Öncelik: fiilen ÇALIŞAN, ons-bazlı token (-USD) başta -> olmazsa vadeli (=F).

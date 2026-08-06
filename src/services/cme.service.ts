@@ -18,7 +18,7 @@ const DATASET = 'GLBX.MDP3';
 
 // Gerçek bir kapanış seansında gümüş futures eğrisinin çoğu ayı settle olur (~20+).
 // Cari (yarım) seansta yalnız birkaç enstrüman settle olmuş olur; bu eşik onu eler.
-const MIN_FUT_SETTLE = 10;
+const MIN_FUT_SETTLE = 3;
 
 /**
  * CME COMEX kökleri — altın ve gümüş.
