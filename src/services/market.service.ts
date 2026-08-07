@@ -3,7 +3,7 @@ import { YahooSnapshot, SnapshotProduct, VolSurface, buildSurface, PRODUCT_SURFA
 import { getDataSource, loadCmeSurface } from './cme.service';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
-const SPOT_TTL_MS = 10 * 1000; // 10 saniye önbellek — fiyat anlık kalsın
+const SPOT_TTL_MS = 30 * 1000; // 30 saniye önbellek (dakikada 2 kere)
 
 // Ürün -> Yahoo spot sembolleri (sırayla denenir, ilk başarılı kullanılır).
 // Öncelik: fiilen ÇALIŞAN, ons-bazlı token (-USD) başta -> olmazsa vadeli (=F).
@@ -61,6 +61,7 @@ async function fetchChartPrice(symbol: string): Promise<number | null> {
 }
 
 const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || 'f4289f23003940cfbf46c7825bd8ec3a';
+const TIINGO_KEY = process.env.TIINGO_API_KEY || 'af1224275560d5fb3e93aca2a0fa157da7cce183';
 
 async function fetchTwelveDataPrice(symbol: string): Promise<number | null> {
   try {
@@ -77,6 +78,21 @@ async function fetchTwelveDataPrice(symbol: string): Promise<number | null> {
   }
 }
 
+async function fetchTiingoPrice(symbol: string): Promise<number | null> {
+  try {
+    const res = await fetch(`https://api.tiingo.com/tiingo/fx/top?tickers=${symbol}&token=${TIINGO_KEY}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const p = j?.[0]?.midPrice;
+    return typeof p === 'number' && p > 0 ? p : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Güncel spot — 5 dk önbellekli. Başarısız olursa null (çağıran taraf fallback uygular). */
 export async function getSpot(product: string): Promise<{ price: number; at: number; source: string } | null> {
   const key = product.toUpperCase();
@@ -87,6 +103,15 @@ export async function getSpot(product: string): Promise<{ price: number; at: num
     const p = await fetchTwelveDataPrice('XAU/USD');
     if (p != null) {
       const entry = { price: p, at: Date.now(), source: 'XAU/USD (Twelve Data)' };
+      spotCache[key] = entry;
+      return entry;
+    }
+  }
+
+  if (key === 'XAG') {
+    const p = await fetchTiingoPrice('xagusd');
+    if (p != null) {
+      const entry = { price: p, at: Date.now(), source: 'XAG/USD (Tiingo)' };
       spotCache[key] = entry;
       return entry;
     }
