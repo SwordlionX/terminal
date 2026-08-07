@@ -60,11 +60,37 @@ async function fetchChartPrice(symbol: string): Promise<number | null> {
   }
 }
 
+const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || 'f4289f23003940cfbf46c7825bd8ec3a';
+
+async function fetchTwelveDataPrice(symbol: string): Promise<number | null> {
+  try {
+    const res = await fetch(`https://api.twelvedata.com/price?symbol=${symbol}&apikey=${TWELVEDATA_KEY}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const p = parseFloat(j.price);
+    return Number.isFinite(p) && p > 0 ? p : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Güncel spot — 5 dk önbellekli. Başarısız olursa null (çağıran taraf fallback uygular). */
 export async function getSpot(product: string): Promise<{ price: number; at: number; source: string } | null> {
   const key = product.toUpperCase();
   const cached = spotCache[key];
   if (cached && Date.now() - cached.at < SPOT_TTL_MS) return cached;
+
+  if (key === 'XAU') {
+    const p = await fetchTwelveDataPrice('XAU/USD');
+    if (p != null) {
+      const entry = { price: p, at: Date.now(), source: 'XAU/USD (Twelve Data)' };
+      spotCache[key] = entry;
+      return entry;
+    }
+  }
 
   for (const sym of SPOT_SYMBOLS[key] || [key]) {
     const p = await fetchChartPrice(sym);
