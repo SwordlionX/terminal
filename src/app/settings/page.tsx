@@ -67,12 +67,20 @@ export default function SettingsPage() {
       const d = await res.json();
       if (!res.ok || !d.ok) throw new Error(d?.error || 'Yenileme başarısız');
       await loadDataSources();
-      setDsMsg({
-        text: source === 'cme'
-          ? `${product}: CME'den ${d.expiries} vade çekildi (${d.fetchedISO}).`
-          : `Yahoo zincirleri yenilendi (${d.fetchedISO}) — ${Object.entries(d.expiries || {}).map(([k, v]) => `${k}: ${v} vade`).join(', ')}.`,
-        error: false,
-      });
+
+      if (d.dispatched) {
+        setDsMsg({
+          text: `${product}: CME yenileme emri GitHub'a iletildi. Arka planda yenileniyor (~3-4 dk). Sayfayı açık bırakırsanız 5 dk içinde otomatik yansıyacaktır.`,
+          error: false,
+        });
+      } else {
+        setDsMsg({
+          text: source === 'cme'
+            ? `${product}: CME'den ${d.expiries} vade çekildi (${d.fetchedISO}).`
+            : `Yahoo zincirleri yenilendi (${d.fetchedISO}) — ${Object.entries(d.expiries || {}).map(([k, v]) => `${k}: ${v} vade`).join(', ')}.`,
+          error: false,
+        });
+      }
     } catch (e) {
       setDsMsg({ text: e instanceof Error ? e.message : 'Yenileme başarısız', error: true });
     } finally {

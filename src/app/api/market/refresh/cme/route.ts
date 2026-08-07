@@ -9,17 +9,35 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 async function doRefresh(product: string) {
+  const githubPat = process.env.GITHUB_PAT;
+  if (!githubPat) {
+    return NextResponse.json({ ok: false, error: 'GITHUB_PAT eksik. Ayarlardan manuel yenileme için GitHub şifresi (PAT) tanımlanmalı.' }, { status: 500 });
+  }
+
   try {
-    const surface = await refreshCmeSurface(product);
+    const res = await fetch('https://api.github.com/repos/SwordlionX/terminal/actions/workflows/cme-refresh.yml/dispatches', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${githubPat}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ref: 'main', inputs: { product } })
+    });
+
+    if (!res.ok) {
+      throw new Error(`GitHub API Hatası: ${res.statusText}`);
+    }
+
     return NextResponse.json({
       ok: true,
-      product: surface.symbol,
-      fetchedISO: surface.fetchedISO,
-      expiries: surface.expiries.length,
+      product,
+      dispatched: true,
+      message: "Yenileme emri GitHub Actions'a iletildi."
     });
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : 'Bilinmeyen hata' },
+      { ok: false, error: e instanceof Error ? e.message : 'GitHub bağlantı hatası' },
       { status: 502 }
     );
   }
