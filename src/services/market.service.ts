@@ -3,7 +3,10 @@ import { YahooSnapshot, SnapshotProduct, VolSurface, buildSurface, PRODUCT_SURFA
 import { getDataSource, loadCmeSurface } from './cme.service';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
-const SPOT_TTL_MS = 30 * 1000; // 30 saniye önbellek (dakikada 2 kere)
+// Dakikada bir tazeleme. 30 sn'deydi; süreç-içi önbellek her sunucu örneğinde ayrı
+// sayıldığı için sağlayıcı kotasını (Twelve Data ücretsiz: 800 istek/gün) gereksiz yere
+// zorluyordu. 60 sn hem ekran için yeterince canlı hem kota açısından rahat.
+const SPOT_TTL_MS = 60 * 1000;
 
 // Ürün -> Yahoo spot sembolleri (sırayla denenir, ilk başarılı kullanılır).
 // Öncelik: fiilen ÇALIŞAN, ons-bazlı token (-USD) başta -> olmazsa vadeli (=F).
@@ -65,12 +68,22 @@ const TIINGO_KEY = process.env.TIINGO_API_KEY || 'af1224275560d5fb3e93aca2a0fa15
 
 async function fetchTwelveDataPrice(symbol: string): Promise<number | null> {
   try {
-    const res = await fetch(`https://api.twelvedata.com/price?symbol=${symbol}&apikey=${TWELVEDATA_KEY}`, {
+    const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${TWELVEDATA_KEY}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[spot] Twelve Data ${symbol}: HTTP ${res.status}`);
+      return null;
+    }
     const j = await res.json();
+    // Twelve Data hatayı çoğu zaman HTTP 200 GÖVDESİNDE döndürür ({status:"error",code:429}).
+    // Sessizce null dönmek, kota dolduğunda ekranın sebepsizce vekil fiyata kaymasına yol
+    // açıyordu; sebep en azından sunucu loglarında görünsün.
+    if (j?.status === 'error' || j?.code) {
+      console.warn(`[spot] Twelve Data ${symbol}: kod=${j.code} ${j.message ?? ''}`);
+      return null;
+    }
     const p = parseFloat(j.price);
     return Number.isFinite(p) && p > 0 ? p : null;
   } catch {
@@ -80,11 +93,14 @@ async function fetchTwelveDataPrice(symbol: string): Promise<number | null> {
 
 async function fetchTiingoPrice(symbol: string): Promise<number | null> {
   try {
-    const res = await fetch(`https://api.tiingo.com/tiingo/fx/top?tickers=${symbol}&token=${TIINGO_KEY}`, {
+    const res = await fetch(`https://api.tiingo.com/tiingo/fx/top?tickers=${encodeURIComponent(symbol)}&token=${TIINGO_KEY}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[spot] Tiingo ${symbol}: HTTP ${res.status}`);
+      return null;
+    }
     const j = await res.json();
     const p = j?.[0]?.midPrice;
     return typeof p === 'number' && p > 0 ? p : null;
@@ -93,39 +109,61 @@ async function fetchTiingoPrice(symbol: string): Promise<number | null> {
   }
 }
 
-/** Güncel spot — 5 dk önbellekli. Başarısız olursa null (çağıran taraf fallback uygular). */
+/**
+ * GERÇEK SPOT sağlayıcı zinciri — ürün başına sırayla denenir, ilk geçerli fiyat kazanır.
+ * Bir sağlayıcı düşerse (kota, kesinti, geçici hata) diğeri devreye girer; ikisi de düşerse
+ * aşağıdaki token/vadeli VEKİL sembollere inilir.
+ *
+ * Sıra 2026-08-08'de ölçülerek belirlendi:
+ *  - Twelve Data ücretsiz planda XAU/USD var, XAG/USD YOK (HTTP 404) → altın onunla başlar.
+ *  - Tiingo'da hem xauusd hem xagusd var → gümüşün birincil kaynağı, altının yedeği.
+ * Gümüşte Twelve Data yine de ikinci sırada duruyor: mutlu yolda hiç çağrılmıyor (yalnız
+ * Tiingo düşerse denenir), plan yükseltilirse kendiliğinden devreye girer.
+ * İki kaynak çapraz doğrulandı: XAU 4342.35 (TD) vs 4341.48 (Tiingo) — %0.02 fark.
+ */
+const SPOT_PROVIDERS: Record<string, { source: string; get: () => Promise<number | null> }[]> = {
+  XAU: [
+    { source: 'XAU/USD (Twelve Data)', get: () => fetchTwelveDataPrice('XAU/USD') },
+    { source: 'XAU/USD (Tiingo)', get: () => fetchTiingoPrice('xauusd') },
+  ],
+  XAG: [
+    { source: 'XAG/USD (Tiingo)', get: () => fetchTiingoPrice('xagusd') },
+    { source: 'XAG/USD (Twelve Data)', get: () => fetchTwelveDataPrice('XAG/USD') },
+  ],
+};
+
+/**
+ * Güncel spot (60 sn önbellekli). Sıra: gerçek-spot sağlayıcılar → token/vadeli vekiller →
+ * süresi geçmiş önbellek. Hepsi düşerse null (çağıran taraf kendi fallback'ini uygular).
+ * Dönen `source` hangi basamağa inildiğini söyler; ekran rozeti bunu etiketler.
+ */
 export async function getSpot(product: string): Promise<{ price: number; at: number; source: string } | null> {
   const key = product.toUpperCase();
   const cached = spotCache[key];
   if (cached && Date.now() - cached.at < SPOT_TTL_MS) return cached;
 
-  if (key === 'XAU') {
-    const p = await fetchTwelveDataPrice('XAU/USD');
-    if (p != null) {
-      const entry = { price: p, at: Date.now(), source: 'XAU/USD (Twelve Data)' };
-      spotCache[key] = entry;
-      return entry;
-    }
+  const remember = (price: number, source: string) => {
+    const entry = { price, at: Date.now(), source };
+    spotCache[key] = entry;
+    return entry;
+  };
+
+  for (const p of SPOT_PROVIDERS[key] ?? []) {
+    const price = await p.get();
+    if (price != null) return remember(price, p.source);
   }
 
-  if (key === 'XAG') {
-    const p = await fetchTiingoPrice('xagusd');
-    if (p != null) {
-      const entry = { price: p, at: Date.now(), source: 'XAG/USD (Tiingo)' };
-      spotCache[key] = entry;
-      return entry;
-    }
-  }
-
+  // Vekil: token (PAXG/XAGX) ya da vadeli (=F). Gerçek spot DEĞİL — ekranda etiketiyle belli.
   for (const sym of SPOT_SYMBOLS[key] || [key]) {
-    const p = await fetchChartPrice(sym);
-    if (p != null) {
-      const entry = { price: p, at: Date.now(), source: sym };
-      spotCache[key] = entry;
-      return entry;
+    const price = await fetchChartPrice(sym);
+    if (price != null) {
+      console.warn(`[spot] ${key}: gerçek-spot sağlayıcıları düştü, vekile inildi (${sym})`);
+      return remember(price, sym);
     }
   }
-  return cached || null; // eski önbellek varsa onu döndür
+
+  if (cached) console.warn(`[spot] ${key}: tüm kaynaklar düştü, süresi geçmiş önbellek kullanılıyor`);
+  return cached || null;
 }
 
 /**
