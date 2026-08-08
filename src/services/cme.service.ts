@@ -216,11 +216,10 @@ export async function refreshCmeSurface(
       const optSettle = await streamSettlements(rangeUrl('statistics', optRoots, start, end));
 
       const evalSec = Math.floor(Date.parse(`${cand}T00:00:00Z`) / 1000);
-      const fetchedISO = skippedErrs.length > 0 
-        ? `${cand} CME (Atlananlar: ${skippedErrs.slice(0, 2).map(e => e.split(':')[1]?.trim() || 'hata').join(', ')})`
-        : `${cand} CME settlement`;
+      // fetchedISO HER ZAMAN sade bir tarih etiketidir — ekranda tarih olarak gösteriliyor.
+      // Atlanan günlerin sebebi ayrı `notes` alanına yazılır (bkz. VolSurface.notes).
       const surface = buildCmeSurface(
-        { options, optSettle, futSettle, evalSec, fetchedISO }, key, r,
+        { options, optSettle, futSettle, evalSec, fetchedISO: `${cand} CME settlement` }, key, r,
       );
       if (surface.expiries.length === 0) { 
         lastErr = `${cand}: geçerli yüzey kurulamadı`; 
@@ -230,6 +229,7 @@ export async function refreshCmeSurface(
 
       if (skippedErrs.length > 0) {
         console.warn(`[CME] ${key} - ${cand} tarihine düşüldü. Hatalar:`, skippedErrs.join(' | '));
+        surface.notes = `${skippedErrs.length} gün atlandı → ${skippedErrs.join(' | ')}`;
       }
       await saveCmeSurface(key, surface);
       return surface;

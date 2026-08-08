@@ -1,4 +1,4 @@
-import { gk } from './gk';
+import { gk, normCDF } from './gk';
 import { barrierPrice } from './barrier';
 
 /**
@@ -84,18 +84,13 @@ export function survivalProbability(S: number, H: number, T: number, r: number, 
   const sT = v * Math.sqrt(T);
   const h = Math.log(H / S);
   const pow = Math.exp(2 * nu * h / (v * v));
-  const cdf = (x: number) => 0.5 * (1 + erf(x / Math.SQRT2));
+  // gk.ts'teki normCDF kullanılıyor. Burada eskiden yerel bir erf yaklaşımı vardı
+  // (Abramowitz-Stegun 7.1.26, |hata| ~1.5e-7); gk'nınki (Hart/West) çok daha hassas ve
+  // fiyatlamanın geri kalanı zaten onu kullanıyor — iki farklı normal CDF tutmanın anlamı yok.
   const p = isUp
-    ? cdf((h - nu * T) / sT) - pow * cdf((-h - nu * T) / sT)
-    : cdf((-h + nu * T) / sT) - pow * cdf((h + nu * T) / sT);
+    ? normCDF((h - nu * T) / sT) - pow * normCDF((-h - nu * T) / sT)
+    : normCDF((-h + nu * T) / sT) - pow * normCDF((h + nu * T) / sT);
   return Math.min(Math.max(p, 0), 1);
-}
-
-/** erf — normCDF ile aynı yaklaşım ailesinden (Abramowitz-Stegun 7.1.26). */
-function erf(x: number): number {
-  const t = 1 / (1 + 0.3275911 * Math.abs(x));
-  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
-  return x >= 0 ? y : -y;
 }
 
 /** 3×3 lineer sistem çözümü (Cramer). Tekil matriste null. */
@@ -147,6 +142,49 @@ export function vannaVolgaBarrier(
   if (pillars.some(p => p.vol == null || !(p.vol > 0))) return null;
   const vols = pillars.map(p => p.vol as number);
 
+  const isUp = code[1] === 'u';
+  const isOut = code[2] === 'o';
+
+  /**
+   * KNOCK-IN: doğrudan düzeltilmez, IN-OUT PARİTESİYLE türetilir.
+   *
+   *   KI(R=0) = Vanilya(smile vol) − KO_VV(R=0)
+   *
+   * Eskiden KI'ya da doğrudan VV düzeltmesi uygulanıyor, üstelik hayatta-kalma ağırlığı
+   * p yerine 1 alınıyordu. Sonuç: BS'te kuruşu kuruşuna tutan KI+KO=Vanilya eşitliği VV
+   * katmanında bozuluyordu (ölçüldü: gümüş benzeri smile'da ons başına 1.5–2.3 sent,
+   * 10.000 onsluk kontratta $150–225, hep aynı yöne). Parite üzerinden kurulunca eşitlik
+   * tanım gereği sağlanır ve KI, vanilyanın kendi smile vol'ünü tam olarak alır.
+   *
+   * Rebate ayrı tutulur: in-out paritesi yalnız R=0 için geçerlidir; knock-in'e özgü
+   * vade-sonu rebate'i (Reiner-Rubinstein "E") sabit bir nakit akışıdır, smile düzeltmesi
+   * almaz — barrier.ts'teki BS yolunda da böyle ele alınıyor.
+   */
+  if (!isOut) {
+    const koRes = vannaVolgaBarrier(S, K, H, 0, T, r, q, `${code[0]}${code[1]}o`, smileVol);
+    if (!koRes) return null;
+
+    const volK = smileVol(K);
+    if (volK == null || !(volK > 0)) return null;
+    const gSmile = gk(S, K, T, r, q, volK);
+    const vanillaSmile = code[0] === 'c' ? gSmile.call : gSmile.put;
+
+    // Rebate bileşeni = (R'li KI fiyatı) − (R=0'lı KI fiyatı), ikisi de düz ATM vol ile.
+    const bsPrice = barrierPrice(S, K, H, R, T, r, q, atmVol, code);
+    const rebatePart = bsPrice - barrierPrice(S, K, H, 0, T, r, q, atmVol, code);
+
+    const price = Math.max(vanillaSmile - koRes.price, 0) + rebatePart;
+    return {
+      price,
+      bsPrice,
+      correction: price - bsPrice,
+      // Bariyere DEĞMEME olasılığı — KO bacağından gelir, KI için de aynı olasılıktır.
+      survival: koRes.survival,
+      atmVol,
+      pillars: pillars.map((p, i) => ({ K: p.K, vol: vols[i] })),
+    };
+  }
+
   // Egzotiğin vega/vanna/volga'sı (sonlu fark)
   const dv = 0.005, dS = S * 0.002;
   const P = (s: number, v: number) => barrierPrice(s, K, H, R, T, r, q, v, code);
@@ -175,11 +213,9 @@ export function vannaVolgaBarrier(
     raw += w[i] * (mkt - flat);
   }
 
-  // Bariyer ağırlığı: knock-OUT'ta hayatta kalma olasılığı (Wystup). Knock-IN, in-out
-  // paritesiyle türetilir (aşağıda çağıran taraf), burada KO ağırlığı uygulanır.
-  const isUp = code[1] === 'u';
-  const isOut = code[2] === 'o';
-  const surv = isOut ? survivalProbability(S, H, T, r, q, atmVol, isUp) : 1;
+  // Bariyer ağırlığı: knock-OUT'ta hayatta kalma olasılığı (Wystup). Buraya yalnız KO
+  // bacağı gelir — knock-in yukarıda in-out paritesiyle çözülüp döndü.
+  const surv = survivalProbability(S, H, T, r, q, atmVol, isUp);
   const correction = surv * raw;
 
   return {

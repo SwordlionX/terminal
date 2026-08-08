@@ -29,6 +29,8 @@ export async function GET() {
       cmeSupported: cmeSupported(p),
       cmeFetchedISO: surf?.fetchedISO ?? null,
       cmeExpiries: surf?.expiries.length ?? 0,
+      // Yüzey kurulurken atlanan günler vb. — tarih alanına karıştırılmaz (VolSurface.notes).
+      cmeNotes: surf?.notes ?? null,
       yahooSymbol: etf ?? null,
       yahooFetchedISO: yProd ? snap?.fetchedISO ?? null : null,
       yahooExpiries: yProd?.expiries.length ?? 0,

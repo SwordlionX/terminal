@@ -55,6 +55,13 @@ export interface VolSurface {
    * değeri gösterir ki hangi faizle çalışıldığı belli olsun. Yahoo yüzeyinde istekteki r'dir.
    */
   builtWithR?: number;
+  /**
+   * Yüzey kurulurken oluşan İŞLEYİŞ NOTLARI (ör. "2026-08-07 atlandı: yetersiz futures
+   * settlement"). `fetchedISO` bir TARİH alanıdır ve ekranda tarih olarak gösterilir;
+   * bir dönem hata metni oraya iliştiriliyordu ("2026-08-07 CME (Atlananlar: …)") ve
+   * rozet okunmaz hale geliyordu. Teşhis bilgisi artık burada durur.
+   */
+  notes?: string;
 }
 
 /**
@@ -120,7 +127,12 @@ export function buildSurface(prod: SnapshotProduct, r: number, fetchedISO: strin
     }
 
     points.sort((a, b) => a.m - b.m);
-    if (points.length >= 3) {
+    // Smile ATM'i SARMALI (m=1 kote aralığın içinde) — değilse o vade güvenilmez ve
+    // ATM civarındaki her sorgu zaten ekstrapolasyona düşerdi. Aynı kural CME yolunda
+    // (bkz. cme.ts) baştan beri vardı, Yahoo/ETF yolunda eksikti; iki kaynak artık aynı
+    // eşiği uyguluyor. Ölçüldü (2026-08-08, canlı GLD ve SLV zincirleri): 19 vadenin
+    // 19'u da kuralı geçiyor — bugünkü veride hiçbir vade elenmiyor, kural emniyet ağı.
+    if (points.length >= 3 && points[0].m <= 1 && points[points.length - 1].m >= 1) {
       expiries.push({ days: e.days, date: e.date, points });
     }
   }
