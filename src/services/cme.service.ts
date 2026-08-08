@@ -189,7 +189,14 @@ async function fetchCsvLines(url: string): Promise<string[]> {
  * bellekte tutmamak için satır satır işlenir, yalnız settlement satırları saklanır.
  * Fiyat Databento sabit-nokta (1e-9) formatındadır; geçersiz/sentinel değerler atılır.
  */
-async function streamSettlements(url: string): Promise<Map<string, number>> {
+interface SettlementBatch {
+  /** instrument_id -> settlement fiyatı */
+  prices: Map<string, number>;
+  /** Partideki EN GEÇ ts_event (epoch saniye) — settlement'ın gözlendiği an. */
+  lastEventSec: number;
+}
+
+async function streamSettlements(url: string): Promise<SettlementBatch> {
   const res = await fetch(url, {
     headers: { Authorization: authHeader() },
     cache: 'no-store',
@@ -199,11 +206,12 @@ async function streamSettlements(url: string): Promise<Map<string, number>> {
   if (!res.body) throw new Error('Databento yanıt gövdesi boş');
 
   const out = new Map<string, number>();
+  let lastEventSec = 0;
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = '';
   let header: string[] | null = null;
-  let iType = -1, iInst = -1, iPrice = -1;
+  let iType = -1, iInst = -1, iPrice = -1, iTs = -1;
 
   const handle = (line: string) => {
     if (!line) return;
@@ -213,12 +221,20 @@ async function streamSettlements(url: string): Promise<Map<string, number>> {
       iType = header.indexOf('stat_type');
       iInst = header.indexOf('instrument_id');
       iPrice = header.indexOf('price');
+      iTs = header.indexOf('ts_event');
       return;
     }
     if (c[iType] !== '3') return; // yalnız settlement
     const p = Number(c[iPrice]);
     if (!Number.isFinite(p) || p <= 0 || p >= 9e18) return;
     out.set(c[iInst], p / 1e9); // son kayıt kazanır (final settlement)
+    // ts_event ham NANOSANİYE epoch (~1.79e18). Bu değer Number'ın güvenli tamsayı
+    // aralığını (9.0e15) aşar, ama kaybedilen hassasiyet en fazla birkaç yüz nanosaniye —
+    // saniyeye böldüğümüzde ~3e-7 sn eder, yani önemsiz. BigInt'e gerek yok.
+    if (iTs >= 0 && c[iTs]) {
+      const sec = Math.floor(Number(c[iTs]) / 1e9);
+      if (Number.isFinite(sec) && sec > lastEventSec) lastEventSec = sec;
+    }
   };
 
   // Her chunk'ta tek split — tamamlanan satırlar işlenir, son yarım satır buf'ta bekler.
@@ -232,7 +248,7 @@ async function streamSettlements(url: string): Promise<Map<string, number>> {
     for (const line of lines) handle(line.trim());
   }
   handle(buf.trim());
-  return out;
+  return { prices: out, lastEventSec };
 }
 
 /** Databento'dan çek, yüzeyi kur, DB'ye yaz. Döner: kurulan yüzey + özet. */
@@ -274,10 +290,11 @@ export async function refreshCmeSurface(
 
       // 1) Dayanak futures settlement (F kaynağı). Tamamlanmamış seansta bu pencere boş
       //    döner; eşiğin altındaysa bu gün gerçek bir kapanış değil.
-      const futSettle = await withRetry(`${key} futures settlement ${cand}`,
+      const futBatch = await withRetry(`${key} futures settlement ${cand}`,
         () => streamSettlements(rangeUrl('statistics', cfg.futRoot, settle.start, settle.end)));
-      if (futSettle.size < MIN_FUT_SETTLE) { 
-        lastErr = `${cand}: yetersiz futures settlement (${futSettle.size})`; 
+      const futSettle = futBatch.prices;
+      if (futSettle.size < MIN_FUT_SETTLE) {
+        lastErr = `${cand}: yetersiz futures settlement (${futSettle.size})`;
         skippedErrs.push(lastErr);
         continue; 
       }
@@ -298,10 +315,33 @@ export async function refreshCmeSurface(
       }
 
       // 3) Opsiyon settlement'ları — yine TEK istek, dar pencerede, akışla süzülür.
-      const optSettle = await withRetry(`${key} opsiyon settlement ${cand}`,
-        () => streamSettlements(rangeUrl('statistics', optRoots, settle.start, settle.end)));
+      const optSettle = (await withRetry(`${key} opsiyon settlement ${cand}`,
+        () => streamSettlements(rangeUrl('statistics', optRoots, settle.start, settle.end)))).prices;
 
-      const evalSec = Math.floor(Date.parse(`${cand}T00:00:00Z`) / 1000);
+      /**
+       * DEĞERLEME ANI = settlement'ın gerçekten gözlendiği an (futures stat'larının en geç
+       * ts_event'i), gün başı DEĞİL.
+       *
+       * Eskiden `cand`ın 00:00'ı kullanılıyordu; oysa settlement 17:30 UTC'de (kışın 18:30)
+       * oluşuyor. Bu, vadeye kalan süreyi 17.5 saat FAZLA gösteriyordu ve IV'ler o oranda
+       * DÜŞÜK çözülüyordu. Ölçüldü (XAU, 2026-08-07):
+       *     7.7g → 7g   ATM %22.64 → %23.74   (+1.10 vol puanı, %4.9 göreli)
+       *    14.7g → 14g  ATM %22.36 → %22.91   (+0.55)
+       *    48.7g → 48g  ATM %22.73 → %22.89   (+0.16)
+       * Hata kısa vadede büyük, uzun vadede sönüyor.
+       *
+       * İkinci ve daha sinsi etki: vade etiketleri. Doğru çapayla vadeler tam sayıya
+       * oturuyor (7, 14, 19, 48 gün) çünkü opsiyon 18:30 UTC'de, settlement 17:30 UTC'de.
+       * Fiyatlama ekranı vadeyi TAKVİM GÜNÜ sayıyor (7 gün); yüzey 7.7 dediği için en yakın
+       * vade `surfaceVol`un kote aralığının ALTINA düşüyor ve null dönüyordu — yani en kısa
+       * vadeli opsiyon hiç fiyatlanamıyordu.
+       *
+       * Damga veriden okunur, sabit yazılmaz: yaz/kış saati (CDT/CST) kaymasını kendiliğinden
+       * takip eder. Beklenmedik biçimde okunamazsa gün başına düşülür (eski davranış).
+       */
+      const evalSec = futBatch.lastEventSec > 0
+        ? futBatch.lastEventSec
+        : Math.floor(Date.parse(`${cand}T00:00:00Z`) / 1000);
       // fetchedISO HER ZAMAN sade bir tarih etiketidir — ekranda tarih olarak gösteriliyor.
       // Atlanan günlerin sebebi ayrı `notes` alanına yazılır (bkz. VolSurface.notes).
       const surface = buildCmeSurface(

@@ -39,6 +39,36 @@ export interface CmeInputs {
 // kanatları eler hem de vade başına binom inversiyon sayısını sınırlar.
 const MONEY_LO = 0.75, MONEY_HI = 1.30;
 const BINOM_STEPS = 72;
+
+/**
+ * Yüzeye alınacak EN UZUN vade (gün). Yahoo/ETF yolundaki MAX_DAYS=420 ile aynı çizgi.
+ *
+ * Neden gerekli: uzun vadeli COMEX metal opsiyonları fiilen işlem görmez; settlement
+ * fiyatları borsanın hesapladığı teorik marklardır ve kendi içinde tutarsız olabilir.
+ * Kelebek (butterfly) testi bunu net gösterdi — ima edilen yoğunluk negatife düşüyor,
+ * yani o smile'dan arbitraja açık fiyat üretilir:
+ *
+ *   XAU (2026-08-07, F≈4367)        XAG (2026-08-07, F≈63.5)
+ *      21g – 321g :  0.00  temiz       7g – 599g :  0.00  temiz
+ *          416g   : -1.71  İHLAL          627g   : -0.048 İHLAL
+ *          537g   : -0.47  İHLAL         1783g   : -0.001 İHLAL
+ *          843g   : -1.38  İHLAL
+ *         1754g   : -5.39  İHLAL
+ *
+ * İşlem yapılan bölge (birkaç ay) tamamen temiz; bozulma 1 yılın ötesinde başlıyor.
+ * 14 günde görülen -0.01 mertebesindeki blipler gürültüdür (F'ye göre ~2e-6): parçalı
+ * doğrusal smile enterpolasyonunun kırılma noktalarından gelir, veri sorunu değil.
+ *
+ * Bu sınırın ötesinde `surfaceVol` zaten null döner ve ekran "kote opsiyon yok" der —
+ * yani uydurma fiyat üretmek yerine açıkça reddedilir. Daha uzun vade gerekirse burayı
+ * yükseltmek yeterli, ama o bölgenin arbitrajsız olmadığı bilinerek yapılmalı.
+ *
+ * Değer 420 değil 400: 420'de altının 416 günlük vadesi içeride kalıyor ve tek başına
+ * ihlal üretiyordu (-1.71, m=1.241). Altının bir sonraki temiz vadesi 321 gün, gümüşünki
+ * 384 gün — 400 ikisini de içeride, 416'yı dışarıda bırakıyor. Masanın işlem yaptığı
+ * vadeler (birkaç ay) bu sınırın çok altında.
+ */
+const MAX_SURFACE_DAYS = 400;
 // Kanat seyreltme yoğunluğu. Ham settlement 150+ strike içerebilir; smile'ı temsil için bu
 // gereksiz (ve her biri ağır Amerikan binom inversiyonu). ATM'i saran dar bant TAM
 // çözünürlükte tutulur, kanatlar seyreltilir — ATM doğruluğu korunur, refresh hızlanır.
@@ -90,7 +120,7 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     const F = inp.futSettle.get(und);
 
     const days = Math.round(((expSec - inp.evalSec) / 86400) * 10) / 10;
-    if (F == null || days < 1) continue;
+    if (F == null || days < 1 || days > MAX_SURFACE_DAYS) continue;
     const T = days / 365;
 
     // 3) OTM adayları topla (K>=F -> call, K<F -> put), moneyness penceresinde
