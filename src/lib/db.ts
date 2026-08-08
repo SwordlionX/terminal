@@ -25,12 +25,36 @@ function getClient(): Client {
         'TURSO_DATABASE_URL ve TURSO_AUTH_TOKEN ekleyin.'
       );
     }
+    // `file:` ADRESLERİ REDDEDİLİR. Otomatik yerel-dosya düşüşü koddan kaldırılmıştı ama
+    // TURSO_DATABASE_URL'e elle `file:data/local.db` yazmak aynı tuzağı geri getiriyordu:
+    // libsql o dosyayı sorunsuz açıyor, uygulama çalışıyor, ekran veri gösteriyor — ama veri
+    // haftalar önce donmuş bir kopya. (Gerçekten yaşandı: yerelde 24 Temmuz'da kalmış bir
+    // yüzey canlı sanıldı.) Artık sessizce çalışmak yerine açık hata veriyor.
+    if (/^file:/i.test(url.trim())) {
+      throw new Error(
+        'TURSO_DATABASE_URL bir yerel dosyayı (file:) gösteriyor. Yerel dosya kopyası ' +
+        'DESTEKLENMİYOR — kimse güncellemediği için bayat veriyi canlı gibi gösteriyor. ' +
+        'Gerçek Turso adresini (libsql://... veya https://...) ve TURSO_AUTH_TOKEN değerini ayarlayın.'
+      );
+    }
     client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
   }
   return client;
 }
 
+/**
+ * Şema sürümü. Kurulum/göç adımları başarıyla tamamlandığında `kv`'ye yazılır; sonraki
+ * soğuk başlangıçlar tek SELECT ile bunu görüp tüm bloğu atlar. Şema değişince (yeni tablo,
+ * yeni kolon, yeni göç) BU SAYI ARTIRILMALI — yoksa mevcut veritabanları göçü almaz.
+ */
+const SCHEMA_VERSION = '1';
+
 async function init(c: Client): Promise<void> {
+  // kv her koşulda gerekli: şema sürümü burada duruyor.
+  await c.execute('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)');
+  const ver = await c.execute("SELECT v FROM kv WHERE k = 'schema_version'");
+  if (ver.rows.length && String(ver.rows[0].v) === SCHEMA_VERSION) return;
+
   await c.batch([
     `CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY, companyName TEXT NOT NULL, customerNumber TEXT, taxNumber TEXT,
@@ -139,12 +163,27 @@ async function init(c: Client): Promise<void> {
       ], 'write');
     }
   }
+
+  // Buraya gelindiyse şema + göçler + tohumlama tamamdır; sürüm işaretlenir.
+  await c.execute({
+    sql: "INSERT INTO kv (k, v) VALUES ('schema_version', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+    args: [SCHEMA_VERSION],
+  });
 }
 
 /** Şeması hazır veritabanı istemcisi döndürür. */
 export async function dbc(): Promise<Client> {
   const c = getClient();
-  if (!readyPromise) readyPromise = init(c);
+  if (!readyPromise) {
+    // Hata durumunda memo TEMİZLENİR. Aksi halde soğuk başlangıçta Turso'ya bir kez
+    // ulaşılamadığında reddedilmiş promise sonsuza dek elde kalıyor ve o sunucu örneğindeki
+    // HER dbc() çağrısı aynı hatayla düşüyordu (yeniden deneme yok) — örnek geri dönüşene
+    // kadar site "veri okunamadı" gösteriyordu. Artık bir sonraki istek baştan dener.
+    readyPromise = init(c).catch((e) => {
+      readyPromise = null;
+      throw e;
+    });
+  }
   await readyPromise;
   return c;
 }
