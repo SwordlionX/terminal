@@ -25,6 +25,18 @@ function rowToCustomer(r: Row): Customer {
   };
 }
 
+/**
+ * `trades` tablosunda GÜNCELLENEBİLİR kolonlar — db.trades.update'in beyaz listesi.
+ * Buradaki adlar doğrudan `UPDATE trades SET <ad> = ?` ifadesine giriyor; listede
+ * olmayan bir anahtar sessizce yok sayılır. Şemaya kolon eklenirse buraya da eklenmeli.
+ */
+const TRADE_COLUMNS = [
+  'customerId', 'tradeDate', 'expiryDate', 'underlying', 'type', 'position',
+  'spot', 'strike', 'volatility', 'contractSize', 'premium', 'currentPremium',
+  'mtm', 'pnl', 'delta', 'gamma', 'vega', 'theta', 'marginRate', 'status',
+  'barrierType', 'barrierLevel', 'barrierStyle', 'barrierStartDate', 'barrierEndDate',
+] as const;
+
 function rowToTrade(r: Row): Trade {
   const num = (v: unknown) => (v == null ? null : Number(v));
   return {
@@ -125,7 +137,10 @@ export const db = {
     },
     update: async (id: string, data: Partial<Trade>): Promise<Trade | null> => {
       const c = await dbc();
-      const fields = Object.keys(data).filter(k => k !== 'id');
+      // Alan adları SQL'e interpolasyonla giriyor (parametre olarak bağlanamazlar).
+      // Çağrılar bugün iç kaynaklı ama beyaz liste olmadan, ileride kullanıcıdan gelen
+      // bir gövde doğrudan buraya aktarılırsa kolon adı üzerinden enjeksiyon mümkün olur.
+      const fields = Object.keys(data).filter(k => k !== 'id' && (TRADE_COLUMNS as readonly string[]).includes(k));
       if (fields.length === 0) return null;
       const sets = fields.map(f => `${f} = ?`).join(', ');
       const args = [...fields.map(f => (data as Record<string, unknown>)[f] as string | number | null), id];

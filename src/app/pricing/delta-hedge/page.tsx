@@ -47,7 +47,11 @@ export default function DeltaHedgePricingPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-lg border border-zinc-800 bg-zinc-900/30">
         <div className="space-y-2">
           <Label className="text-zinc-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
-          <Select value={optionType} onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}>
+          <Select
+            value={optionType}
+            items={{ call: 'Alış (Call)', put: 'Satış (Put)' }}
+            onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}
+          >
             <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="call">Alış (Call)</SelectItem>
@@ -57,7 +61,11 @@ export default function DeltaHedgePricingPage() {
         </div>
         <div className="space-y-2">
           <Label className="text-zinc-400 text-xs uppercase tracking-wider">Müşteri Yönü</Label>
-          <Select value={direction} onValueChange={(v) => setDirection(v === "short" ? "short" : "long")}>
+          <Select
+            value={direction}
+            items={{ long: 'Long (Alış / müşteri aldı)', short: 'Short (Satış / müşteri yazdı)' }}
+            onValueChange={(v) => setDirection(v === "short" ? "short" : "long")}
+          >
             <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="long">Long (Alış / müşteri aldı)</SelectItem>

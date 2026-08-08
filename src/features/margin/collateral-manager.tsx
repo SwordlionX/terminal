@@ -119,7 +119,12 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
           <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3 items-end">
             <div className="space-y-1.5 flex-1">
               <Label htmlFor="assetCode" className="text-xs text-zinc-400">Varlık Türü</Label>
-              <Select value={assetCode} onValueChange={(val) => setAssetCode(val || "Nakit-USD")}>
+              {/* items: kutuda ham kod ("Nakit-USD") değil okunur etiket görünsün diye. */}
+              <Select
+                value={assetCode}
+                items={Object.fromEntries(COLLATERAL_TYPES.map(t => [t.code, t.label]))}
+                onValueChange={(val) => setAssetCode(val || "Nakit-USD")}
+              >
                 <SelectTrigger id="assetCode" className="bg-zinc-950 border-zinc-800 text-sm">
                   <SelectValue placeholder="Varlık seçin" />
                 </SelectTrigger>

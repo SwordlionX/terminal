@@ -54,7 +54,11 @@ export function ReverseEngineering({
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label className="text-zinc-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
-            <Select value={optionType} onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}>
+            <Select
+            value={optionType}
+            items={{ call: 'Alış (Call)', put: 'Satış (Put)' }}
+            onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}
+          >
               <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="call">Alış (Call)</SelectItem>
@@ -74,7 +78,11 @@ export function ReverseEngineering({
           </div>
           <div className="space-y-2">
             <Label className="text-zinc-400 text-xs uppercase tracking-wider">Prim Birimi</Label>
-            <Select value={unitMode} onValueChange={(v) => setUnitMode(v === "pct" ? "pct" : "oz")}>
+            <Select
+            value={unitMode}
+            items={{ oz: 'USD / ons', pct: '% Notional' }}
+            onValueChange={(v) => setUnitMode(v === "pct" ? "pct" : "oz")}
+          >
               <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="oz">USD / ons</SelectItem>

@@ -27,6 +27,8 @@ export default function SettingsPage() {
     cmeSupported: boolean;
     cmeFetchedISO: string | null;
     cmeExpiries: number;
+    /** Yüzey kurulurken atlanan günler vb. teşhis notu (yoksa null). */
+    cmeNotes: string | null;
     yahooSymbol: string | null;
     yahooFetchedISO: string | null;
     yahooExpiries: number;
@@ -235,7 +237,8 @@ export default function SettingsPage() {
             gümüşü (SLV) tazeler.
           </p>
           <p className="text-[11px] text-zinc-500">
-            <span className="text-zinc-400">Günlük yenileme GitHub Actions&apos;ta koşar</span> (hafta içi 21:00 UTC).
+            <span className="text-zinc-400">Günlük yenileme GitHub Actions&apos;ta koşar</span> (12:00 UTC, Pazartesi–Cumartesi;
+            Cuma settlement&apos;ı Cumartesi yayınlandığı için Cumartesi de dahil).
             Databento ~3 dakika sürebildiği için Vercel fonksiyon limitine sığmıyor. Aşağıdaki
             &quot;CME&apos;den Yenile&quot; butonu elle tetikleme içindir; canlı ortamda zaman aşımına
             düşerse yenilemeyi GitHub Actions panelinden çalıştırın.
@@ -251,9 +254,17 @@ export default function SettingsPage() {
                 <p className={`text-[11px] ${item.source === 'yahoo' ? 'text-emerald-500' : 'text-zinc-600'}`}>
                   Yahoo {item.yahooSymbol ?? ''}: {item.yahooFetchedISO ? `${item.yahooFetchedISO} · ${item.yahooExpiries} vade` : 'veri yok'}
                 </p>
+                {item.cmeNotes && (
+                  <p className="text-[11px] text-amber-600/80 mt-0.5">⚠ {item.cmeNotes}</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
-                <Select value={item.source} onValueChange={v => changeSource(item.product, v === 'cme' ? 'cme' : 'yahoo')}>
+                {/* items: Select.Value etiketi buradan çözer; olmadan kutuda ham "yahoo"/"cme" yazıyordu. */}
+                <Select
+                  value={item.source}
+                  items={{ yahoo: 'Yahoo (ETF)', cme: 'CME COMEX' }}
+                  onValueChange={v => changeSource(item.product, v === 'cme' ? 'cme' : 'yahoo')}
+                >
                   <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="yahoo">Yahoo (ETF)</SelectItem>

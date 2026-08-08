@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { refreshCmeSurface, getDataSource } from '@/services/cme.service';
+import { getDataSource } from '@/services/cme.service';
 
 export const dynamic = 'force-dynamic';
 // Vercel Hobby fonksiyonları 60 saniyede kesilir; daha yükseği yazmak yanıltıcı olur.

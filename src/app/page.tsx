@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,12 +19,23 @@ import { SmileChart } from "@/features/pricing/smile-chart";
 import { usePricingModel, formatCurrency, formatNumber } from "@/features/pricing/use-pricing-model";
 import { TrendingUpDown, Shield, AlertTriangle } from "lucide-react";
 
-/** Yahoo spot sembolünün tipini etiketler: =X gerçek spot, -USD token, =F vadeli. */
-function spotKind(source: string): { label: string; futures: boolean } {
-  if (source.endsWith("=F")) return { label: "Vadeli (futures)", futures: true };
-  if (source.endsWith("-USD")) return { label: "Token", futures: false };
-  if (source.endsWith("=X")) return { label: "Spot", futures: false };
-  return { label: source, futures: false };
+/**
+ * Spot kaynağını rozete böler: etiket (kaynağın CİNSİ) + sembol.
+ *
+ * İki biçim var:
+ *  - Sağlayıcılı gerçek spot: "XAU/USD (Twelve Data)" → etiket sağlayıcı adı, sembol XAU/USD.
+ *  - Yahoo sembolü: =X gerçek spot, -USD token, =F vadeli.
+ * Sağlayıcı biçimi eklendiğinde bu ayrıştırma yoktu; hiçbir son eke uymadığı için etiket
+ * ham kaynağın kendisi oluyordu ve rozet "XAU/USD (Twelve Data): XAU/USD (Twelve Data) $…"
+ * diye iki kez yazıyordu.
+ */
+function spotKind(source: string): { label: string; symbol: string; futures: boolean } {
+  const provider = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(source);
+  if (provider) return { label: provider[2], symbol: provider[1], futures: false };
+  if (source.endsWith("=F")) return { label: "Vadeli (futures)", symbol: source, futures: true };
+  if (source.endsWith("-USD")) return { label: "Token", symbol: source, futures: false };
+  if (source.endsWith("=X")) return { label: "Spot", symbol: source, futures: false };
+  return { label: source, symbol: source, futures: false };
 }
 
 const pricingTools = [
@@ -89,6 +100,13 @@ export default function PricingPage() {
     fetch('/api/customers').then(r => r.json()).then(setCustomers).catch(() => {});
   }, []);
 
+  // Seçili müşterinin ADININ kutuda görünmesi için değer->etiket eşlemesi. Bu olmadan
+  // Base UI seçimden sonra ham id'yi ("c-22384484") yazıyordu.
+  const customerItems = useMemo(
+    () => Object.fromEntries(customers.map(c => [c.id, c.companyName])),
+    [customers],
+  );
+
   const handleBookTrade = async () => {
     if (booking) return; // çift tıklamayı engelle
     if (!customerId) { setBookMsg({ text: "Önce müşteri seçin.", error: true }); return; }
@@ -139,7 +157,7 @@ export default function PricingPage() {
                 ? "border-amber-600 text-amber-500 font-mono"
                 : "border-emerald-600 text-emerald-500 font-mono"}
             >
-              {spotInfo.label}: {feed.spot.source} ${formatNumber(feed.spot.price, 2)}
+              {spotInfo.label}: {spotInfo.symbol} ${formatNumber(feed.spot.price, 2)}
             </Badge>
           )}
           {feed.snapshotISO && (
@@ -177,7 +195,14 @@ export default function PricingPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Ürün (Sembol)</Label>
-              <Select value={md.product} onValueChange={(v) => md.setField('product', v || 'XAU')}>
+              {/* `items` OLMADAN Base UI'ın Select.Value'su seçeneğin ETİKETİNİ değil ham
+                  DEĞERİNİ basar; kutu "XAU/USD (Altın)" yerine "XAU" gösteriyordu. Yalnız
+                  görüntüyle ilgili — fiyatlama her zaman value'yu (md.product) kullanır. */}
+              <Select
+                value={md.product}
+                items={{ XAU: 'XAU/USD (Altın)', XAG: 'XAG/USD (Gümüş)' }}
+                onValueChange={(v) => md.setField('product', v || 'XAU')}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {/* Yüzeyin kaynağı burada YAZILMAZ (eskiden "GLD smile" / "SLV smile" yazıyordu):
@@ -496,7 +521,7 @@ export default function PricingPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
-              <Select value={customerId} onValueChange={(v) => setCustomerId(v || "")}>
+              <Select value={customerId} items={customerItems} onValueChange={(v) => setCustomerId(v || "")}>
                 <SelectTrigger><SelectValue placeholder="Müşteri..." /></SelectTrigger>
                 <SelectContent>
                   {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>)}

@@ -215,7 +215,12 @@ export function BarrierInputs({ state }: { state: BarrierPricing }) {
         <Label className="text-zinc-400 text-xs uppercase tracking-wider">Bariyer Tipi</Label>
         {/* Call/Put burada SEÇİLMEZ: aynı bariyer yapısının call ve put primi birlikte
             hesaplanıp yan yana gösteriliyor (vanilya kartındaki gibi). */}
-        <Select value={variant} onValueChange={(v) => setVariant(v || "uo")}>
+        {/* items: kutuda ham kod ("uo") değil tam açıklama görünsün diye. */}
+        <Select
+          value={variant}
+          items={Object.fromEntries(VARIANTS.map(v => [v.value, v.label]))}
+          onValueChange={(v) => setVariant(v || "uo")}
+        >
           <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
           <SelectContent>
             {VARIANTS.map(v => (
