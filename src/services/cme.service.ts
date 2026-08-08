@@ -123,12 +123,27 @@ function settlementWindow(date: string, availableEnd: string) {
 }
 
 /**
- * Opsiyon TANIMLARI için tam gün penceresi. Tanımlar seans başında yayınlandığı için
- * settlement penceresinde bulunmazlar (denendi: 0 kayıt döndü). Tanım yanıtı zaten
- * görece küçük (~22 MB) ve `definition` şeması intraday gürültü taşımaz.
+ * TANIM PENCERESİ — günün ilk çeyrek saati (00:00–00:15 UTC).
+ *
+ * Tanımlar (instrument_id → call/put, strike, vade, dayanak) settlement fiyatlarının
+ * sözlüğüdür: onlar olmadan elde 34.000 isimsiz sayı kalır, smile kurulamaz.
+ *
+ * Ölçüldü (2026-08-06 ve 08-07): tanımların TAMAMI gün başında tek seferde yayınlanıyor.
+ * XAU'da 33.948 kaydın 33.946'sı 00:00 UTC diliminde, yalnız 2 tanesi gün içinde geliyor.
+ *   pencere        XAU              XAG
+ *   00:00-00:05    33.946-33.948    20.946-20.948
+ *   00:00-00:15    33.946-33.948    20.946-20.948   ← seçilen (aynı sayı, biraz pay)
+ *   00:00-23:59    33.948           20.948          (aynı veri, ~60 sn + sık 504)
+ *
+ * Neden dar pencere daha güvenilir: indirilen veri her iki durumda da aynı (~20 MB), ama
+ * Databento'nun TARADIĞI aralık küçüldüğü için sorgu hazırlığı hızlanıyor — 60 sn'de
+ * 504 veren sorgu 12-25 sn'de dönüyor. (Aynı gün 00:00-01:00 hâlâ 504 verebiliyordu.)
+ *
+ * Gün içinde listelenen 1-2 yeni enstrüman bu pencereye girmez; o gün zaten settlement'ları
+ * olmadığı için yüzeye katkıları yok.
  */
-function dayWindow(date: string, availableEnd: string) {
-  return capped(date, '00:00:00', '23:59:59', availableEnd);
+function definitionWindow(date: string, availableEnd: string) {
+  return capped(date, '00:00:00', '00:15:00', availableEnd);
 }
 
 const CSV_TIMEOUT_MS = 90_000;
@@ -250,7 +265,7 @@ export async function refreshCmeSurface(
   const skippedErrs: string[] = [];
   for (const cand of candidates) {
     try {
-      // Settlement sorguları DAR pencerede (17:00–19:00 UTC), tanımlar tam günde.
+      // Her iki sorgu da DAR pencerede: settlement 17:00–19:00, tanımlar 00:00–00:15 UTC.
       const settle = settlementWindow(cand, availableEnd);
       if (Date.parse(settle.start + 'Z') >= Date.parse(settle.end + 'Z')) {
         // Cari gün: settlement saati henüz gelmemiş. Hiç istek atılmadan elenir.
@@ -273,7 +288,7 @@ export async function refreshCmeSurface(
       //    Çözülemeyen kök (ör. o hafta listelenmemiş SO3) sorun çıkarmaz: Databento
       //    yalnız HİÇBİRİ çözülemezse hata verir, kısmi çözümde isteği başarıyla döndürür.
       const optRoots = [cfg.optRoot, ...cfg.weeklyRoots].join(',');
-      const defWin = dayWindow(cand, availableEnd);
+      const defWin = definitionWindow(cand, availableEnd);
       const options = parseDefinitions(await withRetry(`${key} opsiyon tanımı ${cand}`,
         () => fetchCsvLines(rangeUrl('definition', optRoots, defWin.start, defWin.end))));
       if (options.size === 0) {
