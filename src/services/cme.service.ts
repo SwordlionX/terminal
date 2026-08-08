@@ -16,9 +16,20 @@ import { buildCmeSurface, CmeOptionDef } from '@/lib/vol/cme';
 const HIST = 'https://hist.databento.com/v0';
 const DATASET = 'GLBX.MDP3';
 
-// Gerçek bir kapanış seansında gümüş futures eğrisinin çoğu ayı settle olur (~20+).
-// Cari (yarım) seansta yalnız birkaç enstrüman settle olmuş olur; bu eşik onu eler.
-const MIN_FUT_SETTLE = 3;
+/**
+ * Gerçek bir kapanış seansında metal futures eğrisinin tamamı settle olur; bu eşik
+ * yarım/kapanmamış seansı eler.
+ *
+ * Ölçüldü (2026-08-08, 6 işlem günü): altın HER GÜN tam 34, gümüş 32 enstrüman
+ * (2025-12-10'da 31 — listelenen kontrat sayısı zamanla azıcık oynuyor). Yani sağlıklı
+ * bir günde sayı 30'un üzerinde; eşiğin 10 olması bol bol pay bırakıyor.
+ *
+ * TARİHÇE: bu değer bir ara 3'e indirilmişti, çünkü yüzey günlerce eski veriye düşüyordu.
+ * Ölçüm gösterdi ki sebep eşik DEĞİLDİ — 3, 10 ve 15 aynı günü seçiyordu. Asıl sebep
+ * opsiyon sorgusunun 348 MB'a çıkıp Databento ağ geçidinde 504 vermesiydi (bkz.
+ * SETTLE_WINDOW). Eşik düşürmek bir şeyi düzeltmedi, yalnız emniyet payını aldı.
+ */
+const MIN_FUT_SETTLE = 10;
 
 /**
  * CME COMEX kökleri — altın ve gümüş.
@@ -76,20 +87,74 @@ async function getAvailableEnd(): Promise<string> {
 
 const isoDate = (t: number): string => new Date(t).toISOString().slice(0, 10);
 
-/**
- * Bir günün [00:00, 23:59:59] penceresi — `end`, mevcut veri sonunu (availableEnd) AŞMAZ.
- * Cari (açık) seansta availableEnd henüz gün ortasında olduğu için tam-gün istemek 422
- * (data_end_after_available_end) verir; bu yüzden sınırlanır.
- */
-function dayWindow(date: string, availableEnd: string): { start: string; end: string } {
-  const start = `${date}T00:00:00`;
-  const dayEnd = `${date}T23:59:59`;
+/** `end`, mevcut veri sonunu (availableEnd) AŞMAZ — aşarsa Databento 422 döndürür. */
+function capped(date: string, from: string, to: string, availableEnd: string): { start: string; end: string } {
+  const start = `${date}T${from}`;
+  const wanted = `${date}T${to}`;
   const cap = availableEnd.slice(0, 19); // "YYYY-MM-DDTHH:MM:SS"
-  const end = Date.parse(`${dayEnd}Z`) <= Date.parse(`${cap}Z`) ? dayEnd : cap;
+  const end = Date.parse(`${wanted}Z`) <= Date.parse(`${cap}Z`) ? wanted : cap;
   return { start, end };
 }
 
+/**
+ * SETTLEMENT PENCERESİ (statistics şeması için) — günün tamamı DEĞİL, 17:00–19:00 UTC.
+ *
+ * Neden: `statistics` şeması settlement'ın yanında bütün seans boyu intraday istatistik
+ * taşır (açık pozisyon, bid/ask, hacim...). Tam gün istendiğinde opsiyon kökleri için
+ * yanıt DEVASA oluyordu ve Databento'nun ağ geçidi ~60 saniyede HTTP 504 basıyordu:
+ *   XAU opsiyon (6 kök) tam gün : 348 MB   →  17:00–19:00 :  3.4 MB   (102 kat)
+ *   XAG opsiyon (6 kök) tam gün : 133 MB   →  17:00–19:00 :  2.2 MB   ( 60 kat)
+ * Her 504 o günü düşürüp bir öncekine geçiyordu; art arda birkaç kez olunca yüzey
+ * günlerce eski bir settlement'tan kuruluyordu. Gözlenen semptom buydu.
+ *
+ * Pencere neden yeterli — ölçüldü (2026-08-08):
+ *  - CME settlement'ı gün içinde ÜÇ dalga yayınlıyor (ör. 17:30, 21:39, 23:03 UTC), ama
+ *    üçü de BİREBİR AYNI fiyatları taşıyor. Altı ayrı gün × iki üründe fark çıkmadı.
+ *  - Opsiyon köklerinde de aynı: XAU 33.948 ve XAG 20.948 settlement, erken pencere ile
+ *    geç pencere arasında 0 fark, 0 eksik.
+ *  - Kış saatinde (CST) settlement 18:25/18:30 UTC'ye kayıyor — pencere onu da kapsıyor
+ *    (2026-01-14 ve 2025-12-10'da doğrulandı).
+ *
+ * Yan fayda: cron 12:00 UTC'de koştuğunda cari günün penceresi henüz availableEnd'in
+ * ötesinde kalır, aşağıdaki geçersizlik kontrolü o günü TEK İSTEK ATMADAN eler.
+ */
+function settlementWindow(date: string, availableEnd: string) {
+  return capped(date, '17:00:00', '19:00:00', availableEnd);
+}
+
+/**
+ * Opsiyon TANIMLARI için tam gün penceresi. Tanımlar seans başında yayınlandığı için
+ * settlement penceresinde bulunmazlar (denendi: 0 kayıt döndü). Tanım yanıtı zaten
+ * görece küçük (~22 MB) ve `definition` şeması intraday gürültü taşımaz.
+ */
+function dayWindow(date: string, availableEnd: string) {
+  return capped(date, '00:00:00', '23:59:59', availableEnd);
+}
+
 const CSV_TIMEOUT_MS = 90_000;
+
+/**
+ * Databento'nun ağ geçidi büyük/yavaş sorgularda ARADA BİR 504 döndürüyor. Tek bir 504
+ * eskiden o günü tamamen düşürüyordu; pencere daraltıldıktan sonra beklenmiyor ama
+ * ucuz bir sigorta olarak birkaç kez yeniden deneniyor.
+ */
+const MAX_TRIES = 3;
+
+async function withRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < MAX_TRIES) {
+        console.warn(`[CME] ${label}: ${attempt}. deneme başarısız (${e instanceof Error ? e.message : e}) — yeniden deneniyor`);
+        await new Promise(r => setTimeout(r, 2000 * attempt));
+      }
+    }
+  }
+  throw lastErr;
+}
 
 /** Küçük CSV'yi (definition ~MB) tümüyle indirip satırlara böler. */
 async function fetchCsvLines(url: string): Promise<string[]> {
@@ -185,14 +250,17 @@ export async function refreshCmeSurface(
   const skippedErrs: string[] = [];
   for (const cand of candidates) {
     try {
-      const { start, end } = dayWindow(cand, availableEnd);
-      if (Date.parse(start + 'Z') >= Date.parse(end + 'Z')) {
-        throw new Error(`zaman aralığı geçersiz (start=${start}, end=${end})`);
+      // Settlement sorguları DAR pencerede (17:00–19:00 UTC), tanımlar tam günde.
+      const settle = settlementWindow(cand, availableEnd);
+      if (Date.parse(settle.start + 'Z') >= Date.parse(settle.end + 'Z')) {
+        // Cari gün: settlement saati henüz gelmemiş. Hiç istek atılmadan elenir.
+        throw new Error(`settlement penceresi henüz oluşmadı (${settle.start} > mevcut veri sonu)`);
       }
 
-      // 1) Dayanak futures settlement (F kaynağı). Tamamlanmamış seansta yalnız birkaç
-      //    enstrüman settle olmuş olur; eşiğin altındaysa bu gün gerçek bir kapanış değil.
-      const futSettle = await streamSettlements(rangeUrl('statistics', cfg.futRoot, start, end));
+      // 1) Dayanak futures settlement (F kaynağı). Tamamlanmamış seansta bu pencere boş
+      //    döner; eşiğin altındaysa bu gün gerçek bir kapanış değil.
+      const futSettle = await withRetry(`${key} futures settlement ${cand}`,
+        () => streamSettlements(rangeUrl('statistics', cfg.futRoot, settle.start, settle.end)));
       if (futSettle.size < MIN_FUT_SETTLE) { 
         lastErr = `${cand}: yetersiz futures settlement (${futSettle.size})`; 
         skippedErrs.push(lastErr);
@@ -205,15 +273,18 @@ export async function refreshCmeSurface(
       //    Çözülemeyen kök (ör. o hafta listelenmemiş SO3) sorun çıkarmaz: Databento
       //    yalnız HİÇBİRİ çözülemezse hata verir, kısmi çözümde isteği başarıyla döndürür.
       const optRoots = [cfg.optRoot, ...cfg.weeklyRoots].join(',');
-      const options = parseDefinitions(await fetchCsvLines(rangeUrl('definition', optRoots, start, end)));
-      if (options.size === 0) { 
+      const defWin = dayWindow(cand, availableEnd);
+      const options = parseDefinitions(await withRetry(`${key} opsiyon tanımı ${cand}`,
+        () => fetchCsvLines(rangeUrl('definition', optRoots, defWin.start, defWin.end))));
+      if (options.size === 0) {
         lastErr = `${cand}: opsiyon tanımı yok`; 
         skippedErrs.push(lastErr);
         continue; 
       }
 
-      // 3) Opsiyon settlement'ları — yine TEK istek, akışla süzülür.
-      const optSettle = await streamSettlements(rangeUrl('statistics', optRoots, start, end));
+      // 3) Opsiyon settlement'ları — yine TEK istek, dar pencerede, akışla süzülür.
+      const optSettle = await withRetry(`${key} opsiyon settlement ${cand}`,
+        () => streamSettlements(rangeUrl('statistics', optRoots, settle.start, settle.end)));
 
       const evalSec = Math.floor(Date.parse(`${cand}T00:00:00Z`) / 1000);
       // fetchedISO HER ZAMAN sade bir tarih etiketidir — ekranda tarih olarak gösteriliyor.
