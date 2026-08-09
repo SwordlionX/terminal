@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { CustomerMarginSummaryTable } from "@/features/margin/customer-margin-summary-table";
+import { breakEvenSpot, profitSideOf } from "@/lib/math/breakeven";
 
 export const dynamic = "force-dynamic";
 
@@ -76,13 +77,14 @@ export default async function TradesBlotterPage() {
         </CardHeader>
         <CardContent>
           {/* 12 sütun laptop ekranına sığmaz; min-width verince tablo taşar ve kapsayıcı yatay kayar (sütunlar sıkışmaz). */}
-          <Table className="min-w-[1100px]">
+          <Table className="min-w-[1200px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Müşteri</TableHead>
                 <TableHead>Ürün</TableHead>
                 <TableHead>Pozisyon</TableHead>
                 <TableHead className="text-right">Strike</TableHead>
+                <TableHead className="text-right underline decoration-dotted decoration-zinc-600 underline-offset-4" title="Vade sonunda net K/Z'nin sıfır olduğu spot: Call'da strike + birim prim, Put'ta strike − birim prim. Alış/satışta seviye aynı, kâr tarafı değişir.">Başabaş</TableHead>
                 <TableHead className="text-right">Miktar (Baz)</TableHead>
                 <TableHead className="text-right">Başlangıç (gün)</TableHead>
                 <TableHead className="text-right">Kalan (gün)</TableHead>
@@ -107,6 +109,20 @@ export default async function TradesBlotterPage() {
                     </TableCell>
                     <TableCell className="text-right font-mono">{e.trade.strike}</TableCell>
                     <TableCell className="text-right font-mono">
+                      {(() => {
+                        const be = breakEvenSpot(e.trade.type, e.trade.strike, e.trade.premium, e.trade.contractSize);
+                        if (be == null) return <span className="text-zinc-600">-</span>;
+                        const above = profitSideOf(e.trade.type, e.trade.position) === 'above';
+                        return (
+                          <span title={`${be.toFixed(2)} seviyesinin ${above ? 'ÜSTÜ' : 'ALTI'} müşteri lehine`}>
+                            {be.toFixed(2)}
+                            <span className="ml-1 text-[10px] text-zinc-500">{above ? '↑' : '↓'}</span>
+                            {e.trade.barrierType && <span className="text-amber-600" title="Bariyerli işlem — bariyere değilmediği varsayımıyla">*</span>}
+                          </span>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
                       {new Intl.NumberFormat('en-US').format(e.trade.contractSize)} {e.trade.underlying.split('/')[0]}
                     </TableCell>
                     <TableCell className="text-right font-mono">{e.initialDaysToExpiry.toFixed(0)}</TableCell>
@@ -124,7 +140,7 @@ export default async function TradesBlotterPage() {
               })}
               {trades.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
                     Açık pozisyon yok. Fiyatlama ekranından veya müşteri sayfasından işlem ekleyin.
                   </TableCell>
                 </TableRow>

@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { deleteTradeAction, settleTradeAction, addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { MarginEngine } from "@/lib/margin/engine";
+import { InfoHint } from "@/components/ui/info-hint";
+import { BREAKEVEN_INFO } from "@/lib/greeks-info";
+import { breakEvenSpot, profitSideOf, breakEvenLabel } from "@/lib/math/breakeven";
 
 export function TradeManagement({ customerId, trades }: { customerId: string, trades: Trade[] }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -113,6 +116,12 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
               <TableHead>Ürün</TableHead>
               <TableHead>Pozisyon</TableHead>
               <TableHead>Strike</TableHead>
+              <TableHead>
+                <span className="inline-flex items-center gap-1.5">
+                  Başabaş
+                  <InfoHint label="Başabaş nedir" text={BREAKEVEN_INFO} />
+                </span>
+              </TableHead>
               <TableHead>Miktar</TableHead>
               <TableHead>Durum</TableHead>
               <TableHead>PnL</TableHead>
@@ -136,6 +145,20 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                   <span className={t.position === 'Long' ? 'text-emerald-500' : 'text-rose-500'}>{t.position}</span> {t.type}
                 </TableCell>
                 <TableCell>{t.strike}</TableCell>
+                <TableCell className="font-mono">
+                  {(() => {
+                    const be = breakEvenSpot(t.type, t.strike, t.premium, t.contractSize);
+                    if (be == null) return <span className="text-zinc-600">-</span>;
+                    const above = profitSideOf(t.type, t.position) === 'above';
+                    return (
+                      <span title={breakEvenLabel(t.type, t.position, be)}>
+                        {be.toFixed(2)}
+                        <span className={`ml-1 text-[10px] ${above ? 'text-emerald-500' : 'text-rose-500'}`}>{above ? '↑' : '↓'}</span>
+                        {t.barrierType && <span className="text-amber-600" title="Bariyerli — bariyere değilmediği varsayımıyla">*</span>}
+                      </span>
+                    );
+                  })()}
+                </TableCell>
                 <TableCell>{t.contractSize}</TableCell>
                 <TableCell>
                   <Badge variant={t.status === 'Closed' ? 'secondary' : 'default'}>{t.status}</Badge>
@@ -165,7 +188,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
             ))}
             {trades.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">Müşteriye ait işlem bulunmamaktadır.</TableCell>
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">Müşteriye ait işlem bulunmamaktadır.</TableCell>
               </TableRow>
             )}
           </TableBody>

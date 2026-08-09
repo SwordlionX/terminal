@@ -17,7 +17,25 @@ import { ScenarioAnalysis } from "@/features/pricing/scenario-analysis";
 import { BarrierInputs, BarrierResult, useBarrierPricing } from "@/features/pricing/barrier-options";
 import { SmileChart } from "@/features/pricing/smile-chart";
 import { usePricingModel, formatCurrency, formatNumber } from "@/features/pricing/use-pricing-model";
+import { InfoHint } from "@/components/ui/info-hint";
+import { GREEK_INFO, BREAKEVEN_INFO } from "@/lib/greeks-info";
+import type { GreeksResult } from "@/lib/math/greeks";
 import { TrendingUpDown, Shield, AlertTriangle } from "lucide-react";
+
+/**
+ * Greeks tablosunun satırları. `same: true` olanlar put-call paritesi gereği call ve put'ta
+ * BİREBİR aynıdır (gamma, vega ve onların vol türevleri) — iki kez yazmak yerine "=" konur.
+ */
+const GREEK_ROWS: { key: keyof GreeksResult; label: string; digits: number; same?: boolean }[] = [
+  { key: 'delta', label: 'Delta', digits: 4 },
+  { key: 'gamma', label: 'Gamma', digits: 6, same: true },
+  { key: 'theta', label: 'Theta (Günlük)', digits: 4 },
+  { key: 'vega', label: 'Vega', digits: 4, same: true },
+  { key: 'rho', label: 'Rho', digits: 4 },
+  { key: 'charm', label: 'Charm', digits: 6 },
+  { key: 'vanna', label: 'Vanna', digits: 5, same: true },
+  { key: 'vomma', label: 'Vomma', digits: 5, same: true },
+];
 
 /**
  * Spot kaynağını rozete böler: etiket (kaynağın CİNSİ) + sembol.
@@ -375,6 +393,19 @@ export default function PricingPage() {
                       <span className="text-muted-foreground">Kullanılan Vol</span>
                       <span className="font-mono">% {formatNumber(effVol, 2)} {md.manualVol ? "(manuel)" : "(smile)"}</span>
                     </div>
+                    {/* Başabaş — vade sonunda net K/Z'nin sıfır olduğu spot. Call'da strike +
+                        prim, put'ta strike − prim. Alış/satışta seviye aynı, kâr tarafı değişir. */}
+                    <div className="flex justify-between text-sm py-1 border-t">
+                      <span className="text-muted-foreground flex items-center gap-1.5">
+                        Başabaş (Call / Put)
+                        <InfoHint label="Başabaş nedir" text={BREAKEVEN_INFO} />
+                      </span>
+                      <span className="font-mono">
+                        <span className="text-emerald-500">{formatNumber(md.strike + result.call, 2)}</span>
+                        <span className="text-muted-foreground"> / </span>
+                        <span className="text-rose-500">{formatNumber(md.strike - result.put, 2)}</span>
+                      </span>
+                    </div>
                     {usingCmeFwd && (
                       <div className="flex justify-between text-sm py-1 border-t">
                         <span className="text-muted-foreground">Fiyatlama Forward&apos;ı (CME futures)</span>
@@ -433,22 +464,41 @@ export default function PricingPage() {
           </CardContent>
         </Card>
 
-        {/* Greeks (Duyarlılıklar) */}
+        {/* Greeks (Duyarlılıklar) — Call VE Put birlikte.
+            Eskiden yalnız call gösteriliyordu; oysa masanın yazdığı işlemlerin çoğu put ve
+            greeks() zaten iki tarafı da hesaplıyordu. Delta/theta/charm/rho iki tarafta
+            FARKLIDIR; gamma/vega/vanna/vomma put-call paritesi gereği aynıdır. */}
         <Card>
           <CardHeader>
-            <CardTitle>Greeks (Call)</CardTitle>
+            <CardTitle>Greeks</CardTitle>
           </CardHeader>
           <CardContent>
              {gr && priceable ? (
-               <div className="space-y-1 font-mono text-sm">
-                 <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Delta</span><span>{formatNumber(gr.call.delta)}</span></div>
-                 <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Gamma</span><span>{formatNumber(gr.call.gamma, 6)}</span></div>
-                 <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Theta (Günlük)</span><span>{formatNumber(gr.call.theta)}</span></div>
-                 <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Vega</span><span>{formatNumber(gr.call.vega)}</span></div>
-                 <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Rho</span><span>{formatNumber(gr.call.rho)}</span></div>
-                 <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Charm</span><span>{formatNumber(gr.call.charm, 6)}</span></div>
-                 <div className="flex justify-between py-1.5 border-b border-border/50"><span className="text-muted-foreground">Vanna</span><span>{formatNumber(gr.call.vanna, 5)}</span></div>
-                 <div className="flex justify-between py-1.5"><span className="text-muted-foreground">Vomma</span><span>{formatNumber(gr.call.vomma, 5)}</span></div>
+               <div className="text-sm">
+                 <div className="flex items-center justify-between pb-1.5 text-xs uppercase tracking-wider text-zinc-500">
+                   <span>Duyarlılık</span>
+                   <span className="flex gap-4">
+                     <span className="w-20 text-right text-emerald-600/80">Call</span>
+                     <span className="w-20 text-right text-rose-600/80">Put</span>
+                   </span>
+                 </div>
+                 {GREEK_ROWS.map(({ key, label, digits, same }) => (
+                   <div key={key} className="flex items-center justify-between py-1.5 border-t border-border/50">
+                     <span className="flex items-center gap-1.5 text-muted-foreground">
+                       {label}
+                       <InfoHint label={`${GREEK_INFO[key].title} nedir`} text={GREEK_INFO[key].text} />
+                     </span>
+                     <span className="flex gap-4 font-mono">
+                       <span className="w-20 text-right">{formatNumber(gr.call[key], digits)}</span>
+                       <span className={`w-20 text-right ${same ? 'text-zinc-500' : ''}`}>
+                         {same ? '=' : formatNumber(gr.put[key], digits)}
+                       </span>
+                     </span>
+                   </div>
+                 ))}
+                 <p className="text-[11px] text-zinc-500 mt-3">
+                   &quot;=&quot; işaretli satırlar put-call paritesi gereği iki tarafta aynıdır.
+                 </p>
                </div>
                      ) : (
                <div className="text-muted-foreground text-sm">

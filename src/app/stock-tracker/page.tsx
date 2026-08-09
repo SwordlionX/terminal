@@ -9,7 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { BIST_TICKERS, SYMBOL_RE, bistName, toBistCode, toYahooSymbol } from '@/lib/bist';
+import { InfoHint } from '@/components/ui/info-hint';
+import { BREAKEVEN_INFO } from '@/lib/greeks-info';
+import {
+  BIST_TICKERS, SYMBOL_RE, bistName, toBistCode, toYahooSymbol,
+  STOCK_TRADE_TYPES, STOCK_TRADE_LABELS, STOCK_TRADE_SHORT, StockTradeType,
+  isOptionTrade, stockPnL, stockBreakEven, stockProfitSide, normalizeStockTradeType,
+} from '@/lib/bist';
 
 type StockData = {
   price: number;
@@ -18,7 +24,7 @@ type StockData = {
 };
 
 type UserInputs = {
-  tradeType: 'long' | 'put_sell';
+  tradeType: StockTradeType;
   basePrice: number;
   quantity: number;
   premium: number;
@@ -60,11 +66,9 @@ async function loadPositions(): Promise<Record<string, UserInputs> | null> {
   }
 }
 
-/** Kar/zarar — kısa put'ta strike üstünde kalan fiyat yalnız primi bırakır. */
-function calculatePnL(input: UserInputs, price: number): number {
-  if (input.tradeType === 'put_sell' && price >= input.basePrice) return input.premium;
-  return (price - input.basePrice) * input.quantity + input.premium;
-}
+/** Kar/zarar — yön mantığı lib/bist.ts'te (dört opsiyon yönü + düz hisse). */
+const calculatePnL = (i: UserInputs, price: number) =>
+  stockPnL(i.tradeType, price, i.basePrice, i.quantity, i.premium);
 
 const fmtTl = (v: number) =>
   new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
@@ -75,13 +79,13 @@ const fmtTl = (v: number) =>
 
 interface DraftState {
   code: string;
-  tradeType: 'long' | 'put_sell';
+  tradeType: StockTradeType;
   basePrice: string;
   quantity: string;
   premium: string;
 }
 
-const EMPTY_DRAFT: DraftState = { code: '', tradeType: 'long', basePrice: '', quantity: '100', premium: '' };
+const EMPTY_DRAFT: DraftState = { code: '', tradeType: 'put_sell', basePrice: '', quantity: '100', premium: '' };
 
 function TradeDialog({
   open, onOpenChange, draft, setDraft, editing, onSave, saving, error,
@@ -96,7 +100,7 @@ function TradeDialog({
   error: string | null;
 }) {
   const set = <K extends keyof DraftState>(k: K, v: DraftState[K]) => setDraft(prev => ({ ...prev, [k]: v }));
-  const isPut = draft.tradeType === 'put_sell';
+  const isOpt = isOptionTrade(draft.tradeType);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -133,16 +137,17 @@ function TradeDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs uppercase tracking-wider text-zinc-400">İşlem Tipi</Label>
-            {/* items: Base UI'ın Select.Value'su bu eşleme olmadan ham değeri ("long") basar. */}
+            {/* items: Base UI'ın Select.Value'su bu eşleme olmadan ham değeri ("put_sell") basar. */}
             <Select
               value={draft.tradeType}
-              items={{ long: 'Normal Hisse (Long)', put_sell: 'Put Opsiyon Satışı' }}
-              onValueChange={(v: string | null) => set('tradeType', v === 'put_sell' ? 'put_sell' : 'long')}
+              items={STOCK_TRADE_LABELS}
+              onValueChange={(v: string | null) => set('tradeType', normalizeStockTradeType(v) ?? 'put_sell')}
             >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="long">Normal Hisse (Long)</SelectItem>
-                <SelectItem value="put_sell">Put Opsiyon Satışı</SelectItem>
+                {STOCK_TRADE_TYPES.map(t => (
+                  <SelectItem key={t} value={t}>{STOCK_TRADE_LABELS[t]}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -150,7 +155,7 @@ function TradeDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs uppercase tracking-wider text-zinc-400">
-                {isPut ? 'Kullanım Fiyatı' : 'Maliyet Fiyatı'}
+                {isOpt ? 'Kullanım Fiyatı (Strike)' : 'Maliyet Fiyatı'}
               </Label>
               <Input
                 type="number" step="0.01" placeholder="0.00"
@@ -172,7 +177,9 @@ function TradeDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs uppercase tracking-wider text-zinc-400">
-              {isPut ? 'Alınan Prim (TL, toplam)' : 'Prim / Gelir (TL, toplam)'}
+              {!isOpt ? 'Ek Gelir / Prim (TL, toplam)'
+                : draft.tradeType.endsWith('_sell') ? 'Alınan Prim (TL, toplam)'
+                : 'Ödenen Prim (TL, toplam)'}
             </Label>
             <Input
               type="number" step="0.01" placeholder="0.00"
@@ -409,7 +416,11 @@ export default function StockTrackerPage() {
 
             return (
               <Card key={symbol} className="bg-neutral-900/60 border-neutral-800/60 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl transition-all duration-500 hover:border-neutral-700/80 hover:bg-neutral-900/80">
-                <div className={`h-2 w-full bg-gradient-to-r ${input.tradeType === 'put_sell' ? 'from-amber-500 to-orange-600' : 'from-indigo-500 to-cyan-500'}`} />
+                <div className={`h-2 w-full bg-gradient-to-r ${
+                  input.tradeType === 'long' ? 'from-indigo-500 to-cyan-500'
+                    : input.tradeType.endsWith('_sell') ? 'from-amber-500 to-orange-600'
+                    : 'from-sky-500 to-blue-600'
+                }`} />
 
                 <CardHeader className="pb-4">
                   <div className="flex justify-between items-start gap-3">
@@ -417,7 +428,7 @@ export default function StockTrackerPage() {
                       <CardTitle className="text-2xl font-bold text-white tracking-tight font-mono">{code}</CardTitle>
                       <CardDescription className="text-neutral-400 mt-1 truncate">{bistName(symbol)}</CardDescription>
                       <Badge variant="outline" className="mt-2 border-neutral-700 text-neutral-300 text-[11px]">
-                        {input.tradeType === 'put_sell' ? 'Put Satışı' : 'Long'}
+                        {STOCK_TRADE_SHORT[input.tradeType]}
                       </Badge>
                     </div>
 
@@ -450,10 +461,10 @@ export default function StockTrackerPage() {
                 </CardHeader>
 
                 <CardContent className="space-y-5">
-                  <div className="grid grid-cols-3 gap-3 p-4 bg-neutral-950/50 rounded-2xl border border-neutral-800/50 text-sm">
+                  <div className="grid grid-cols-4 gap-3 p-4 bg-neutral-950/50 rounded-2xl border border-neutral-800/50 text-sm">
                     <div>
                       <div className="text-[11px] uppercase tracking-wider text-neutral-500">
-                        {input.tradeType === 'put_sell' ? 'Kullanım' : 'Maliyet'}
+                        {isOptionTrade(input.tradeType) ? 'Kullanım' : 'Maliyet'}
                       </div>
                       <div className="font-mono text-neutral-200 mt-0.5">₺{fmtTl(input.basePrice)}</div>
                     </div>
@@ -464,6 +475,28 @@ export default function StockTrackerPage() {
                     <div>
                       <div className="text-[11px] uppercase tracking-wider text-neutral-500">Prim</div>
                       <div className="font-mono text-neutral-200 mt-0.5">₺{fmtTl(input.premium)}</div>
+                    </div>
+                    {/* Başabaş — net K/Z'nin sıfırlandığı hisse fiyatı, ok yönü kâr tarafını gösterir. */}
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-neutral-500 flex items-center gap-1">
+                        Başabaş
+                        <InfoHint label="Başabaş nedir" text={BREAKEVEN_INFO} />
+                      </div>
+                      {(() => {
+                        const be = stockBreakEven(input.tradeType, input.basePrice, input.quantity, input.premium);
+                        if (be == null) return <div className="font-mono text-neutral-600 mt-0.5">—</div>;
+                        const above = stockProfitSide(input.tradeType) === 'above';
+                        const reached = data ? (above ? data.price >= be : data.price <= be) : null;
+                        return (
+                          <div
+                            className={`font-mono mt-0.5 ${reached == null ? 'text-neutral-200' : reached ? 'text-emerald-400' : 'text-red-400'}`}
+                            title={`${fmtTl(be)} ₺ seviyesinin ${above ? 'ÜSTÜ' : 'ALTI'} kâr`}
+                          >
+                            ₺{fmtTl(be)}
+                            <span className="ml-1 text-[10px]">{above ? '↑' : '↓'}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

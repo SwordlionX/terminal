@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { dbc } from '@/lib/db';
-import { SYMBOL_RE, toYahooSymbol } from '@/lib/bist';
+import { SYMBOL_RE, toYahooSymbol, normalizeStockTradeType, StockTradeType } from '@/lib/bist';
 
 export const dynamic = 'force-dynamic';
 
 /** stock_positions satırının istemciye dönen biçimi (updatedAt hariç). */
 interface StoredPosition {
-  tradeType: 'long' | 'put_sell';
+  tradeType: StockTradeType;
   basePrice: number;
   quantity: number;
   premium: number;
@@ -21,7 +21,8 @@ export async function GET() {
     const positions: Record<string, StoredPosition> = {};
     for (const row of result.rows) {
       positions[String(row.symbol)] = {
-        tradeType: String(row.tradeType) === 'put_sell' ? 'put_sell' : 'long',
+        // Tanınmayan/eski bir değer gelirse 'long'a düşülür — satır kaybolmaz.
+        tradeType: normalizeStockTradeType(row.tradeType) ?? 'long',
         basePrice: Number(row.basePrice),
         quantity: Number(row.quantity),
         premium: Number(row.premium),
@@ -48,8 +49,9 @@ function parseBody(body: unknown): { symbol: string; pos: StoredPosition } | { e
   const symbol = toYahooSymbol(b.symbol);
   if (!SYMBOL_RE.test(symbol)) return { error: `Geçersiz sembol: ${b.symbol}` };
 
-  if (b.tradeType !== 'long' && b.tradeType !== 'put_sell') {
-    return { error: "İşlem tipi 'long' veya 'put_sell' olmalı" };
+  const tradeType = normalizeStockTradeType(b.tradeType);
+  if (!tradeType) {
+    return { error: 'Geçersiz işlem tipi (call_buy / call_sell / put_buy / put_sell / long)' };
   }
 
   const num = (v: unknown): number | null => {
@@ -62,7 +64,7 @@ function parseBody(body: unknown): { symbol: string; pos: StoredPosition } | { e
   if (quantity == null || quantity <= 0) return { error: 'Miktar 0’dan büyük olmalı' };
   if (premium == null) return { error: 'Prim geçersiz' };
 
-  return { symbol, pos: { tradeType: b.tradeType, basePrice, quantity, premium } };
+  return { symbol, pos: { tradeType, basePrice, quantity, premium } };
 }
 
 export async function POST(request: Request) {
