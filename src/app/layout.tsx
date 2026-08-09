@@ -4,8 +4,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 
 export const metadata: Metadata = {
-  title: "Hazine Opsiyon Terminali",
-  description: "Kurumsal Hazine Opsiyon Terminali",
+  title: "Opsiyon Terminali",
+  description: "Kurumsal Opsiyon Terminali",
 };
 
 export default function RootLayout({
@@ -25,7 +25,7 @@ export default function RootLayout({
             <header className="flex h-12 items-center border-b px-4 justify-between">
               <div className="flex items-center">
                 <SidebarTrigger />
-                <div className="ml-4 font-semibold text-sm">Hazine Yönetimi</div>
+                <div className="ml-4 font-semibold text-sm">Yönetim</div>
               </div>
             </header>
             <div className="p-4 md:p-6 lg:p-8">

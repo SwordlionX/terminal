@@ -118,12 +118,13 @@ export type StockTradeType = 'call_buy' | 'call_sell' | 'put_buy' | 'put_sell' |
 
 export const STOCK_TRADE_TYPES: StockTradeType[] = ['call_buy', 'call_sell', 'put_buy', 'put_sell', 'long'];
 
+/** Yönler MÜŞTERİNİN bakışıyla adlandırılır: "Call Satışı" = müşteri call yazdı. */
 export const STOCK_TRADE_LABELS: Record<StockTradeType, string> = {
-  call_buy: 'Call Alışı (müşteri aldı)',
-  call_sell: 'Call Satışı (müşteri yazdı)',
-  put_buy: 'Put Alışı (müşteri aldı)',
-  put_sell: 'Put Satışı (müşteri yazdı)',
-  long: 'Düz Hisse Alışı (Long)',
+  call_buy: 'Call Alışı',
+  call_sell: 'Call Satışı',
+  put_buy: 'Put Alışı',
+  put_sell: 'Put Satışı',
+  long: 'Düz Hisse Alışı',
 };
 
 /** Kart üstündeki kısa rozet metni. */

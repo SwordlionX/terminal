@@ -38,7 +38,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm border-zinc-800 bg-zinc-950/60 shadow-2xl">
         <CardHeader className="text-center space-y-1">
           <CardTitle className="text-lg font-semibold text-primary">
-            Hazine Opsiyon Terminali
+            Opsiyon Terminali
           </CardTitle>
         </CardHeader>
         <CardContent>
