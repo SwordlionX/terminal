@@ -48,6 +48,20 @@ export function usePricingModel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feed.spot?.at, feed.spot?.price, md.manualSpot]);
 
+  // CME Yüzeyinden Zımni Kira (Implied Lease Rate) geldiğinde bunu otomatik olarak
+  // ekrandaki Kira kutusuna yansıt. Böylece kullanıcı güncel piyasa kirasını doğrudan görür
+  // ve dilerse üzerine yazabilir (manuel değiştirebilir).
+  useEffect(() => {
+    if (feed.surface?.impliedLeaseRate != null) {
+      const impliedPct = Number((feed.surface.impliedLeaseRate * 100).toFixed(4));
+      // Gereksiz re-render'ı önlemek için sadece farklıysa set et
+      if (Math.abs(md.lease - impliedPct) > 0.0001) {
+        md.setField("lease", impliedPct);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed.surface?.fetchedISO]);
+
   // Vade hesabı — geçersiz/silinmiş tarihte NaN'a düşmemek için son geçerli değer korunur
   const dayMs = 1000 * 3600 * 24;
   const rawDays = (new Date(md.expiryDate).getTime() - new Date(md.tradeDate).getTime()) / dayMs;
@@ -56,18 +70,17 @@ export function usePricingModel() {
   const daysToExpiry = dateValid ? validDaysToExpiry : 90;
   const tYears = Math.max(daysToExpiry / md.basis, 0.001);
 
-  // Fiyatlama forward'ı. CME yüzeyi vade-başına GÖZLEMLENEN futures forward'ı taşır (m = K/f);
-  // varsa (ve kullanıcı spotu manuel sabitlememişse) forward doğrudan futures'tan alınır —
-  // böylece bozuk spot proxy'sinin sapması ne vol seçimine ne prime girer. Yoksa forward
-  // eskisi gibi spottan türetilir (Yahoo/ETF yolu birebir korunur).
+  // Fiyatlama forward'ı. 
+  // Eskiden CME futures forward'ı (cmeFwd) doğrudan kullanılıyordu, ancak bu durum
+  // spot zıpladığında fiyatlamanın dünkü fiyata kilitlenmesine yol açıyordu.
+  // Artık Databento'dan hesaplanıp ekrana basılan Kira (md.lease) kullanılarak,
+  // kusursuz ve anında tepki veren Canlı Forward üretiliyor.
   const carry = (md.rate - md.lease) / 100;
-  const fwdExp = Math.exp(carry * (daysToExpiry / 365)); // yüzey konvansiyonuyla (365) aynı taban
-  const cmeFwd = feed.surface && !md.manualSpot ? surfaceForward(feed.surface, daysToExpiry) : null;
-  const usingCmeFwd = cmeFwd != null && cmeFwd > 0;
-  const fwd = usingCmeFwd ? cmeFwd : md.spot * fwdExp;
-  // gk/greeks spot-tabanlı çalışır. Futures forward'ıyla tutarlı "efektif spot":
-  // pricingSpot·e^{(r−q)T} = fwd  ⇒  gk'nın kurduğu forward tam olarak futures forward olur.
-  const pricingSpot = usingCmeFwd ? cmeFwd / fwdExp : md.spot;
+  const fwdExp = Math.exp(carry * (daysToExpiry / 365));
+  
+  const usingCmeFwd = false;
+  const fwd = md.spot * fwdExp;
+  const pricingSpot = md.spot;
 
   // Volatilite: manuel tik yoksa smile'dan (de-Amerikanize IV), tik varsa kullanıcı girer.
   // Sorgu forward-moneyness (m = K/fwd) ile yapılır; yukarıdaki forward çapasını kullanır.
@@ -135,12 +148,7 @@ export function usePricingModel() {
    * CME forward'ı yoksa ima edilen q zaten kullanıcının girdiği kiraya eşit çıkar.
    */
   const barrierSpot = md.spot;
-  const impliedQ = (() => {
-    if (!(barrierSpot > 0) || !(fwd > 0) || tYears <= 0) return md.lease / 100;
-    const q = md.rate / 100 - Math.log(fwd / barrierSpot) / tYears;
-    return isFinite(q) ? q : md.lease / 100;
-  })();
-  const barrierLease = impliedQ * 100; // BarrierOptions yüzde bekler
+  const barrierLease = md.lease; // Artık doğrudan yüzeyden gelen veya kullanıcının girdiği kira geçerli
 
   return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, barrierSpot, barrierLease, surfaceSourceLabel };
 }

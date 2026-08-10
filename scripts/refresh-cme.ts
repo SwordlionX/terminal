@@ -17,6 +17,7 @@
  */
 import { loadEnvConfig } from '@next/env';
 import { refreshCmeSurface } from '../src/services/cme.service';
+import { getInterestRate } from '../src/services/market.service';
 
 // .env.local'i Next'in kendi yükleyicisiyle oku (yerel çalıştırma için). GitHub Actions'ta
 // değişkenler zaten ortamdan gelir; loadEnvConfig var olanları EZMEZ.
@@ -34,9 +35,10 @@ async function main() {
   }
 
   const t0 = Date.now();
-  console.log(`[cme-refresh] başlıyor · ürün=${product}${date ? ` · gün=${date}` : ' · gün=otomatik (son settlement)'}`);
+  const rate = await getInterestRate();
+  console.log(`[cme-refresh] başlıyor · ürün=${product}${date ? ` · gün=${date}` : ' · gün=otomatik (son settlement)'} · faiz=${(rate * 100).toFixed(2)}%`);
 
-  const surface = await refreshCmeSurface(product, date ? { date } : {});
+  const surface = await refreshCmeSurface(product, date ? { date, r: rate } : { r: rate });
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
 
   const short = surface.expiries.filter(e => e.days < 32).map(e => `${e.days}g`).join(', ');

@@ -62,6 +62,12 @@ export interface VolSurface {
    * rozet okunmaz hale geliyordu. Teşhis bilgisi artık burada durur.
    */
   notes?: string;
+  /**
+   * Yüzey kurulurken CME futures fiyatları arasındaki farklardan hesaplanan
+   * piyasanın anlık Zımni Kira Oranı (Implied Lease Rate).
+   * Yıllık oran olarak tutulur (örn: 0.015 = %1.5).
+   */
+  impliedLeaseRate?: number;
 }
 
 /**
