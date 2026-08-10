@@ -188,28 +188,7 @@ export async function setUsdTryRate(rate: number): Promise<void> {
   const c = await dbc();
   await c.execute({
     sql: "INSERT INTO kv (k, v) VALUES ('usdtry_rate', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-    args: [rate.toString()],
-  });
-}
-
-/** Global risksiz faiz oranı — gece yüzey kurulurken bu kullanılır. */
-export async function getInterestRate(): Promise<number> {
-  try {
-    const c = await dbc();
-    const r = await c.execute("SELECT v FROM kv WHERE k = 'interest_rate'");
-    if (r.rows.length) {
-      const v = Number(r.rows[0].v);
-      if (Number.isFinite(v) && v >= 0) return v;
-    }
-  } catch { /* db yoksa varsayılan 5% */ }
-  return 0.05;
-}
-
-export async function setInterestRate(rate: number): Promise<void> {
-  const c = await dbc();
-  await c.execute({
-    sql: "INSERT INTO kv (k, v) VALUES ('interest_rate', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-    args: [rate.toString()],
+    args: [String(rate)],
   });
 }
 

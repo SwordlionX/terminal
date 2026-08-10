@@ -14,15 +14,11 @@ export default function SettingsPage() {
   const s = useSettings();
   const md = useMarketData();
 
-  // Teminat motorunun (1M TL onay eşiği) kullandığı kalıcı kur
+  // Teminat motorunun (1M TL onay eşiği) kullandığı kalıcı kur — sunucuda kv tablosunda saklanır,
+  // bu yüzden tarayıcı ayarlarından (s.usdtry) ayrı yüklenip ayrı kaydedilir.
   const [activeServerRate, setActiveServerRate] = useState<number | null>(null);
   const [savingRate, setSavingRate] = useState(false);
   const [rateMsg, setRateMsg] = useState<{ text: string; error: boolean } | null>(null);
-
-  // Yüzeyin gece kurulduğu risksiz faiz oranı (SOFR)
-  const [activeServerInterest, setActiveServerInterest] = useState<number | null>(null);
-  const [savingInterest, setSavingInterest] = useState(false);
-  const [interestMsg, setInterestMsg] = useState<{ text: string; error: boolean } | null>(null);
 
   // Veri kaynağı (Yahoo/CME) durumu — sunucuda kv tablosunda saklanır.
   interface DsItem {
@@ -48,10 +44,6 @@ export default function SettingsPage() {
     fetch('/api/settings/usdtry')
       .then(r => r.json())
       .then(d => setActiveServerRate(d.usdtry))
-      .catch(() => {});
-    fetch('/api/settings/rate')
-      .then(r => r.json())
-      .then(d => setActiveServerInterest(d.rate * 100))
       .catch(() => {});
     loadDataSources();
   }, []);
@@ -135,26 +127,6 @@ export default function SettingsPage() {
     }
   };
 
-  const saveInterestToServer = async () => {
-    setSavingInterest(true);
-    setInterestMsg(null);
-    try {
-      const res = await fetch('/api/settings/rate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rate: s.rate / 100 }), // Yüzdelik girilir, ondalık kaydedilir
-      });
-      const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
-      setActiveServerInterest(d.rate * 100);
-      setInterestMsg({ text: 'Sunucuya kaydedildi (gece yüzey bu oranla kurulacak).', error: false });
-    } catch (e) {
-      setInterestMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
-    } finally {
-      setSavingInterest(false);
-    }
-  };
-
   const applyToPricing = () => {
     md.setField('rate', s.rate);
     md.setField('lease', md.product === 'XAG' ? s.leaseXAG : s.leaseXAU);
@@ -176,17 +148,6 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>Risksiz Faiz Oranı (%)</Label>
                 <Input type="number" step="0.1" value={s.rate} onChange={e => s.setSetting('rate', parseFloat(e.target.value) || 0)} />
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <p className="text-[11px] text-zinc-500">
-                    Sunucuda aktif: {activeServerInterest != null ? activeServerInterest.toFixed(2) : "…"}
-                  </p>
-                  <Button type="button" variant="outline" size="sm" onClick={saveInterestToServer} disabled={savingInterest} className="h-7 px-2 text-xs">
-                    {savingInterest ? "Kaydediliyor…" : "Sunucuya Kaydet"}
-                  </Button>
-                </div>
-                {interestMsg && (
-                  <p className={`text-[11px] ${interestMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{interestMsg.text}</p>
-                )}
               </div>
               <div className="space-y-2">
                 <Label>USD/TRY Kuru</Label>
