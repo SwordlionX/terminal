@@ -315,24 +315,17 @@ export default function PricingPage() {
                   onValueChange={v => md.setField('lease', v)}
                   className={usingCmeFwd ? "opacity-60 font-mono" : ""}
                 />
-                {usingCmeFwd ? (
-                  // Buradaki "piyasa carry'si ≈ %X" sayısı KALDIRILDI: birden çok opsiyon
-                  // vadesi aynı futures'a yazıldığı için opsiyon vadelerinden ölçülen carry
-                  // sistematik olarak şişiyordu (bkz. surfaceForwardCarry). Forward zaten
-                  // futures'tan geldiği için fiyatı etkilemiyor, yalnız bilgi notuydu.
-                  <p className="text-[11px] text-amber-500">
-                    CME forward&apos;ı aktif — kira prime girmiyor (forward futures settlement&apos;ından geliyor).
-                  </p>
-                ) : md.manualSpot ? (
-                  // Manuel spot açıkken CME forward'ı bilinçli olarak DEVRE DIŞI bırakılır
-                  // (kullanıcının sabitlediği spot ezilmesin). Sebebi "CME forward yok"
-                  // diye göstermek yanıltıcıydı — gerçek sebep bu tik.
+                {md.manualSpot ? (
                   <p className="text-[11px] text-zinc-500">
                     Manuel spot girili — forward girdiğiniz spot + kira&apos;dan türetiliyor.
                   </p>
-                ) : feed.surface?.symbol === md.product && (
+                ) : feed.surface?.impliedLeaseRate != null ? (
                   <p className="text-[11px] text-zinc-500">
-                    Forward spot+kira&apos;dan türetiliyor (bu vade için CME forward yok).
+                    Kira oranı piyasa (CME) vadelilerinden çekildi. Forward canlı spot ile türetiliyor.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-zinc-500">
+                    Forward fiyatı canlı spot + kira&apos;dan türetiliyor.
                   </p>
                 )}
               </div>

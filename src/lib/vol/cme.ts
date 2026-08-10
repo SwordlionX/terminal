@@ -153,18 +153,30 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
 
   expiries.sort((a, b) => a.days - b.days);
 
-  // Kira Oranı (Implied Lease Rate) Hesaplama: F2 / F1 = e^((r-q)*dt) -> q = r - ln(F2/F1)/dt
+  // Kira Oranı (Implied Lease Rate) Hesaplama: Tüm vadelerdeki zımni kira oranlarının (q) ortalaması alınır.
   let impliedLeaseRate: number | undefined;
   if (expiries.length >= 2) {
     const f1 = expiries[0];
-    // Sağlıklı eğim için aynı futures'a yazılmayan, olabildiğince uzak bir vade seçilir
-    const distinct = expiries.filter(e => e.f !== f1.f);
-    if (distinct.length > 0) {
-      const f2 = distinct[distinct.length - 1]; // En uzak farklı futures
+    
+    // Aynı futures fiyatına (f) sahip olanları grupla ki aynı kontratları tekrar hesaba katmayalım
+    const uniqueFuts = new Map<number, typeof expiries[0]>();
+    for (const e of expiries) {
+      if (e.f != null && e.f !== f1.f && !uniqueFuts.has(e.f)) {
+        uniqueFuts.set(e.f, e);
+      }
+    }
+
+    const rates: number[] = [];
+    for (const f2 of uniqueFuts.values()) {
       const dt = (f2.days - f1.days) / 365;
       if (dt > 0 && f1.f && f2.f) {
-        impliedLeaseRate = r - Math.log(f2.f / f1.f) / dt;
+        const q = r - Math.log(f2.f / f1.f) / dt;
+        rates.push(q);
       }
+    }
+
+    if (rates.length > 0) {
+      impliedLeaseRate = rates.reduce((a, b) => a + b, 0) / rates.length;
     }
   }
 
