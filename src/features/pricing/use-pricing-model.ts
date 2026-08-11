@@ -62,6 +62,17 @@ export function usePricingModel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feed.surface?.fetchedISO]);
 
+  // Yüzeyin faiz oranıyla (builtWithR) ekranı senkronize et
+  useEffect(() => {
+    if (feed.surface?.builtWithR != null) {
+      const surfaceR = Number((feed.surface.builtWithR * 100).toFixed(4));
+      if (Math.abs(md.rate - surfaceR) > 0.0001) {
+        md.setField("rate", surfaceR);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed.surface?.fetchedISO]);
+
   // Vade hesabı — geçersiz/silinmiş tarihte NaN'a düşmemek için son geçerli değer korunur
   const dayMs = 1000 * 3600 * 24;
   const rawDays = (new Date(md.expiryDate).getTime() - new Date(md.tradeDate).getTime()) / dayMs;
