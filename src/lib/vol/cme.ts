@@ -154,29 +154,45 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
   expiries.sort((a, b) => a.days - b.days);
 
   // Kira Oranı (Implied Lease Rate) Hesaplama: Tüm vadelerdeki zımni kira oranlarının (q) ortalaması alınır.
+  // GÜNCELLEME: Aritmetik ortalama, yakın vadeli (dt'si çok küçük) kontratlardaki kuruşluk fiyat
+  // farklarında "sıfıra bölme" etkisine girip (örn: -%10, +%15 gibi) ortalamayı -%6'lara saptırıyordu.
+  // Bunun yerine tüm vade noktaları (T, ln(F)) üzerinden Lineer Regresyon (En Küçük Kareler) 
+  // ile eğim (slope) bulunur. slope = r - q olduğundan, q = r - slope ile en sağlıklı q elde edilir.
   let impliedLeaseRate: number | undefined;
   if (expiries.length >= 2) {
-    const f1 = expiries[0];
-    
-    // Aynı futures fiyatına (f) sahip olanları grupla ki aynı kontratları tekrar hesaba katmayalım
     const uniqueFuts = new Map<number, typeof expiries[0]>();
     for (const e of expiries) {
-      if (e.f != null && e.f !== f1.f && !uniqueFuts.has(e.f)) {
+      if (e.f != null && !uniqueFuts.has(e.f)) {
         uniqueFuts.set(e.f, e);
       }
     }
 
-    const rates: number[] = [];
-    for (const f2 of uniqueFuts.values()) {
-      const dt = (f2.days - f1.days) / 365;
-      if (dt > 0 && f1.f && f2.f) {
-        const q = r - Math.log(f2.f / f1.f) / dt;
-        rates.push(q);
+    const pts = Array.from(uniqueFuts.values());
+    if (pts.length >= 2) {
+      const n = pts.length;
+      let sumX = 0, sumY = 0;
+      for (const p of pts) {
+        const t = p.days / 365;
+        const lnF = Math.log(p.f!);
+        sumX += t;
+        sumY += lnF;
       }
-    }
-
-    if (rates.length > 0) {
-      impliedLeaseRate = rates.reduce((a, b) => a + b, 0) / rates.length;
+      
+      const meanX = sumX / n;
+      const meanY = sumY / n;
+      
+      let num = 0, den = 0;
+      for (const p of pts) {
+        const t = p.days / 365;
+        const lnF = Math.log(p.f!);
+        num += (t - meanX) * (lnF - meanY);
+        den += (t - meanX) ** 2;
+      }
+      
+      if (den > 0) {
+        const slope = num / den; // slope = r - q
+        impliedLeaseRate = r - slope;
+      }
     }
   }
 
