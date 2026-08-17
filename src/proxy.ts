@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AUTH_COOKIE, authToken } from '@/lib/auth';
 
 export async function proxy(req: NextRequest) {
+  // Geçiçi olarak şifre koruması kaldırıldı
+  return NextResponse.next();
+
   const password = process.env.SITE_PASSWORD;
   if (!password) return NextResponse.next(); // yerel geliştirme: koruma kapalı
 
