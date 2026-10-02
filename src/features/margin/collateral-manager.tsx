@@ -28,6 +28,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
   const [assetCode, setAssetCode] = useState("Nakit-USD");
   const [amount, setAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const selectedType = COLLATERAL_TYPES.find(t => t.code === assetCode) ?? COLLATERAL_TYPES[0];
 
@@ -40,8 +41,13 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setAddError(null);
     const nominal = Number(amount);
-    if (!nominal || nominal <= 0) return;
+    if (!Number.isFinite(nominal) || nominal <= 0) {
+      setAddError("Pozitif ve geçerli bir teminat miktarı girin.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -54,6 +60,8 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
       });
 
       setAmount("");
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Teminat eklenemedi.");
     } finally {
       setIsSubmitting(false);
     }
@@ -69,6 +77,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
     <Card>
       <CardHeader>
         <CardTitle>Mevcut Teminat Varlıkları</CardTitle>
+        {addError && <p role="alert" className="text-sm text-rose-400">{addError}</p>}
         <CardDescription>USD nakit veya fiziki metal (XAU/XAG) teminat. Metaller ons cinsinden girilir, canlı ons fiyatıyla değerlenir.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

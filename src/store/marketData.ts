@@ -15,9 +15,11 @@ export interface MarketDataState {
   tradeDate: string;
   expiryDate: string;
   usdtry: number;
+  strikeInitialized: boolean; // oturum boyunca korunur; sayfa geçişinde sıfırlanmaz
 
-  setField: <K extends keyof Omit<MarketDataState, 'setField' | 'setProduct'>>(field: K, value: MarketDataState[K]) => void;
+  setField: <K extends keyof Omit<MarketDataState, 'setField' | 'setProduct' | 'applyLiveSpot'>>(field: K, value: MarketDataState[K]) => void;
   setProduct: (prod: string, spot: number, lease: number, vol: number) => void;
+  applyLiveSpot: (product: string, price: number) => void;
 }
 
 export const useMarketData = create<MarketDataState>()(persist((set) => {
@@ -38,13 +40,20 @@ export const useMarketData = create<MarketDataState>()(persist((set) => {
     tradeDate: today.toISOString().slice(0, 10),
     expiryDate: exp.toISOString().slice(0, 10),
     usdtry: 35.0, // Varsayılan kur
+    strikeInitialized: false,
 
-    setField: (field, value) => set((state) => ({ ...state, [field]: value })),
+    setField: (field, value) => set((state) => ({ ...state, [field]: value,
+      ...(field === 'strike' ? { strikeInitialized: true } : {}) })),
+    applyLiveSpot: (product, price) => set((state) => {
+      if (state.product !== product || state.manualSpot || !Number.isFinite(price) || price <= 0) return state;
+      return { spot: price, strike: state.strikeInitialized ? state.strike : price, strikeInitialized: true };
+    }),
     setProduct: (prod, spot, lease, vol) => set((state) => ({
       ...state,
       product: prod,
       spot,
       strike: spot,
+      strikeInitialized: false,
       lease,
       vol
     }))

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMarketData, useSettings } from "@/store/marketData";
 import { MARGIN_MATURITY_BUCKETS, COLLATERAL_HAIRCUT_RATES, RISK_THRESHOLDS } from "@/lib/margin/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cmeStatusText, refreshCme, type CmeRefreshStatus } from '@/lib/market-refresh';
 
 export default function SettingsPage() {
   const s = useSettings();
@@ -40,6 +41,9 @@ export default function SettingsPage() {
   const [dsItems, setDsItems] = useState<DsItem[]>([]);
   const [dsBusy, setDsBusy] = useState<string | null>(null); // yenilenen ürün
   const [dsMsg, setDsMsg] = useState<{ text: string; error: boolean } | null>(null);
+  const dsBusyRef = useRef(false);
+  const dsAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => dsAbort.current?.abort(), []);
 
   const loadDataSources = () =>
     fetch('/api/settings/datasource').then(r => r.json()).then(d => setDsItems(d.items || [])).catch(() => {});
@@ -64,42 +68,49 @@ export default function SettingsPage() {
    * İki kaynak veritabanında ayrı yazılır; biri diğerini ezmez.
    */
   const refreshSource = async (product: string, source: 'yahoo' | 'cme') => {
+    if (dsBusyRef.current) return;
+    dsBusyRef.current = true;
+    const controller = new AbortController();
+    dsAbort.current = controller;
     setDsBusy(product);
     setDsMsg(null);
     try {
-      const url = source === 'cme' ? `/api/market/refresh/cme?product=${product}` : '/api/market/refresh';
-      const res = await fetch(url, { method: 'POST' });
-      const isJson = res.headers.get('content-type')?.includes('application/json');
-      if (!isJson) {
-        if (!res.ok) throw new Error(`Sunucu zaman aşımı veya hatası (HTTP ${res.status}). Veri büyük olduğu için uzun sürüyor olabilir.`);
-        throw new Error('Sunucudan JSON formatında yanıt alınamadı.');
-      }
-      const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d?.error || 'Yenileme başarısız');
-      await loadDataSources();
-
-      if (d.dispatched) {
-        setDsMsg({
-          text: `${product}: CME yenileme emri GitHub'a iletildi. Arka planda yenileniyor (~3-4 dk). Sayfayı açık bırakırsanız 5 dk içinde otomatik yansıyacaktır.`,
-          error: false,
+      if (source === 'cme') {
+        const status = await refreshCme(product, {
+          signal: controller.signal,
+          onStatus: (value: CmeRefreshStatus) => setDsMsg({ text: `${product}: CME yenilemesi ${cmeStatusText[value]}.`, error: value === 'failed' || value === 'timeout' }),
         });
+        if (status !== 'completed') {
+          setDsMsg({ text: `${product}: CME yenilemesi ${cmeStatusText[status]}.`, error: true });
+          return;
+        }
+        await loadDataSources();
+        setDsMsg({ text: `${product}: CME yenilemesi tamamlandı.`, error: false });
       } else {
+        const res = await fetch('/api/market/refresh', { method: 'POST', signal: controller.signal });
+        const d = await res.json();
+        if (!res.ok || !d.ok) throw new Error(d?.error || 'Yenileme başarısız');
+        await loadDataSources();
         setDsMsg({
-          text: source === 'cme'
-            ? `${product}: CME'den ${d.expiries} vade çekildi (${d.fetchedISO}).`
-            : `Yahoo zincirleri yenilendi (${d.fetchedISO}) — ${Object.entries(d.expiries || {}).map(([k, v]) => `${k}: ${v} vade`).join(', ')}.`,
+          text: `Yahoo zincirleri yenilendi (${d.fetchedISO}) — ${Object.entries(d.expiries || {}).map(([k, v]) => `${k}: ${v} vade`).join(', ')}.`,
           error: false,
         });
       }
     } catch (e) {
+      if (controller.signal.aborted) return;
       setDsMsg({ text: e instanceof Error ? e.message : 'Yenileme başarısız', error: true });
     } finally {
+      if (dsAbort.current === controller) dsAbort.current = null;
+      dsBusyRef.current = false;
       setDsBusy(null);
     }
   };
 
   /** Kaynağı değiştirir ve HEMEN o kaynaktan taze veri çekip yüzeyi yeniden kurar. */
   const changeSource = async (product: string, source: 'yahoo' | 'cme') => {
+    if (dsBusyRef.current) return;
+    dsBusyRef.current = true;
+    setDsBusy(product);
     setDsMsg(null);
     try {
       const res = await fetch('/api/settings/datasource', {
@@ -109,9 +120,13 @@ export default function SettingsPage() {
       const d = await res.json();
       if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
       await loadDataSources();
+      dsBusyRef.current = false;
+      setDsBusy(null);
       await refreshSource(product, source);
     } catch (e) {
       setDsMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
+      dsBusyRef.current = false;
+      setDsBusy(null);
     }
   };
 
@@ -278,9 +293,11 @@ export default function SettingsPage() {
           <p className="text-[11px] text-zinc-500">
             <span className="text-zinc-400">Günlük yenileme GitHub Actions&apos;ta koşar</span> (12:00 UTC, Pazartesi–Cumartesi;
             Cuma settlement&apos;ı Cumartesi yayınlandığı için Cumartesi de dahil).
-            Databento ~3 dakika sürebildiği için Vercel fonksiyon limitine sığmıyor. Aşağıdaki
-            &quot;CME&apos;den Yenile&quot; butonu elle tetikleme içindir; canlı ortamda zaman aşımına
-            düşerse yenilemeyi GitHub Actions panelinden çalıştırın.
+            &quot;CME&apos;den Yenile&quot; butonu işi GitHub&apos;da başlatır ve aynı işin sonucunu
+            en fazla 20 dakika izler. İsteğin iletilmesi, yenilemenin tamamlandığı anlamına gelmez.
+            Sekme kapansa da iş GitHub&apos;da sürebilir; belirsiz sonuçta tekrar başlatmadan önce
+            işin durumunu kontrol edin. Tamamlanan iş daha eski settlement gününü döndürebilir;
+            yukarıdaki veri tarihini ayrıca kontrol edin.
           </p>
           {dsItems.map(item => (
             <div key={item.product} className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">
@@ -302,6 +319,7 @@ export default function SettingsPage() {
                 <Select
                   value={item.source}
                   items={{ yahoo: 'Yahoo (ETF)', cme: 'CME COMEX' }}
+                  disabled={dsBusy !== null}
                   onValueChange={v => changeSource(item.product, v === 'cme' ? 'cme' : 'yahoo')}
                 >
                   <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
@@ -313,10 +331,10 @@ export default function SettingsPage() {
                 <Button
                   type="button" variant="outline" size="sm"
                   onClick={() => refreshSource(item.product, item.source)}
-                  disabled={dsBusy === item.product}
+                  disabled={dsBusy !== null}
                 >
                   {dsBusy === item.product
-                    ? 'Çekiliyor…'
+                    ? item.source === 'cme' ? 'CME durumu izleniyor…' : 'Çekiliyor…'
                     : item.source === 'cme' ? "CME'den Yenile" : "Yahoo'dan Yenile"}
                 </Button>
               </div>

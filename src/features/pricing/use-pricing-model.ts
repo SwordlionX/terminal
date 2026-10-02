@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useMarketData } from "@/store/marketData";
 import { useMarketFeed } from "@/hooks/use-market-feed";
-import { surfaceVol, surfaceForward } from "@/lib/vol/surface";
+import { surfaceVol } from "@/lib/vol/surface";
 import { gk, greeks } from "@/lib/math";
 
 /**
@@ -15,38 +15,14 @@ import { gk, greeks } from "@/lib/math";
 export function usePricingModel() {
   const md = useMarketData();
   const feed = useMarketFeed(md.product, md.rate / 100);
-  const prevProduct = useRef(md.product);
-  // Canlı spot bu oturumda HİÇ uygulanmadı mı? Strike'ın ATM'ye çekilmesi eskiden yalnız
-  // ÜRÜN DEĞİŞİMİNE bağlıydı; açılışta ürün zaten varsayılan (XAU) olduğu için koşul hiç
-  // saglanmıyor ve strike store'daki eski varsayılanda (3700) kalıyordu — spot 4058 iken
-  // ekranda derin ITM bir opsiyon fiyatlanıyordu.
-  const spotApplied = useRef(false);
-
-  // Canlı spot geldiğinde otomatik uygula (5 dk'da bir tazelenir).
-  // "Manuel" tiki işaretliyse canlı veri kullanıcının girdiği spotu EZMEZ.
-  // Ürün değişmişse (ör. XAU -> XAG) strike de yeni spota (ATM) çekilir — aksi halde
-  // eski ürünün ölçeğinde kalan strike, forward-moneyness'i kote aralığın dışına
-  // taşıyıp sessizce "kote opsiyon yok"a düşürüyordu (surface.ts ekstrapolasyon yapmaz).
+  // İlk ATM ayarı store'da tutulur; hook yeniden bağlanınca seçilmiş strike silinmez.
+  const { applyLiveSpot, product, manualSpot } = md;
   useEffect(() => {
-    if (!md.manualSpot && feed.spot?.price) {
+    if (!manualSpot && feed.spot?.price) {
       const price = Math.round(feed.spot.price * 100) / 100;
-      md.setField("spot", price);
-      // Strike ATM'ye çekilir: (a) ürün değiştiyse, (b) canlı spot bu oturumda İLK kez
-      // uygulanıyorsa. (b) olmadan açılışta store'un varsayılan strike'ı ekranda kalıyordu.
-      if (prevProduct.current !== md.product || !spotApplied.current) {
-        md.setField("strike", price);
-      }
-      spotApplied.current = true;
-      // prevProduct SADECE yeni ürünün fiyatı uygulandığında ilerletilir. Besleme ürün
-      // değişiminde bir an boşalıyor (use-market-feed eski ürünün verisini göstermez);
-      // burada koşulsuz güncellersek, asıl fiyat geldiğinde strike ATM'ye çekilmezdi.
-      prevProduct.current = md.product;
+      applyLiveSpot(product, price);
     }
-    // Kasıtlı: md.product BURADA yok. Ürün değişince feed.spot bir an eski ürünün
-    // (bayat) verisini tutar; efekt yalnızca feed.spot GERÇEKTEN değiştiğinde (yeni
-    // ürünün fetch'i tamamlandığında) çalışmalı, md.product'ın kendisi değiştiğinde değil.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feed.spot?.at, feed.spot?.price, md.manualSpot]);
+  }, [feed.spot?.at, feed.spot?.price, manualSpot, product, applyLiveSpot]);
 
   // CME Yüzeyinden Zımni Kira (Implied Lease Rate) geldiğinde bunu otomatik olarak
   // ekrandaki Kira kutusuna yansıt. Böylece kullanıcı güncel piyasa kirasını doğrudan görür

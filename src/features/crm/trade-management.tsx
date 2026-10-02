@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Trade } from "@/types";
+import { BarrierHistoryCheck } from "@/features/crm/barrier-history-check";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { MarginEngine } from "@/lib/margin/engine";
 import { InfoHint } from "@/components/ui/info-hint";
 import { BREAKEVEN_INFO } from "@/lib/greeks-info";
 import { breakEvenSpot, profitSideOf, breakEvenLabel } from "@/lib/math/breakeven";
+import Link from "next/link";
 
 export function TradeManagement({ customerId, trades }: { customerId: string, trades: Trade[] }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -44,6 +46,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
   const [addError, setAddError] = useState<string | null>(null);
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
+  const activeTrades = trades.filter((trade) => trade.status !== "Closed");
 
   const formatCurrency = (val: number | null) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
@@ -102,10 +105,15 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
     <Card className="mt-6">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Müşteri İşlemleri (Opsiyonlar)</CardTitle>
-        <Button onClick={() => { setAddError(null); setIsAddOpen(true); }} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
-          <Plus className="w-4 h-4 mr-2" />
-          Yeni İşlem Ekle
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link href={`/archive?customer=${encodeURIComponent(customerId)}`} className="rounded-md border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800">
+            İşlem Arşivi
+          </Link>
+          <Button onClick={() => { setAddError(null); setIsAddOpen(true); }} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+            <Plus className="w-4 h-4 mr-2" />
+            Yeni İşlem Ekle
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <Table>
@@ -129,7 +137,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
             </TableRow>
           </TableHeader>
           <TableBody>
-            {trades.map(t => (
+            {activeTrades.map(t => (
               <TableRow key={t.id}>
                 <TableCell>{new Date(t.tradeDate).toLocaleDateString()}</TableCell>
                 <TableCell>{new Date(t.expiryDate).toLocaleDateString()}</TableCell>
@@ -140,6 +148,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                       Bariyer {t.barrierLevel}
                     </Badge>
                   )}
+                  {t.barrierType && <BarrierHistoryCheck customerId={customerId} tradeId={t.id} />}
                 </TableCell>
                 <TableCell>
                   <span className={t.position === 'Long' ? 'text-emerald-500' : 'text-rose-500'}>{t.position}</span> {t.type}
@@ -186,7 +195,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                 </TableCell>
               </TableRow>
             ))}
-            {trades.length === 0 && (
+            {activeTrades.length === 0 && (
               <TableRow>
                 <TableCell colSpan={10} className="text-center text-muted-foreground py-8">Müşteriye ait işlem bulunmamaktadır.</TableCell>
               </TableRow>
@@ -366,7 +375,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
               <div className="flex justify-end gap-3 mt-6">
                 <Button type="button" variant="outline" onClick={() => setSettleTrade(null)} disabled={settling}>İptal</Button>
                 <Button type="submit" className="bg-zinc-700 hover:bg-zinc-600" disabled={settling}>
-                  {settling ? "Kapatılıyor..." : "Kapat ve Hesapla"}
+                  {settling ? "Kapatılıyor..." : "Kapat ve Arşivle"}
                 </Button>
               </div>
             </form>

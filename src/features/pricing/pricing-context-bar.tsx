@@ -30,7 +30,7 @@ export function PricingContextBar({ product, spot, strike, daysToExpiry, effVol,
       </Badge>
       {liveSource && livePrice != null && (
         <Badge variant="outline" className="border-emerald-600 text-emerald-500 font-mono">
-          Canlı: {liveSource} ${formatNumber(livePrice, 2)}
+          Son alınan: {liveSource} ${formatNumber(livePrice, 2)}
         </Badge>
       )}
       <Link href="/" className="ml-auto text-emerald-500 hover:underline font-medium">

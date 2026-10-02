@@ -176,7 +176,15 @@ function smileAt(points: SmilePoint[], m: number): number {
  */
 export function surfaceVol(surface: VolSurface, m: number, days: number): number | null {
   const exps = surface.expiries;
-  if (exps.length === 0) return null;
+  if (exps.length === 0 || !isFinite(m) || m <= 0 || !isFinite(days) || days <= 0) return null;
+
+  // An observed expiry needs only its own smile. A neighboring tenor may not quote
+  // this moneyness, which must not invalidate the exact-tenor observation.
+  const exact = exps.find(expiry => expiry.days === days);
+  if (exact) {
+    const iv = smileAt(exact.points, m);
+    return isFinite(iv) ? iv : null;
+  }
 
   const first = exps[0], last = exps[exps.length - 1];
   // Ekstrapolasyon yok: kote vade aralığının dışında güvenilir vol türetilemez.

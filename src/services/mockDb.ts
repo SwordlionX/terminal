@@ -37,7 +37,7 @@ const TRADE_COLUMNS = [
   'barrierType', 'barrierLevel', 'barrierStyle', 'barrierStartDate', 'barrierEndDate',
 ] as const;
 
-function rowToTrade(r: Row): Trade {
+export function rowToTrade(r: Row): Trade {
   const num = (v: unknown) => (v == null ? null : Number(v));
   return {
     id: String(r.id),
@@ -108,6 +108,7 @@ export const db = {
     delete: async (id: string): Promise<void> => {
       const c = await dbc();
       await c.batch([
+        { sql: "DELETE FROM kv WHERE k IN (SELECT 'trade_settlement:' || id FROM trades WHERE customerId = ?)", args: [id] },
         { sql: 'DELETE FROM trades WHERE customerId = ?', args: [id] },
         { sql: 'DELETE FROM collaterals WHERE customerId = ?', args: [id] },
         { sql: 'DELETE FROM activity_log WHERE customerId = ?', args: [id] },

@@ -1,9 +1,10 @@
 "use server";
 
-import { collateralRepository } from "@/repositories/collateral.repository";
+import { addCollateralAtomically, removeCollateralOwned } from "@/repositories/trade-lifecycle.repository";
 import { getSpot } from "@/services/market.service";
 import { db } from "@/services/mockDb";
 import { revalidatePath } from "next/cache";
+import { finiteNumber, validateCollateral, validateId } from "@/lib/trade-validation";
 
 /**
  * Teminat ekler. Tipler yalnızca USD / XAU / XAG nakit-eşdeğeri (haircut 0).
@@ -15,24 +16,23 @@ export async function addCustomerCollateral(customerId: string, data: {
   currency: string;
   nominalQuantity: number;
 }) {
-  const cur = data.currency.toUpperCase();
-  let marketValueUsd = data.nominalQuantity; // USD 1:1
+  validateId(customerId);
+  const collateral = validateCollateral(data);
+  if (!await db.customers.findById(customerId)) throw new Error("Müşteri bulunamadı.");
+  const cur = collateral.currency;
+  let marketValueUsd = collateral.nominalQuantity; // USD 1:1
   if (cur === 'XAU' || cur === 'XAG') {
     const live = await getSpot(cur);
-    marketValueUsd = live?.price ? data.nominalQuantity * live.price : 0;
+    const price = finiteNumber(live?.price, "Metal teminat fiyatı");
+    marketValueUsd = finiteNumber(collateral.nominalQuantity * price, "Teminat değeri");
   }
 
-  await collateralRepository.addCollateral({
+  await addCollateralAtomically({
     customerId,
-    assetCode: data.assetCode,
-    currency: data.currency,
-    nominalQuantity: data.nominalQuantity,
+    ...collateral,
     marketValueUsd,
     haircut: 0,
   });
-  const unit = cur === 'USD' ? 'USD' : 'ons';
-  await db.activity.log(customerId, "Margin Updated",
-    `Teminat eklendi: ${data.nominalQuantity} ${unit} (${data.assetCode})`);
 
   revalidatePath(`/customers/${customerId}/margin`);
   revalidatePath(`/customers/${customerId}`);
@@ -41,8 +41,9 @@ export async function addCustomerCollateral(customerId: string, data: {
 }
 
 export async function removeCustomerCollateral(customerId: string, collateralId: string) {
-  await collateralRepository.deleteCollateral(collateralId);
-  await db.activity.log(customerId, "Margin Updated", "Teminat kaldırıldı.");
+  validateId(customerId);
+  validateId(collateralId, "Teminat");
+  await removeCollateralOwned(customerId, collateralId);
 
   revalidatePath(`/customers/${customerId}/margin`);
   revalidatePath(`/customers/${customerId}`);

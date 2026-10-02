@@ -5,6 +5,7 @@ import Link from "next/link";
 import { addManualTradeAction } from "@/app/customers/[id]/actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
+import { FeedStatus } from "@/features/pricing/feed-status";
 import { DateInput } from "@/components/ui/date-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -154,7 +155,7 @@ export default function PricingPage() {
   };
 
   const handleRefreshChains = () => {
-    if (!isUsMarketLikelyOpen()) {
+    if (feed.surfaceSource === "yahoo" && !isUsMarketLikelyOpen()) {
       const ok = window.confirm(
         "ABD opsiyon seansı şu an kapalı görünüyor. Yenilersen son KAPANIŞ verisi çekilir — zaman damgası güncellenir ama fiyatlar seans-canlı değildir. Devam edilsin mi?"
       );
@@ -191,11 +192,7 @@ export default function PricingPage() {
         </div>
       </div>
 
-      {feed.error && (
-        <div className="text-sm text-amber-500 border border-amber-900/50 bg-amber-950/20 rounded-md px-4 py-2">
-          {feed.error}
-        </div>
-      )}
+      <FeedStatus feed={feed} />
 
       {spotInfo?.futures && (
         <div className="flex items-center gap-2 text-sm text-amber-500 border border-amber-900/50 bg-amber-950/20 rounded-md px-4 py-2">

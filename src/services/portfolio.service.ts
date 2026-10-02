@@ -38,9 +38,10 @@ export async function evaluatePortfolio(): Promise<{
   const allTrades = await db.trades.findMany();
   const allCustomers = await db.customers.findMany();
   const now = Date.now();
+  const openTrades = allTrades.filter(t => t.status !== 'Closed' && t.status !== 'Expired');
 
   // Kullanılan ürünler için spotları tek seferde çek (5 dk önbellekli)
-  const products = [...new Set(allTrades.map(t => t.underlying.toUpperCase()))];
+  const products = [...new Set(openTrades.map(t => t.underlying.toUpperCase()))];
   const spotMap: Record<string, { price: number } | null> = {};
   await Promise.all(products.map(async p => {
     spotMap[p] = await getSpot(p);
@@ -55,8 +56,7 @@ export async function evaluatePortfolio(): Promise<{
 
   const enriched: EnrichedTrade[] = [];
 
-  for (const t of allTrades) {
-    if (t.status === 'Closed' || t.status === 'Expired') continue;
+  for (const t of openTrades) {
 
     const prod = t.underlying.toUpperCase();
     const live = spotMap[prod]!; // yukarıda kontrol edildi — eksikse zaten hata fırlatıldı

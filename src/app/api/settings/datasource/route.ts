@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDataSource, setDataSource, cmeSupported, loadCmeSurface } from '@/services/cme.service';
 import { loadSnapshot } from '@/services/market.service';
 import { PRODUCT_SURFACE_MAP } from '@/lib/vol/surface';
+import { readSettingsBody } from '@/lib/settings-validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,9 +42,15 @@ export async function GET() {
 
 /** POST /api/settings/datasource { product, source } — kaynağı değiştirir. */
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  const product = String(body.product || '').toUpperCase();
-  const source = body.source === 'cme' ? 'cme' : 'yahoo';
+  const body = await readSettingsBody(request);
+  if (!body || typeof body.product !== 'string' || typeof body.source !== 'string') {
+    return NextResponse.json({ ok: false, error: 'Geçersiz istek' }, { status: 400 });
+  }
+  const product = body.product.toUpperCase();
+  if (body.source !== 'cme' && body.source !== 'yahoo') {
+    return NextResponse.json({ ok: false, error: 'Geçersiz kaynak' }, { status: 400 });
+  }
+  const source = body.source;
   if (!PRODUCTS.includes(product)) {
     return NextResponse.json({ ok: false, error: 'Geçersiz ürün' }, { status: 400 });
   }

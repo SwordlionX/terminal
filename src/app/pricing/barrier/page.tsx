@@ -1,4 +1,5 @@
 "use client";
+import { FeedStatus } from "@/features/pricing/feed-status";
 
 import { usePricingModel } from "@/features/pricing/use-pricing-model";
 import { PricingContextBar } from "@/features/pricing/pricing-context-bar";
@@ -24,6 +25,7 @@ export default function BarrierPricingPage() {
         liveSource={feed.spot?.source}
         livePrice={feed.spot?.price}
       />
+      <FeedStatus feed={feed} />
 
       {/* Girdiler ana Fiyatlama ekranıyla BİREBİR aynı olmalı: aynı bariyer iki ekranda
           iki farklı prim veremez. Önceden burada ham kira + smile'sız (düz BS) yol

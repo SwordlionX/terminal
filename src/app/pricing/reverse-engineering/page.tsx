@@ -3,6 +3,7 @@
 import { usePricingModel } from "@/features/pricing/use-pricing-model";
 import { PricingContextBar } from "@/features/pricing/pricing-context-bar";
 import { ReverseEngineering } from "@/features/pricing/reverse-engineering";
+import { FeedStatus } from "@/features/pricing/feed-status";
 
 export default function ReverseEngineeringPricingPage() {
   const { md, feed, daysToExpiry, tYears, effVol } = usePricingModel();
@@ -33,6 +34,7 @@ export default function ReverseEngineeringPricingPage() {
         lease={md.lease}
         contractSize={md.contractSize}
       />
+      <FeedStatus feed={feed} />
     </div>
   );
 }

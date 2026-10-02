@@ -1,4 +1,8 @@
 name: CME vol yüzeyi (günlük)
+run-name: ${{ inputs.request_id || format('scheduled-{0}-XAU-XAG', github.run_id) }}
+concurrency:
+  group: cme-refresh-engine
+  cancel-in-progress: false
 
 # COMEX metalleri ~13:25 CT'de settle olur ancak Databento veriyi ertesi gün
 # TR saatiyle 15:00 (12:00 UTC) civarında yayınlıyor. Bu yüzden garantili olması
@@ -15,6 +19,9 @@ on:
       product:
         description: 'Ürün (boş = XAU ve XAG birlikte)'
         required: false
+      request_id:
+        description: 'Uygulamanın takip numarası'
+        required: false
 
 jobs:
   refresh:
@@ -30,8 +37,8 @@ jobs:
 
       - run: npm ci
 
-      # Ürün belirtilmezse ALTIN VE GÜMÜŞ ayrı ayrı yenilenir. Biri hata verirse (ör. o gün
-      # settlement yok) diğeri yine de denenir; adım sonunda hepsi başarısızsa iş kırmızı olur.
+      # Ürün belirtilmezse ALTIN VE GÜMÜŞ ayrı ayrı yenilenir. Biri hata verse bile diğeri
+      # denenir; en az bir ürün hata verirse iş başarısız olur.
       - name: Yüzeyi yenile
         env:
           DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
@@ -40,10 +47,10 @@ jobs:
           PRODUCTS: ${{ github.event.inputs.product || 'XAU XAG' }}
           DATE_ARG: ${{ github.event.inputs.date && format('--date={0}', github.event.inputs.date) || '' }}
         run: |
-          ok=0
+          failed=0
           for p in $PRODUCTS; do
             echo "::group::$p"
-            if npm run refresh:cme -- --product=$p $DATE_ARG; then ok=1; else echo "::warning::$p yenilenemedi"; fi
+            if ! npm run refresh:cme -- --product=$p $DATE_ARG; then failed=1; echo "::warning::$p yenilenemedi"; fi
             echo "::endgroup::"
           done
-          [ "$ok" = "1" ] || { echo "::error::hiçbir ürün yenilenemedi"; exit 1; }
+          [ "$failed" = "0" ] || { echo "::error::en az bir ürün yenilenemedi"; exit 1; }

@@ -1,4 +1,5 @@
 "use client";
+import { FeedStatus } from "@/features/pricing/feed-status";
 
 import { useState } from "react";
 import { usePricingModel } from "@/features/pricing/use-pricing-model";
@@ -42,6 +43,7 @@ export default function DeltaHedgePricingPage() {
         liveSource={feed.spot?.source}
         livePrice={feed.spot?.price}
       />
+      <FeedStatus feed={feed} />
 
       {/* Müşteri pozisyonu seçimi */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-lg border border-zinc-800 bg-zinc-900/30">

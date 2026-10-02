@@ -1,75 +1,74 @@
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getDataSource } from '@/services/cme.service';
 
 export const dynamic = 'force-dynamic';
-// Vercel Hobby fonksiyonları 60 saniyede kesilir; daha yükseği yazmak yanıltıcı olur.
-// Günlük yenileme bu yüzden Vercel'de DEĞİL, GitHub Actions'ta koşar
-// (.github/workflows/cme-refresh.yml → scripts/refresh-cme.ts). Bu uç yalnızca elle
-// tetikleme içindir ve Databento yavaşsa Hobby'de zaman aşımına düşebilir.
 export const maxDuration = 60;
+const PRODUCTS = new Set(['XAU', 'XAG']);
+const REPO = 'SwordlionX/terminal';
+const WORKFLOW = 'cme-refresh.yml';
 
-async function doRefresh(product: string) {
-  const githubPat = process.env.GITHUB_PAT;
-  if (!githubPat) {
-    return NextResponse.json({ ok: false, error: 'GITHUB_PAT eksik. Ayarlardan manuel yenileme için GitHub şifresi (PAT) tanımlanmalı.' }, { status: 500 });
-  }
-
-  try {
-    const res = await fetch('https://api.github.com/repos/SwordlionX/terminal/actions/workflows/cme-refresh.yml/dispatches', {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `Bearer ${githubPat}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ ref: 'main', inputs: { product } })
-    });
-
-    if (!res.ok) {
-      throw new Error(`GitHub API Hatası: ${res.statusText}`);
-    }
-
-    return NextResponse.json({
-      ok: true,
-      product,
-      dispatched: true,
-      message: "Yenileme emri GitHub Actions'a iletildi."
-    });
-  } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : 'GitHub bağlantı hatası' },
-      { status: 502 }
-    );
-  }
+function validProduct(value: string | null) {
+  const product = (value ?? '').toUpperCase();
+  return PRODUCTS.has(product) ? product : null;
 }
 
-/** POST /api/market/refresh/cme?product=XAG — Ayarlar'daki "CME'den Yenile" butonu. */
+function authHeaders(token: string) {
+  return { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' };
+}
+
+/** Manual refreshes dispatch the main workflow and return a correlation id, not a completion claim. */
 export async function POST(req: NextRequest) {
-  const product = (new URL(req.url).searchParams.get('product') || 'XAG').toUpperCase();
-  return doRefresh(product);
-}
-
-// Cron kredi harcamasın: yalnızca aktif kaynağı CME olan ürün yenilenir.
-async function doRefreshIfActive(product: string) {
-  if ((await getDataSource(product)) !== 'cme') {
-    return NextResponse.json({ ok: true, skipped: true, product, reason: 'kaynak cme değil' });
+  const product = validProduct(new URL(req.url).searchParams.get('product'));
+  if (!product) return NextResponse.json({ ok: false, error: 'Ürün XAU veya XAG olmalı.' }, { status: 400 });
+  if (process.env.VERCEL_ENV === 'preview') {
+    return NextResponse.json({ ok: false, error: 'Önizleme ortamından canlı CME yenilemesi başlatılamaz.' }, { status: 409 });
   }
-  return doRefresh(product);
+  const token = process.env.GITHUB_PAT;
+  if (!token) return NextResponse.json({ ok: false, error: 'CME yenilemesi şu anda kullanılamıyor.' }, { status: 503 });
+
+  const requestId = randomUUID();
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: process.env.CME_REFRESH_REF || 'main', inputs: { product, request_id: requestId } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return NextResponse.json({ ok: false, error: 'GitHub Actions yenileme isteğini kabul etmedi.' }, { status: 502 });
+    return NextResponse.json({ ok: true, product, request_id: requestId, status: 'queued' });
+  } catch {
+    return NextResponse.json({ ok: false, error: 'GitHub Actions bağlantısı kurulamadı.' }, { status: 502 });
+  }
 }
 
-/**
- * GET /api/market/refresh/cme — Vercel Cron için. CME COMEX metaller ~13:25 CT settle olur;
- * cron güvenli tarafta akşam UTC'ye ayarlanır (vercel.json). CRON_SECRET tanımlıysa
- * Vercel'in eklediği Authorization header'ı doğrulanır.
- */
+/** Vercel Cron dispatches the daily refresh for the active CME product. */
 export async function GET(req: NextRequest) {
+  const params = new URL(req.url).searchParams;
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get('authorization');
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
-    }
+  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
-  const product = (new URL(req.url).searchParams.get('product') || 'XAG').toUpperCase();
-  return doRefreshIfActive(product);
+  const explicitProduct = params.get('product');
+  if (explicitProduct !== null && !validProduct(explicitProduct)) {
+    return NextResponse.json({ ok: false, error: 'Ürün XAU veya XAG olmalı.' }, { status: 400 });
+  }
+  if (process.env.VERCEL_ENV === 'preview') {
+    return NextResponse.json({ ok: false, error: 'Önizleme ortamından canlı CME yenilemesi başlatılamaz.' }, { status: 409 });
+  }
+  const product = validProduct(explicitProduct) ?? 'XAG';
+  if ((await getDataSource(product)) !== 'cme') return NextResponse.json({ ok: true, skipped: true, product, reason: 'kaynak cme değil' });
+  const token = process.env.GITHUB_PAT;
+  if (!token) return NextResponse.json({ ok: false, error: 'CME yenilemesi şu anda kullanılamıyor.' }, { status: 503 });
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
+      method: 'POST', headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: process.env.CME_REFRESH_REF || 'main', inputs: { product } }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return NextResponse.json({ ok: false, error: 'GitHub Actions yenileme isteğini kabul etmedi.' }, { status: 502 });
+    return NextResponse.json({ ok: true, dispatched: true, product });
+  } catch {
+    return NextResponse.json({ ok: false, error: 'GitHub Actions bağlantısı kurulamadı.' }, { status: 502 });
+  }
 }

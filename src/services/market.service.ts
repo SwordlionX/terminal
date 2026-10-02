@@ -21,7 +21,7 @@ const SPOT_SYMBOLS: Record<string, string[]> = {
   SLV: ['SLV'],
 };
 
-interface SpotCacheEntry { price: number; at: number; source: string }
+interface SpotCacheEntry { price: number; at: number; source: string; stale?: boolean; quoteAt?: number | null }
 const spotCache: Record<string, SpotCacheEntry> = {};
 
 let snapshotMem: YahooSnapshot | null = null;
@@ -46,7 +46,9 @@ const ySurfKey = (sym: string) => `yahoo_surface_${sym.toUpperCase()}`;
 // kötü durumda sıradaki sembole, o da olmazsa eski önbelleğe düşülür.
 const SPOT_TIMEOUT_MS = 4000;
 
-async function fetchChartPrice(symbol: string): Promise<number | null> {
+interface ProviderQuote { price: number; quoteAt: number | null }
+
+async function fetchChartPrice(symbol: string): Promise<ProviderQuote | null> {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
     const res = await fetch(url, {
@@ -56,17 +58,20 @@ async function fetchChartPrice(symbol: string): Promise<number | null> {
     });
     if (!res.ok) return null;
     const j = await res.json();
-    const p = j?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    return typeof p === 'number' && p > 0 ? p : null;
+    const meta = j?.chart?.result?.[0]?.meta;
+    const p = meta?.regularMarketPrice;
+    return typeof p === 'number' && Number.isFinite(p) && p > 0
+      ? { price: p, quoteAt: typeof meta.regularMarketTime === 'number' && Number.isFinite(meta.regularMarketTime * 1000) ? meta.regularMarketTime * 1000 : null }
+      : null;
   } catch {
     return null;
   }
 }
 
 const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || 'f4289f23003940cfbf46c7825bd8ec3a';
-const TIINGO_KEY = process.env.TIINGO_API_KEY || 'af1224275560d5fb3e93aca2a0fa157da7cce183';
+export const TIINGO_KEY = process.env.TIINGO_API_KEY || 'af1224275560d5fb3e93aca2a0fa157da7cce183';
 
-async function fetchTwelveDataPrice(symbol: string): Promise<number | null> {
+async function fetchTwelveDataPrice(symbol: string): Promise<ProviderQuote | null> {
   try {
     const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${TWELVEDATA_KEY}`, {
       cache: 'no-store',
@@ -84,14 +89,14 @@ async function fetchTwelveDataPrice(symbol: string): Promise<number | null> {
       console.warn(`[spot] Twelve Data ${symbol}: kod=${j.code} ${j.message ?? ''}`);
       return null;
     }
-    const p = parseFloat(j.price);
-    return Number.isFinite(p) && p > 0 ? p : null;
+    const p = typeof j.price === 'number' || typeof j.price === 'string' ? Number(j.price) : NaN;
+    return Number.isFinite(p) && p > 0 ? { price: p, quoteAt: null } : null;
   } catch {
     return null;
   }
 }
 
-async function fetchTiingoPrice(symbol: string): Promise<number | null> {
+async function fetchTiingoPrice(symbol: string): Promise<ProviderQuote | null> {
   try {
     const res = await fetch(`https://api.tiingo.com/tiingo/fx/top?tickers=${encodeURIComponent(symbol)}&token=${TIINGO_KEY}`, {
       cache: 'no-store',
@@ -102,8 +107,12 @@ async function fetchTiingoPrice(symbol: string): Promise<number | null> {
       return null;
     }
     const j = await res.json();
-    const p = j?.[0]?.midPrice;
-    return typeof p === 'number' && p > 0 ? p : null;
+    const quote = j?.[0];
+    const p = quote?.midPrice;
+    const parsedTime = typeof quote?.quoteTimestamp === 'string' ? Date.parse(quote.quoteTimestamp) : NaN;
+    return typeof p === 'number' && Number.isFinite(p) && p > 0
+      ? { price: p, quoteAt: Number.isFinite(parsedTime) ? parsedTime : null }
+      : null;
   } catch {
     return null;
   }
@@ -121,7 +130,7 @@ async function fetchTiingoPrice(symbol: string): Promise<number | null> {
  * Tiingo düşerse denenir), plan yükseltilirse kendiliğinden devreye girer.
  * İki kaynak çapraz doğrulandı: XAU 4342.35 (TD) vs 4341.48 (Tiingo) — %0.02 fark.
  */
-const SPOT_PROVIDERS: Record<string, { source: string; get: () => Promise<number | null> }[]> = {
+const SPOT_PROVIDERS: Record<string, { source: string; get: () => Promise<ProviderQuote | null> }[]> = {
   XAU: [
     { source: 'XAU/USD (Twelve Data)', get: () => fetchTwelveDataPrice('XAU/USD') },
     { source: 'XAU/USD (Tiingo)', get: () => fetchTiingoPrice('xauusd') },
@@ -134,36 +143,36 @@ const SPOT_PROVIDERS: Record<string, { source: string; get: () => Promise<number
 
 /**
  * Güncel spot (60 sn önbellekli). Sıra: gerçek-spot sağlayıcılar → token/vadeli vekiller →
- * süresi geçmiş önbellek. Hepsi düşerse null (çağıran taraf kendi fallback'ini uygular).
+ * süresi geçmiş önbellek. Süresi geçmiş fiyat, ilk alındığı zaman korunarak stale işaretlenir.
  * Dönen `source` hangi basamağa inildiğini söyler; ekran rozeti bunu etiketler.
  */
-export async function getSpot(product: string): Promise<{ price: number; at: number; source: string } | null> {
+export async function getSpot(product: string): Promise<{ price: number; at: number; source: string; stale?: boolean; quoteAt?: number | null } | null> {
   const key = product.toUpperCase();
   const cached = spotCache[key];
   if (cached && Date.now() - cached.at < SPOT_TTL_MS) return cached;
 
-  const remember = (price: number, source: string) => {
-    const entry = { price, at: Date.now(), source };
+  const remember = (quote: ProviderQuote, source: string) => {
+    const entry = { price: quote.price, at: Date.now(), source, stale: false, quoteAt: quote.quoteAt };
     spotCache[key] = entry;
     return entry;
   };
 
   for (const p of SPOT_PROVIDERS[key] ?? []) {
-    const price = await p.get();
-    if (price != null) return remember(price, p.source);
+    const quote = await p.get();
+    if (quote != null) return remember(quote, p.source);
   }
 
   // Vekil: token (PAXG/XAGX) ya da vadeli (=F). Gerçek spot DEĞİL — ekranda etiketiyle belli.
   for (const sym of SPOT_SYMBOLS[key] || [key]) {
-    const price = await fetchChartPrice(sym);
-    if (price != null) {
+    const quote = await fetchChartPrice(sym);
+    if (quote != null) {
       console.warn(`[spot] ${key}: gerçek-spot sağlayıcıları düştü, vekile inildi (${sym})`);
-      return remember(price, sym);
+      return remember(quote, sym);
     }
   }
 
   if (cached) console.warn(`[spot] ${key}: tüm kaynaklar düştü, süresi geçmiş önbellek kullanılıyor`);
-  return cached || null;
+  return cached ? { ...cached, stale: true } : null;
 }
 
 /**

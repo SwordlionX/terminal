@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Users, Calculator, Briefcase,
+  LayoutDashboard, Users, Calculator, Briefcase, Archive,
   ShieldAlert, Settings, ChevronDown,
   TrendingUpDown, Shield, Activity
 } from "lucide-react";
@@ -40,6 +40,7 @@ const items = [
   },
   { title: "Risk ve Teminat", url: "/margin", icon: ShieldAlert },
   { title: "İşlemler", url: "/trades", icon: Briefcase },
+  { title: "İşlem Arşivi", url: "/archive", icon: Archive },
   { title: "Portföy Takip", url: "/stock-tracker", icon: Activity },
   { title: "Ayarlar", url: "/settings", icon: Settings },
 ];

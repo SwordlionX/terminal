@@ -24,24 +24,30 @@ export function ReverseEngineering({
   const [unitMode, setUnitMode] = useState<"oz" | "pct">("oz");
   const [optionType, setOptionType] = useState<"call" | "put">("call");
   
-  const [resultIv, setResultIv] = useState<number | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const inputKey = JSON.stringify([spot, strike, tYears, rate, lease, targetPremium, unitMode, optionType]);
+  const [calculation, setCalculation] = useState<{ key: string; iv: number | null; error: string | null } | null>(null);
+  const stale = calculation !== null && calculation.key !== inputKey;
+  const resultIv = stale ? null : calculation?.iv ?? null;
+  const errorMsg = stale ? null : calculation?.error ?? null;
 
   const formatPercent = (val: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val * 100);
 
   const runReverse = () => {
+    if (![spot, strike, tYears, rate, lease, targetPremium].every(Number.isFinite) ||
+        spot <= 0 || strike <= 0 || tYears <= 0 || targetPremium < 0) {
+      setCalculation({ key: inputKey, iv: null, error: "Pozitif spot, strike ve vade; sıfır veya pozitif prim girin. Tüm değerler sonlu olmalı." });
+      return;
+    }
     let price = targetPremium;
     if (unitMode === "pct") {
       price = (targetPremium / 100) * strike;
     }
 
     const res = impliedVol(spot, strike, tYears, rate / 100, lease / 100, price, optionType);
-    if (res.ok) {
-      setResultIv(res.vol);
-      setErrorMsg(null);
+    if (res.ok && Number.isFinite(res.vol)) {
+      setCalculation({ key: inputKey, iv: res.vol, error: null });
     } else {
-      setResultIv(null);
-      setErrorMsg("Çözüm bulunamadı. Girdiğiniz prim, opsiyonun mevcut içsel değerinden düşük olabilir veya matematiksel sınır dışındadır.");
+      setCalculation({ key: inputKey, iv: null, error: "Çözüm bulunamadı. Girdiğiniz prim matematiksel fiyat sınırlarının dışında olabilir." });
     }
   };
 
@@ -97,6 +103,7 @@ export function ReverseEngineering({
           </div>
         </div>
 
+        {stale && <p role="status" className="text-sm text-amber-400">Girdiler değişti. Güncel IV için yeniden hesaplayın.</p>}
         {resultIv !== null && (
           <div className="mt-4 p-5 rounded-lg bg-zinc-900/40 border border-zinc-700/50 flex justify-between items-center shadow-inner">
             <span className="text-zinc-200 font-semibold tracking-wide">Bulunan Zımni Volatilite (Implied Volatility):</span>
