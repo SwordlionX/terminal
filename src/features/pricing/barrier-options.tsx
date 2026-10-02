@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { barrierPrice, barrierGreeks, spotFiniteDiff } from "@/lib/math";
 import { vannaVolgaBarrier } from "@/lib/math/vanna-volga";
+import type { VolEstimateMode } from "@/lib/vol/surface";
 
 interface BarrierOptionsProps {
   spot: number;
@@ -17,6 +18,8 @@ interface BarrierOptionsProps {
   vol: number;
   /** Verilen fiyat seviyesinin smile vol'ü (%). Yoksa/aralığın dışıysa null. */
   volAtLevel?: (level: number) => number | null;
+  /** Provenance of auxiliary smile queries, including ATM and delta pillars. */
+  volModeAtLevel?: (level: number) => VolEstimateMode;
   /** Kontrat büyüklüğü (ons) — toplam primi göstermek için. */
   contractSize?: number;
   /** true ise Vanna-Volga dökümü + Greek'ler de gösterilir (bariyer alt sayfası). */
@@ -50,6 +53,7 @@ interface CalcResult {
   nearBarrier: boolean;
   knockedOut: boolean;
   inputs: CalcInputs;
+  smileModes: VolEstimateMode[];
 }
 
 /** Bariyer yapısı: yön (u/d) + tip (o/i). Call ve put AYNI yapı için birlikte fiyatlanır. */
@@ -76,7 +80,7 @@ const fmtUsd = (val: number) =>
  * prim "Prim & Değerleme"nin altında — bu yüzden durum burada ortaklaştırıldı.
  */
 export function useBarrierPricing({
-  spot, strike, tYears, rate, lease, vol, volAtLevel,
+  spot, strike, tYears, rate, lease, vol, volAtLevel, volModeAtLevel,
 }: BarrierOptionsProps) {
   /**
    * Bariyer seviyesi. Kullanıcı bir değer girene kadar null tutulur ve ekranda CANLI
@@ -113,8 +117,8 @@ export function useBarrierPricing({
 
   const calcResult = useMemo<CalcResult | null>(() => {
     if (!committed) return null;
-    return priceBarrier({ spot, strike, tYears, rate, lease, vol, volAtLevel }, committed);
-  }, [committed, spot, strike, tYears, rate, lease, vol, volAtLevel]);
+    return priceBarrier({ spot, strike, tYears, rate, lease, vol, volAtLevel, volModeAtLevel }, committed);
+  }, [committed, spot, strike, tYears, rate, lease, vol, volAtLevel, volModeAtLevel]);
 
   /** Kullanıcı formu değiştirdi ama HESAPLA'ya basmadı mı? */
   const stale = !!committed && (
@@ -126,14 +130,19 @@ export function useBarrierPricing({
 
 /** Fiyat hesabı — saf fonksiyon. FİYATLAMA MANTIĞI DEĞİŞMEDİ, yalnız state'ten ayrıldı. */
 function priceBarrier(
-  { spot, strike, tYears, rate, lease, vol, volAtLevel }: BarrierOptionsProps,
+  { spot, strike, tYears, rate, lease, vol, volAtLevel, volModeAtLevel }: BarrierOptionsProps,
   { variant, barrierH, rebateR }: { variant: string; barrierH: number; rebateR: number },
 ): CalcResult {
   {
     const r = rate / 100, q = lease / 100;
+    const smileModes = new Set<VolEstimateMode>();
     // Smile fonksiyonu (ondalık vol). Yoksa Vanna-Volga kurulamaz → düz BS'e düşülür.
     const smile = volAtLevel
-      ? (k: number): number | null => { const v = volAtLevel(k); return v != null && isFinite(v) ? v / 100 : null; }
+      ? (k: number): number | null => {
+        const v = volAtLevel(k);
+        if (v != null && isFinite(v) && volModeAtLevel) smileModes.add(volModeAtLevel(k));
+        return v != null && isFinite(v) ? v / 100 : null;
+      }
       : null;
 
     /** Tek bacağı (code = 'c'/'p' + variant) fiyatlar. FİYATLAMA MANTIĞI DEĞİŞMEDİ. */
@@ -194,6 +203,7 @@ function priceBarrier(
     return {
       call: priceLeg("c" + variant),
       put: priceLeg("p" + variant),
+      smileModes: Array.from(smileModes),
       nearBarrier,
       knockedOut,
       inputs: { spot, strike, tYears, rate, lease, vol, variant, barrierH, rebateR },
@@ -315,6 +325,14 @@ export function BarrierResult({
       </div>
 
       {/* Smile uygulanamadıysa bu SESSİZ GEÇİLMEZ: fiyat skew düzeltmesi olmadan üretilmiştir. */}
+      {calcResult.smileModes.includes('extrapolated') && (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+          Bariyer hesabının yardımcı smile noktalarında SSVI uzatması kullanıldı. Seçili strike kote aralıkta olsa bile bu sonuç model kanadına dayanabilir; piyasa kotasyonu değildir.
+        </p>
+      )}
+      {!calcResult.smileModes.includes('extrapolated') && calcResult.smileModes.includes('model') && (
+        <p className="text-xs text-muted-foreground">Bariyer hesabının yardımcı smile noktalarında SSVI uyumu kullanıldı.</p>
+      )}
       {noSmile && (
         <div className="rounded-md border border-amber-700/40 bg-amber-950/20 px-3 py-2">
           <p className="text-[11px] text-amber-300/90">

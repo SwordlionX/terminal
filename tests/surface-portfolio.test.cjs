@@ -19,7 +19,11 @@ function load(file, imports = {}) {
   return loadedModule.exports;
 }
 
-const surface = load('src/lib/vol/surface.ts', { '../math/american': { deAmericanizedIV() { return NaN; } } });
+const ssvi = load('src/lib/vol/ssvi.ts');
+const surface = load('src/lib/vol/surface.ts', {
+  '../math/american': { deAmericanizedIV() { return NaN; } },
+  './ssvi': ssvi,
+});
 const smile = (days, points) => ({ days, date: `day-${days}`, points });
 const broad = [
   { m: 0.8, iv: 0.2 }, { m: 1, iv: 0.25 }, { m: 1.2, iv: 0.3 },

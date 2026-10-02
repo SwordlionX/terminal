@@ -1,52 +1,39 @@
 import { gk } from './gk';
 
 export function impliedVol(S: number, K: number, T: number, r: number, q: number, price: number, type: 'call' | 'put') {
-  let v = 0.2, iter = 0, err = NaN;
-  const tol = 1e-8;
-  const maxIter = 100;
-  if (price <= 0 || T <= 0) return { vol: NaN, iter: 0, err: NaN, ok: false };
+  const failure = { vol: NaN, iter: 0, err: NaN, ok: false };
+  const tol = Math.min(1e-8, Math.max(1e-12, price * 1e-6));
+  if (![S, K, T, r, q, price].every(Number.isFinite) || S <= 0 || K <= 0 ||
+      price <= 0 || T <= 0 || (type !== 'call' && type !== 'put')) return failure;
 
-  // Avrupa no-arb alt sınırı = iskontolu forward-intrinsic (spot-intrinsic değil).
-  // Fiyat bu sınırın altındaysa hiçbir v>0 fiyatı üretemez — çözücüyü yormadan reddet.
-  const fwdIntrinsic = type === 'call'
-    ? Math.max(S * Math.exp(-q * T) - K * Math.exp(-r * T), 0)
-    : Math.max(K * Math.exp(-r * T) - S * Math.exp(-q * T), 0);
-  if (price <= fwdIntrinsic + 1e-10) return { vol: NaN, iter: 0, err: NaN, ok: false };
+  // Positive volatility prices lie strictly between the zero-volatility
+  // forward payoff and the discounted underlying/strike upper bound.
+  const dfR = Math.exp(-r * T), dfQ = Math.exp(-q * T);
+  const upper = type === 'call' ? S * dfQ : K * dfR;
+  const lower = type === 'call' ? Math.max(S * dfQ - K * dfR, 0)
+    : Math.max(K * dfR - S * dfQ, 0);
+  if (!Number.isFinite(upper) || !Number.isFinite(lower) ||
+      price <= lower + 1e-10 || price >= upper) return failure;
 
-  for (iter = 1; iter <= maxIter; iter++) {
-    const g = gk(S, K, T, r, q, v);
-    const mdl = (type === 'call') ? g.call : g.put;
-    const vega = S * g.dfQ * g.nd1 * Math.sqrt(T);
-    err = mdl - price;
-    if (Math.abs(err) < tol) return { vol: v, iter, err, ok: true };
-    if (vega < 1e-12) break;
-    v = v - err / vega;
-    if (v < 1e-6) v = 1e-6;
-    if (v > 5) v = 5;
-  }
-
-  if (Math.abs(err) < 1e-4) return { vol: v, iter, err, ok: true };
-
-  // Bisection fallback if Newton fails
-  let lo = 1e-6, hi = 5;
+  let lo = 0, hi = 5;
   const f = (vv: number) => {
     const gg = gk(S, K, T, r, q, vv);
     return ((type === 'call') ? gg.call : gg.put) - price;
   };
-  
-  let flo = f(lo), fhi = f(hi);
-  if (isFinite(flo) && isFinite(fhi) && flo * fhi < 0) {
-    for (let j = 0; j < 200; j++) {
-      const mid = (lo + hi) / 2;
-      const fm = f(mid);
-      if (Math.abs(fm) < 1e-8) return { vol: mid, iter: iter + j, err: fm, ok: true };
-      if (flo * fm < 0) { hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
-    }
-    const vm = (lo + hi) / 2, em = f(vm);
-    return { vol: vm, iter: iter + 200, err: em, ok: Math.abs(em) < 1e-4 };
-  }
+  const flo = f(lo), fhi = f(hi);
+  if (!Number.isFinite(flo) || !Number.isFinite(fhi) || flo >= 0 || fhi < 0) return failure;
+  if (Math.abs(fhi) <= tol) return { vol: hi, iter: 0, err: fhi, ok: true };
 
-  return { vol: v, iter, err, ok: false };
+  for (let iter = 1; iter <= 80; iter++) {
+    const mid = (lo + hi) / 2;
+    const err = f(mid);
+    if (!Number.isFinite(err)) return failure;
+    if (Math.abs(err) <= tol) return { vol: mid, iter, err, ok: true };
+    if (err < 0) lo = mid; else hi = mid;
+  }
+  const vol = (lo + hi) / 2, err = f(vol);
+  return Number.isFinite(err) && Math.abs(err) <= tol
+    ? { vol, iter: 80, err, ok: true } : { vol: NaN, iter: 80, err, ok: false };
 }
 
 export function volForDelta(S: number, K: number, T: number, r: number, q: number, targetDelta: number, type: 'call' | 'put') {

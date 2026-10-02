@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useMarketData } from "@/store/marketData";
 import { useMarketFeed } from "@/hooks/use-market-feed";
-import { surfaceVol } from "@/lib/vol/surface";
+import { surfaceVolEstimate } from "@/lib/vol/surface";
 import { gk, greeks } from "@/lib/math";
 
 /**
@@ -49,13 +49,18 @@ export function usePricingModel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feed.surface?.fetchedISO]);
 
-  // Vade hesabı — geçersiz/silinmiş tarihte NaN'a düşmemek için son geçerli değer korunur
+  // Date-only inputs are measured in UTC days to avoid timezone/DST drift.
   const dayMs = 1000 * 3600 * 24;
-  const rawDays = (new Date(md.expiryDate).getTime() - new Date(md.tradeDate).getTime()) / dayMs;
-  const dateValid = isFinite(rawDays);
-  const validDaysToExpiry = Math.max(rawDays, 0.5);
-  const daysToExpiry = dateValid ? validDaysToExpiry : 90;
-  const tYears = Math.max(daysToExpiry / md.basis, 0.001);
+  const parseDay = (text: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return NaN;
+    const value = Date.parse(`${text}T00:00:00Z`);
+    return Number.isFinite(value) && new Date(value).toISOString().slice(0, 10) === text ? value : NaN;
+  };
+  const rawDays = (parseDay(md.expiryDate) - parseDay(md.tradeDate)) / dayMs;
+  const dateValid = Number.isFinite(rawDays) && rawDays > 0;
+  const daysToExpiry = dateValid ? rawDays : 0;
+  const validBasis = Number.isFinite(md.basis) && md.basis > 0;
+  const tYears = dateValid && validBasis ? daysToExpiry / md.basis : 0;
 
   // Fiyatlama forward'ı. 
   // Eskiden CME futures forward'ı (cmeFwd) doğrudan kullanılıyordu, ancak bu durum
@@ -63,36 +68,54 @@ export function usePricingModel() {
   // Artık Databento'dan hesaplanıp ekrana basılan Kira (md.lease) kullanılarak,
   // kusursuz ve anında tepki veren Canlı Forward üretiliyor.
   const carry = (md.rate - md.lease) / 100;
-  const fwdExp = Math.exp(carry * (daysToExpiry / 365));
+  const fwdExp = Math.exp(carry * tYears);
   
   const usingCmeFwd = false;
   const fwd = md.spot * fwdExp;
   const pricingSpot = md.spot;
 
-  // Volatilite: manuel tik yoksa smile'dan (de-Amerikanize IV), tik varsa kullanıcı girer.
+  // Volatilite: manuel tik yoksa kote smile veya kabul edilen SSVI uyumundan gelir.
   // Sorgu forward-moneyness (m = K/fwd) ile yapılır; yukarıdaki forward çapasını kullanır.
-  const smileIv = useMemo(() => {
-    if (!feed.surface || fwd <= 0) return null;
-    const iv = surfaceVol(feed.surface, md.strike / fwd, daysToExpiry);
-    return iv != null && isFinite(iv) ? iv * 100 : null;
-  }, [feed.surface, md.strike, fwd, daysToExpiry]);
+  const smileEstimate = useMemo(() => {
+    if (!feed.surface || !(fwd > 0) || !(md.strike > 0) || !dateValid)
+      return { vol: null, mode: 'unavailable' as const, reason: 'Geçerli spot, strike ve vade gerekli.' };
+    return surfaceVolEstimate(feed.surface, md.strike / fwd, daysToExpiry, md.tradeDate);
+  }, [feed.surface, md.strike, fwd, daysToExpiry, md.tradeDate, dateValid]);
+  const smileIv = smileEstimate.vol != null ? smileEstimate.vol * 100 : null;
 
-  // Otomatik (smile) modda vol sadece kote strike/vade aralığında türetilir.
-  // Aralık dışıysa smileIv null gelir; bu durumda fiyat UYDURULMAZ — kullanıcı
-  // bilerek "Manuel vol" tikini açmadıkça prim/Greeks gösterilmez.
-  const autoAvailable = smileIv != null;
-  const priceable = md.manualVol || autoAvailable;
+  // Otomatik modda yalnız kabul edilen uyumun sınırlı kanadı kullanılabilir.
+  // Uyum başarısızsa kote aralığı dışındaki vol kullanılamaz.
+  const contractSizeValid = Number.isFinite(md.contractSize) && md.contractSize > 0;
+  const numericInputsValid = dateValid && validBasis && Number.isFinite(md.spot) && md.spot > 0 &&
+    Number.isFinite(md.strike) && md.strike > 0 && contractSizeValid &&
+    Number.isFinite(md.rate) && Number.isFinite(md.lease) &&
+    Number.isFinite(fwd) && fwd > 0;
+  const manualAvailable = Number.isFinite(md.vol) && md.vol > 0 && md.vol < 400;
+  const autoAvailable = smileIv != null && Number.isFinite(smileIv);
 
-  // priceable=false iken effVol sadece hesap NaN'a düşmesin diye tutulur; ekranda gösterilmez.
+  // priceable=false iken effVol yalnız hesap için tutulur; ekranda gösterilmez.
   const effVol = md.manualVol ? md.vol : (smileIv ?? md.vol);
+  const result = gk(pricingSpot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100);
+  const finitePrices = Number.isFinite(result.call) && result.call >= 0 &&
+    Number.isFinite(result.put) && result.put >= 0;
+  const priceable = numericInputsValid && (md.manualVol ? manualAvailable : autoAvailable) && finitePrices;
 
   const unpriceableReason = priceable
     ? null
-    : !feed.surface
+    : !contractSizeValid
+      ? "Geçerli pozitif kontrat büyüklüğü gerekli."
+      : !numericInputsValid
+      ? "Geçerli işlem tarihi, ileri vade, spot, strike, faiz ve gün bazı gerekli."
+      : md.manualVol && !manualAvailable
+        ? "Manuel volatilite geçersiz."
+        : !finitePrices && (md.manualVol || autoAvailable)
+          ? "Model sonlu ve geçerli bir prim üretemedi; girdileri kontrol edin."
+        : !feed.surface
       ? "Smile verisi yok — opsiyon zincirini yenileyin veya manuel vol girin."
-      : "Bu strike/vade için kote opsiyon yok — güvenilir vol türetilemiyor.";
+      : !md.manualVol && !autoAvailable
+        ? smileEstimate.reason ?? "Bu strike/vade için güvenilir vol türetilemiyor."
+        : "Bu strike/vade için güvenilir vol türetilemiyor.";
 
-  const result = gk(pricingSpot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100);
   const gr = greeks(pricingSpot, md.strike, tYears, md.rate / 100, md.lease / 100, effVol / 100, md.basis);
 
   // CME forward aktifken forward futures'tan gelir → kira prime girmez; piyasa carry'si
@@ -105,12 +128,16 @@ export function usePricingModel() {
    * Herhangi bir FİYAT SEVİYESİ için smile vol'ü (%). Bariyer paneli bunu bariyer
    * seviyesinin (H) vol'ünü öğrenmek için kullanır: bariyerli opsiyonun değeri yalnız
    * strike'ın değil, bariyer civarındaki oynaklığın da fonksiyonudur (skew). Kote
-   * aralığın dışındaysa null döner.
+   * sınırlı SSVI kanadının da dışındaysa null döner.
    */
   const volAtLevel = (level: number): number | null => {
-    if (!feed.surface || !(level > 0) || fwd <= 0) return null;
-    const iv = surfaceVol(feed.surface, level / fwd, daysToExpiry);
+    if (!feed.surface || !(level > 0) || !numericInputsValid) return null;
+    const iv = surfaceVolEstimate(feed.surface, level / fwd, daysToExpiry, md.tradeDate).vol;
     return iv != null && isFinite(iv) ? iv * 100 : null;
+  };
+  const volModeAtLevel = (level: number) => {
+    if (!feed.surface || !(level > 0) || !numericInputsValid) return 'unavailable' as const;
+    return surfaceVolEstimate(feed.surface, level / fwd, daysToExpiry, md.tradeDate).mode;
   };
 
   /**
@@ -137,7 +164,7 @@ export function usePricingModel() {
   const barrierSpot = md.spot;
   const barrierLease = md.lease; // Artık doğrudan yüzeyden gelen veya kullanıcının girdiği kira geçerli
 
-  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, barrierSpot, barrierLease, surfaceSourceLabel };
+  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, smileEstimate, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, volModeAtLevel, barrierSpot, barrierLease, surfaceSourceLabel };
 }
 
 export const formatCurrency = (val: number) =>

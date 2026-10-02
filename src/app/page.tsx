@@ -90,8 +90,9 @@ function isUsMarketLikelyOpen(now: Date = new Date()): boolean {
 }
 
 export default function PricingPage() {
-  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, barrierSpot, barrierLease, surfaceSourceLabel } = usePricingModel();
+  const { md, feed, dateValid, daysToExpiry, tYears, smileIv, smileEstimate, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, volModeAtLevel, barrierSpot, barrierLease, surfaceSourceLabel } = usePricingModel();
   const spotInfo = feed.spot ? spotKind(feed.spot.source) : null;
+  const volModeLabel = md.manualVol ? "Manuel varsayım" : ({ observed: "Gözlemlenen IV", interpolated: "Ara değer", model: "SSVI modeli", extrapolated: "SSVI uzatma", unavailable: "Veri yok" }[smileEstimate.mode]);
 
   // Kaydetme formu durumu
   const [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
@@ -112,11 +113,17 @@ export default function PricingPage() {
     lease: barrierLease,
     vol: effVol,
     volAtLevel,
+    volModeAtLevel,
   });
 
   // Müşteri listesi (kaydetme formu için)
   useEffect(() => {
-    fetch('/api/customers').then(r => r.json()).then(setCustomers).catch(() => {});
+    fetch('/api/customers').then(async r => {
+      if (!r.ok) return;
+      const data: unknown = await r.json();
+      if (Array.isArray(data)) setCustomers(data.filter((c): c is { id: string; companyName: string } =>
+        c != null && typeof c.id === 'string' && typeof c.companyName === 'string'));
+    }).catch(() => {});
   }, []);
 
   // Seçili müşterinin ADININ kutuda görünmesi için değer->etiket eşlemesi. Bu olmadan
@@ -165,10 +172,14 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       <div className="flex flex-wrap justify-between items-center gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold tracking-tight">Fiyatlama</h1>
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-400">Opsiyon çalışma alanı</p>
+          <h1 className="text-3xl font-semibold tracking-tight">Fiyatlama</h1>
+          <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{md.product === "XAU" ? "Altın · XAU/USD" : "Gümüş · XAG/USD"}</Badge>
+          <span className="text-xs text-muted-foreground">{dateValid ? `${formatNumber(daysToExpiry, 0)} gün` : "Vade geçersiz"} · {formatNumber(md.contractSize, 0)} ons</span>
           {feed.spot && spotInfo && (
             <Badge
               variant="outline"
@@ -184,12 +195,28 @@ export default function PricingPage() {
               Zincir: {feed.snapshotISO}
             </Badge>
           )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleRefreshChains} disabled={feed.refreshing}>
             {feed.refreshing ? "Yenileniyor..." : "Opsiyon Zincirlerini Yenile"}
           </Button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          { label: "Fiyatlama spotu", value: Number.isFinite(pricingSpot) && pricingSpot > 0 ? `$${formatNumber(pricingSpot, 2)}` : "—", detail: md.manualSpot ? "Manuel spot" : spotInfo?.label ?? "Başlangıç girdisi · veri bekleniyor" },
+          { label: "Hesaplanan forward", value: dateValid && Number.isFinite(fwd) && fwd > 0 ? `$${formatNumber(fwd, 2)}` : "—", detail: `Spot + carry · ACT/${md.basis}` },
+          { label: "Kullanılan volatilite", value: priceable ? `%${formatNumber(effVol, 2)}` : "—", detail: volModeLabel },
+          { label: "Volatilite kaynağı", value: feed.surface ? (feed.surfaceSource === "cme" ? "CME COMEX" : "Yahoo / ETF") : "Veri bekleniyor", detail: feed.surface?.fetchedISO ?? "Henüz yüzey alınmadı" },
+        ].map(item => (
+          <div key={item.label} className="min-w-0 rounded-xl border border-border bg-card/80 px-4 py-4">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{item.label}</p>
+            <p className="mt-2 truncate font-mono text-lg font-semibold sm:text-xl">{item.value}</p>
+            <p className="mt-1 break-words text-[11px] text-muted-foreground">{item.detail}</p>
+          </div>
+        ))}
       </div>
 
       <FeedStatus feed={feed} />
@@ -201,11 +228,12 @@ export default function PricingPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="pricing-workspace grid grid-cols-1 items-start gap-5">
         {/* Market Data Girişi */}
         <Card>
           <CardHeader>
-            <CardTitle>Piyasa Verileri</CardTitle>
+            <CardTitle>İşlem girdileri</CardTitle>
+            <p className="text-xs text-muted-foreground">Ürün, vade ve fiyatlama varsayımları</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -260,7 +288,7 @@ export default function PricingPage() {
                 <Label>Vade (Tarih)</Label>
                 <DateInput value={md.expiryDate} onValueChange={v => md.setField('expiryDate', v)} />
                 {!dateValid && (
-                  <p className="text-[11px] text-amber-500">Geçersiz tarih — son geçerli vade ({daysToExpiry.toFixed(0)} gün) kullanılıyor</p>
+                  <p className="text-[11px] text-amber-500">Geçerli işlem tarihi ve ileri bir vade seçin — fiyat üretilmiyor.</p>
                 )}
               </div>
               <div className="space-y-2 col-span-2">
@@ -284,8 +312,8 @@ export default function PricingPage() {
                 {!md.manualVol && (
                   <p className={smileIv != null ? "text-[11px] text-zinc-500" : "text-[11px] text-amber-500"}>
                     {smileIv != null
-                      ? `Smile'dan otomatik: ${feed.surface?.symbol} yüzeyi, ${daysToExpiry.toFixed(0)} gün, de-Amerikanize IV`
-                      : "Bu strike/vade için kote opsiyon yok — fiyat üretilmiyor. Manuel girmek için tiki işaretleyin."}
+                      ? `${volModeLabel}: ${feed.surface?.symbol} yüzeyi · ${daysToExpiry.toFixed(0)} gün`
+                      : smileEstimate.reason ?? "Bu strike/vade için güvenilir IV yok. Manuel bir varsayım girebilirsiniz."}
                   </p>
                 )}
               </div>
@@ -350,24 +378,28 @@ export default function PricingPage() {
         {/* Fiyatlama Çıktısı */}
         <Card>
           <CardHeader>
-            <CardTitle>Prim & Değerleme</CardTitle>
+            <CardTitle>Model primi & değerleme</CardTitle>
+            <p className="text-xs text-muted-foreground">Avrupa tipi · hesaplanan prim, işlem yapılabilir piyasa kotasyonu değildir.</p>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
               {priceable ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50">
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-1">Call Primi (ons)</div>
-                      <div className="text-2xl font-bold text-emerald-500">${formatNumber(result.call)}</div>
-                      <div className="text-xs text-muted-foreground mt-1">% {formatNumber((result.call / md.strike) * 100)}</div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="min-w-0 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-3">Call · USD / ons</div>
+                      <div className="break-all font-mono text-3xl font-semibold tracking-tight text-emerald-400">${formatNumber(result.call)}</div>
+                      <div className="text-xs text-muted-foreground mt-3">Strike&apos;ın %{formatNumber((result.call / md.strike) * 100, 2)}&apos;i</div>
                     </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-1">Put Primi (ons)</div>
-                      <div className="text-2xl font-bold text-rose-500">${formatNumber(result.put)}</div>
-                      <div className="text-xs text-muted-foreground mt-1">% {formatNumber((result.put / md.strike) * 100)}</div>
+                    <div className="min-w-0 rounded-xl border border-rose-500/20 bg-rose-500/5 p-5">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-rose-400 mb-3">Put · USD / ons</div>
+                      <div className="break-all font-mono text-3xl font-semibold tracking-tight text-rose-400">${formatNumber(result.put)}</div>
+                      <div className="text-xs text-muted-foreground mt-3">Strike&apos;ın %{formatNumber((result.put / md.strike) * 100, 2)}&apos;i</div>
                     </div>
                   </div>
+                  {!md.manualVol && smileEstimate.mode === "extrapolated" && (
+                    <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-400">Bu strike gözlemlenen aralığın dışında. Prim, kalite kontrolünden geçen SSVI uzatmasına dayanıyor; piyasa kotasyonu değildir.</p>
+                  )}
                   {md.manualVol && !autoAvailable && (
                     <div className="mt-3 text-[11px] text-amber-500 flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -426,16 +458,18 @@ export default function PricingPage() {
                   <div>
                     <div className="font-semibold text-sm text-amber-400">Fiyat üretilmiyor</div>
                     <div className="text-xs mt-1 text-amber-500/90">{unpriceableReason}</div>
-                    <div className="text-xs mt-1.5 text-zinc-400">
-                      Yine de fiyatlamak için Volatilite alanındaki &quot;Manuel gir&quot; tikini işaretleyip bir değer girebilirsiniz.
-                    </div>
+                    {dateValid && md.contractSize > 0 && !md.manualVol && (
+                      <div className="text-xs mt-1.5 text-zinc-400">
+                        Piyasa IV&apos;si yoksa Volatilite alanındaki &quot;Manuel gir&quot; seçeneğiyle kendi varsayımınızı kullanabilirsiniz. Geçersiz girdiler önce düzeltilmelidir.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* Bariyer primi — girdiler sol karttaki panelde, sonuç burada vanilya
                   priminin hemen ardında (aynı dil: ons + yüzde + toplam + vanilya farkı). */}
-              {showBarrier && barrier.calcResult && (
+              {priceable && showBarrier && barrier.calcResult && (
                 <div className="mt-4 pt-4 border-t border-zinc-800">
                   <BarrierResult state={barrier} contractSize={md.contractSize} detailed />
                 </div>
@@ -443,7 +477,7 @@ export default function PricingPage() {
 
               {/* İşlemi Müşteriye Kaydet — kompakt buton, form Dialog'da */}
               <div className="mt-4 pt-4 border-t border-zinc-800">
-                <Button variant="outline" className="w-full" onClick={() => { setBookMsg(null); setBookOpen(true); }}>
+                <Button className="w-full" disabled={!priceable} onClick={() => { setBookMsg(null); setBookOpen(true); }}>
                   İşlemi Müşteriye Kaydet
                 </Button>
                 {bookMsg && !bookOpen && (
@@ -458,7 +492,7 @@ export default function PricingPage() {
             Eskiden yalnız call gösteriliyordu; oysa masanın yazdığı işlemlerin çoğu put ve
             greeks() zaten iki tarafı da hesaplıyordu. Delta/theta/charm/rho iki tarafta
             FARKLIDIR; gamma/vega/vanna/vomma put-call paritesi gereği aynıdır. */}
-        <Card>
+        <Card className="pricing-greeks">
           <CardHeader>
             <CardTitle>Greeks</CardTitle>
           </CardHeader>
@@ -492,7 +526,7 @@ export default function PricingPage() {
                </div>
                      ) : (
                <div className="text-muted-foreground text-sm">
-                 {feed.loading ? "Yükleniyor…" : priceable ? "Hesaplanamıyor" : "Kote opsiyon yok — Greeks üretilmiyor."}
+                 {feed.loading ? "Yükleniyor…" : priceable ? "Hesaplanamıyor" : "Fiyatlama geçerli değil — Greeks üretilmiyor."}
                </div>
              )}
           </CardContent>
@@ -506,8 +540,12 @@ export default function PricingPage() {
         strike={md.strike}
         daysToExpiry={daysToExpiry}
         sourceLabel={surfaceSourceLabel}
+        valuationDate={md.tradeDate}
+        manualVol={md.manualVol}
+        effectiveVol={priceable ? effVol : undefined}
       />
 
+      {priceable && <>
       <div className="mt-6">
         <PositionCard
           spot={pricingSpot}
@@ -521,7 +559,7 @@ export default function PricingPage() {
       <ScenarioAnalysis
         spot={pricingSpot}
         strike={md.strike}
-        tYears={Math.max(daysToExpiry / md.basis, 0.001)}
+        tYears={tYears}
         rate={md.rate}
         lease={md.lease}
         vol={effVol}
@@ -529,6 +567,7 @@ export default function PricingPage() {
         callPremium={result.call}
         putPremium={result.put}
       />
+      </>}
 
       {/* Detaylı Fiyatlama Araçları — Bariyer, Tersine Mühendislik, Delta Hedge kendi alt sayfalarına taşındı */}
       <div>

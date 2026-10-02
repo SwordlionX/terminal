@@ -10,19 +10,37 @@ export function americanPrice(
   S: number, K: number, T: number, r: number, q: number, v: number,
   type: 'call' | 'put', steps: number = 200
 ): number {
-  if (T <= 0 || v <= 0 || S <= 0 || K <= 0) {
-    return type === 'call' ? Math.max(S - K, 0) : Math.max(K - S, 0);
+  if (![S, K, T, r, q, v].every(Number.isFinite) || S <= 0 || K <= 0 ||
+      v < 0 || !Number.isInteger(steps) || steps < 1 || (type !== 'call' && type !== 'put')) return NaN;
+  const intrinsic = type === 'call' ? Math.max(S - K, 0) : Math.max(K - S, 0);
+  if (T <= 0) return intrinsic;
+  if (v === 0) {
+    // With no diffusion, exercise can be optimal at an interior time.
+    const exercise = (t: number) => type === 'call'
+      ? Math.max(S * Math.exp(-q * t) - K * Math.exp(-r * t), 0)
+      : Math.max(K * Math.exp(-r * t) - S * Math.exp(-q * t), 0);
+    let value = Math.max(intrinsic, exercise(T));
+    const ratio = r * K / (q * S);
+    if (r !== q && ratio > 0 && Number.isFinite(ratio)) {
+      const stationary = Math.log(ratio) / (r - q);
+      if (stationary > 0 && stationary < T) value = Math.max(value, exercise(stationary));
+    }
+    return value;
   }
   const dt = T / steps;
-  const u = Math.exp(v * Math.sqrt(dt));
-  const d = 1 / u;
+  const x = v * Math.sqrt(dt);
+  let u = Math.exp(x), d = Math.exp(-x);
   const disc = Math.exp(-r * dt);
-  const p = (Math.exp((r - q) * dt) - d) / (u - d);
-  if (p <= 0 || p >= 1) {
-    // Ağaç dejenere — Avrupa fiyatına düş
-    const g = gk(S, K, T, r, q, v);
-    return type === 'call' ? g.call : g.put;
+  let p = (Math.exp((r - q) * dt) - d) / (u - d);
+  if (!(p > 0 && p < 1)) {
+    // Center the log moves around the drift. Equal probabilities keep the
+    // tree recombining and the one-step expected spot exactly risk neutral.
+    const center = (r - q) * dt - Math.log(Math.cosh(x));
+    u = Math.exp(center + x);
+    d = Math.exp(center - x);
+    p = 0.5;
   }
+  if (![u, d, disc, p].every(Number.isFinite) || u <= 0 || d <= 0) return NaN;
 
   // Vade sonu değerleri — Amerikan ve (control variate için) Avrupa bacağı
   // aynı kafes üzerinde paralel taşınır.
@@ -52,7 +70,9 @@ export function americanPrice(
   // maliyeti tek bir ekstra gk() çağrısı.
   const g = gk(S, K, T, r, q, v);
   const euClosed = type === 'call' ? g.call : g.put;
-  return am[0] - eu[0] + euClosed;
+  const adjusted = am[0] - eu[0] + euClosed;
+  return Number.isFinite(adjusted) && Number.isFinite(euClosed)
+    ? Math.max(adjusted, intrinsic, euClosed) : NaN;
 }
 
 /**
@@ -62,22 +82,32 @@ export function impliedVolAmerican(
   S: number, K: number, T: number, r: number, q: number,
   price: number, type: 'call' | 'put', steps: number = 200
 ): { vol: number; ok: boolean } {
-  if (price <= 0 || T <= 0) return { vol: NaN, ok: false };
+  if (![S, K, T, r, q, price].every(Number.isFinite) || S <= 0 || K <= 0 ||
+      T <= 0 || price <= 0 || !Number.isInteger(steps) || steps < 1 ||
+      (type !== 'call' && type !== 'put')) return { vol: NaN, ok: false };
   const intrinsic = type === 'call' ? Math.max(S - K, 0) : Math.max(K - S, 0);
-  if (price <= intrinsic + 1e-10) return { vol: NaN, ok: false };
+  const zeroVol = americanPrice(S, K, T, r, q, 0, type, steps);
+  if (!Number.isFinite(zeroVol) || price <= Math.max(intrinsic, zeroVol) + 1e-10)
+    return { vol: NaN, ok: false };
 
-  let lo = 1e-4, hi = 5;
+  let lo = 0, hi = 5;
   let flo = americanPrice(S, K, T, r, q, lo, type, steps) - price;
   const fhi = americanPrice(S, K, T, r, q, hi, type, steps) - price;
-  if (flo * fhi > 0) return { vol: NaN, ok: false };
+  const tol = Math.min(1e-6, Math.max(1e-10, price * 1e-6));
+  if (!Number.isFinite(flo) || !Number.isFinite(fhi) || flo >= 0 || fhi < 0)
+    return { vol: NaN, ok: false };
+  if (Math.abs(fhi) <= tol) return { vol: hi, ok: true };
 
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
     const fm = americanPrice(S, K, T, r, q, mid, type, steps) - price;
-    if (Math.abs(fm) < 1e-6) return { vol: mid, ok: true };
+    if (!Number.isFinite(fm)) return { vol: NaN, ok: false };
+    if (Math.abs(fm) <= tol) return { vol: mid, ok: true };
     if (flo * fm < 0) { hi = mid; } else { lo = mid; flo = fm; }
   }
-  return { vol: (lo + hi) / 2, ok: true };
+  const vol = (lo + hi) / 2;
+  return Math.abs(americanPrice(S, K, T, r, q, vol, type, steps) - price) <= tol
+    ? { vol, ok: true } : { vol: NaN, ok: false };
 }
 
 /**
@@ -88,13 +118,13 @@ export function impliedVolAmerican(
  * Not: q<=0 (temettüsüz ETF) VE r>=0 iken Amerikan CALL = Avrupa CALL (Merton:
  * temettü yokken call'u erken kullanmak asla optimal değildir), bu yüzden
  * call'larda hızlı Avrupa çözücü kullanılır; fark sadece PUT'ta. r<0 senaryosunda
- * bu eşitlik bozulur — bu araçta USD faizi r>=0 olduğundan kısayol güvenli.
+ * bu eşitlik bozulur.
  */
 export function deAmericanizedIV(
   S: number, K: number, T: number, r: number, q: number,
   price: number, type: 'call' | 'put'
 ): number {
-  if (type === 'call' && q <= 0) {
+  if (type === 'call' && q <= 0 && r >= 0) {
     const res = impliedVol(S, K, T, r, q, price, 'call');
     return res.ok ? res.vol : NaN;
   }

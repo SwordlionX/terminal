@@ -35,12 +35,30 @@ export interface GKResult {
 }
 
 export function gk(S: number, K: number, T: number, r: number, q: number, v: number): GKResult {
-  if(T <= 0 || v <= 0 || S <= 0 || K <= 0){
+  if (![S, K, T, r, q, v].every(Number.isFinite) || S <= 0 || K <= 0 || v < 0) {
+    return {
+      d1: NaN, d2: NaN, Nd1: NaN, Nd2: NaN,
+      call: NaN, put: NaN, dfR: NaN, dfQ: NaN,
+      fwd: NaN, sigT: NaN, nd1: NaN, T, S, K, r, q, v,
+    };
+  }
+  if (T <= 0) {
     const cI = Math.max(S-K, 0), pI = Math.max(K-S, 0);
     return {
       d1: NaN, d2: NaN, Nd1: NaN, Nd2: NaN,
       call: cI, put: pI, dfR: 1, dfQ: 1,
       fwd: S, sigT: 0, nd1: 0, T, S, K, r, q, v
+    };
+  }
+  if (v === 0) {
+    const dfR = Math.exp(-r * T), dfQ = Math.exp(-q * T);
+    const discountedSpot = S * dfQ, discountedStrike = K * dfR;
+    return {
+      d1: NaN, d2: NaN, Nd1: NaN, Nd2: NaN,
+      call: Math.max(discountedSpot - discountedStrike, 0),
+      put: Math.max(discountedStrike - discountedSpot, 0),
+      dfR, dfQ, fwd: S * Math.exp((r - q) * T),
+      sigT: 0, nd1: 0, T, S, K, r, q, v,
     };
   }
   const sigT = v * Math.sqrt(T);
