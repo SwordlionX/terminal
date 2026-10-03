@@ -101,7 +101,7 @@ function makeBarrierHook() {
     },
     useMemo: (callback) => callback(),
   };
-  const component = load("src/features/pricing/barrier-options.tsx", {
+  const imports = {
     react,
     "react/jsx-runtime": jsxRuntime,
     "@/components/ui/input": { Input: "Input" },
@@ -123,6 +123,13 @@ function makeBarrierHook() {
         return { price: 1, bsPrice: 0.9, correction: 0.1, survival: 0.8, atmVol: 0.25 };
       },
     },
+  };
+  const engine = load("src/lib/pricing/barrier.ts", {
+    "../math": imports["@/lib/math"],
+    "../math/vanna-volga": imports["@/lib/math/vanna-volga"],
+  });
+  const component = load("src/features/pricing/barrier-options.tsx", {
+    ...imports, "@/lib/pricing/barrier": engine,
   });
 
   return {

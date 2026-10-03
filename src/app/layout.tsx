@@ -3,6 +3,7 @@ import "./globals.css";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TerminalHeader } from "@/components/terminal-header";
+import { TerminalAssistantLauncher } from "@/features/assistant/terminal-assistant-launcher";
 
 export const metadata: Metadata = {
   title: "Opsiyon Terminali",
@@ -29,6 +30,7 @@ export default function RootLayout({
             </div>
           </main>
         </SidebarProvider>
+        <TerminalAssistantLauncher />
       </body>
     </html>
   );

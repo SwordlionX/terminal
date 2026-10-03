@@ -2,19 +2,16 @@ import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768
 
+function subscribe(onChange: () => void) {
+  const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+  mql.addEventListener("change", onChange)
+  return () => mql.removeEventListener("change", onChange)
+}
+
+const getSnapshot = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`).matches
+const getServerSnapshot = () => false
+
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState(() =>
-    typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
-  )
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isMobile
+  // Hydration must start with the same layout as the server, then observe the viewport.
+  return React.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }

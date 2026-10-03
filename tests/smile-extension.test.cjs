@@ -114,7 +114,9 @@ test('manual pricing still requires valid finite inputs and a future expiry', ()
     '@/store/marketData': { useMarketData: () => md },
     '@/hooks/use-market-feed': { useMarketFeed: () => ({ surface: null, spot: null }) },
     '@/lib/vol/surface': surface,
-    '@/lib/math': { gk: gkMath.gk, greeks: () => ({}) },
+    '@/lib/pricing/engine': load('src/lib/pricing/engine.ts', {
+      '../math': { gk: gkMath.gk, greeks: () => ({}) }, '../vol/surface': surface,
+    }),
   }).usePricingModel;
   assert.equal(hook().priceable, true);
   md = { ...md, expiryDate: '2025-12-31' };

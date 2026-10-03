@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-03T16:34:51.176Z",
+  "terminalDatabaseConfigured": false,
+  "scope": "Terminalin mevcut servisleri ve kayıtlı eğrisiyle bağlantı/hesap aktarımı kontrolü. Bağımsız piyasa kotasyonu veya faiz/kira kalibrasyonu doğrulaması değildir.",
+  "calibrationStatus": "unverified_known_rate_lease_audit_findings",
+  "products": [
+    {
+      "state": "blocked_missing_terminal_database",
+      "pricingValidated": false
+    }
+  ]
+}

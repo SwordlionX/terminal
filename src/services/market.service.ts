@@ -283,7 +283,7 @@ async function loadYahooSurface(sym: string): Promise<VolSurface | null> {
  * gerekirse kullanılır. Kurulu yüzeyin faizi `builtWithR`'da taşınır ve ekranda girili
  * faizle uyuşmuyorsa /api/market bunu `rateNote` olarak bildirir.
  */
-export async function getSurface(product: string, r: number): Promise<VolSurface | null> {
+export async function getSurface(product: string, r: number, existingOnly = false): Promise<VolSurface | null> {
   const key = product.toUpperCase();
   if ((await getDataSource(key)) === 'cme') {
     return loadCmeSurface(key);
@@ -294,6 +294,8 @@ export async function getSurface(product: string, r: number): Promise<VolSurface
 
   const stored = await loadYahooSurface(sym);
   if (stored) return stored;
+  // Assistant reads the already-built curve and must never rebuild it from assumptions.
+  if (existingOnly) return null;
 
   // Kurulu yüzey yok (bu değişiklikten önce çekilmiş snapshot). Bir kez kurulur ve
   // KALICI olarak yazılır — sonraki açılışlar yeniden beklemez.
