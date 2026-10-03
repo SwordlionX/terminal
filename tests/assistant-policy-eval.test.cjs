@@ -43,7 +43,7 @@ const { validateOption } = load('src/lib/assistant/validation.ts');
 const { createToolExecutor } = load('src/lib/assistant/tools.ts');
 const screen = dataset.fixture.screen;
 const market = dataset.fixture.market;
-const option = { type: 'Put', position: 'Short' };
+const option = { type: 'Put', position: 'Short', contractSize: 10 };
 function executor(screenPatch = {}, marketPatch = {}) {
   const artifacts = []; let researchCalls = 0;
   const execute = createToolExecutor({ ...screen, ...screenPatch }, 'Müşteri put satışını fiyatla', {

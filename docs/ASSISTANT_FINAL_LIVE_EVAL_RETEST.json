@@ -1,0 +1,993 @@
+{
+  "at": "2026-10-03T17:37:50.162Z",
+  "model": "gemini-3.5-flash-lite",
+  "requestedModelSource": "local_panel_environment",
+  "maxModelCalls": 30,
+  "minProviderIntervalMs": 5000,
+  "screenQuantity": 100,
+  "selectedCases": [
+    "E10_hedge_historical_entry"
+  ],
+  "scope": "Seçilen temel gerçek Gemini vakaları; ekran miktarı 100, istenen miktarlar 10/20. Bütün 24 vaka/parafrazlar veya faiz/kira kalibrasyonu onayı değildir. Terminalin mevcut kayıtlı eğrisi kullanılır.",
+  "calibrationValidated": false,
+  "state": "automated_checks_passed_manual_review_pending",
+  "providerRequests": [
+    {
+      "startedAt": "2026-10-03T17:37:50.166Z",
+      "durationMs": 1973,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 3779,
+        "candidatesTokenCount": 261,
+        "totalTokenCount": 4040,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 3779
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "functionCalls": [
+        {
+          "name": "compare_strategies",
+          "args": {
+            "horizon": "expiry",
+            "strategies": [
+              {
+                "legs": [
+                  {
+                    "option": {
+                      "product": "XAU",
+                      "expiryDate": "2026-12-28",
+                      "tradeDate": "2026-10-03",
+                      "position": "Short",
+                      "type": "Put",
+                      "strike": 4137.53,
+                      "contractSize": 10
+                    }
+                  }
+                ],
+                "label": "Short Put Pozisyonu"
+              },
+              {
+                "label": "Korumalı Short Put (Long Put Hedeli)",
+                "legs": [
+                  {
+                    "option": {
+                      "type": "Put",
+                      "strike": 4137.53,
+                      "product": "XAU",
+                      "contractSize": 10,
+                      "expiryDate": "2026-12-28",
+                      "tradeDate": "2026-10-03",
+                      "position": "Short"
+                    }
+                  },
+                  {
+                    "option": {
+                      "expiryDate": "2026-12-28",
+                      "position": "Long",
+                      "product": "XAU",
+                      "type": "Put",
+                      "tradeDate": "2026-10-03",
+                      "strike": 3723.78,
+                      "contractSize": 10
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "id": "call_1080135"
+        }
+      ],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "functionCall",
+          "thoughtSignature"
+        ]
+      ]
+    },
+    {
+      "startedAt": "2026-10-03T17:37:55.169Z",
+      "durationMs": 1681,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 7630,
+        "candidatesTokenCount": 149,
+        "totalTokenCount": 7779,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 7630
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "functionCalls": [],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "text",
+          "thoughtSignature"
+        ]
+      ]
+    },
+    {
+      "startedAt": "2026-10-03T17:38:00.177Z",
+      "durationMs": 1586,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 7952,
+        "candidatesTokenCount": 287,
+        "totalTokenCount": 8239,
+        "cachedContentTokenCount": 4056,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 7952
+          }
+        ],
+        "cacheTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 4056
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "functionCalls": [
+        {
+          "name": "compare_strategies",
+          "args": {
+            "horizon": "expiry",
+            "strategies": [
+              {
+                "label": "Short Put Pozisyonu (10 USD Girişli)",
+                "legs": [
+                  {
+                    "entryPremiumPerUnit": 10,
+                    "option": {
+                      "product": "XAU",
+                      "contractSize": 10,
+                      "strike": 4137.53,
+                      "position": "Short",
+                      "expiryDate": "2026-12-28",
+                      "type": "Put",
+                      "tradeDate": "2026-10-03"
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "Korumalı Short Put (10 USD Girişli)",
+                "legs": [
+                  {
+                    "option": {
+                      "type": "Put",
+                      "strike": 4137.53,
+                      "position": "Short",
+                      "contractSize": 10,
+                      "expiryDate": "2026-12-28",
+                      "tradeDate": "2026-10-03",
+                      "product": "XAU"
+                    },
+                    "entryPremiumPerUnit": 10
+                  },
+                  {
+                    "option": {
+                      "contractSize": 10,
+                      "position": "Long",
+                      "tradeDate": "2026-10-03",
+                      "strike": 3723.78,
+                      "expiryDate": "2026-12-28",
+                      "product": "XAU",
+                      "type": "Put"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "id": "call_864569"
+        }
+      ],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "functionCall",
+          "thoughtSignature"
+        ]
+      ]
+    },
+    {
+      "startedAt": "2026-10-03T17:38:05.185Z",
+      "durationMs": 1706,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 11642,
+        "candidatesTokenCount": 121,
+        "totalTokenCount": 11763,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 11642
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "functionCalls": [],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "text",
+          "thoughtSignature"
+        ]
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "E10_hedge_historical_entry",
+      "state": "automated_checks_passed_manual_review_pending",
+      "turns": [
+        {
+          "prompt": "Varsayımsal müşterinin ekrandaki XAU/vade/strike ile 10 ons short put pozisyonu var. Başlangıç primi bilinmiyor. Pozisyonu tek başına ve aynı vade 10 ons 3723.78 strike long put korumasıyla karşılaştır; vade sonu grafiğini göster. Gerçekleşmiş zarar iddiası kullanma.",
+          "state": "automated_checks_passed_manual_review_pending",
+          "artifacts": [
+            {
+              "kind": "scenarios",
+              "results": [
+                {
+                  "label": "Short Put Pozisyonu",
+                  "quotes": [
+                    {
+                      "id": "XAU-Put-Short-4137.53-2026-12-28-vanilla-",
+                      "product": "XAU",
+                      "type": "Put",
+                      "position": "Short",
+                      "inputs": {
+                        "spot": 4137.53497,
+                        "rate": 4,
+                        "lease": -0.9849658431503996,
+                        "vol": 0,
+                        "manualVol": false,
+                        "strike": 4137.53,
+                        "contractSize": 10,
+                        "basis": 365,
+                        "tradeDate": "2026-10-03",
+                        "expiryDate": "2026-12-28"
+                      },
+                      "premiumPerUnit": 145.85903509003742,
+                      "premiumTotal": 1458.5903509003742,
+                      "premiumPctSpot": 3.5252641040526953,
+                      "premiumPctStrike": 3.5252683385990538,
+                      "cashflow": 1458.5903509003742,
+                      "delta": 4.352127066007723,
+                      "gamma": -0.009275230133534058,
+                      "vega": -79.21394869308024,
+                      "theta": 7.132119875370511,
+                      "hedgeUnits": -4.352127066007723,
+                      "effectiveVol": 21.17327446177728,
+                      "volMode": "model",
+                      "model": "Terminal X · Avrupa / GK",
+                      "spotSource": "XAU/USD (Twelve Data)",
+                      "spotAt": "2026-10-03T17:37:49.193Z",
+                      "surfaceAt": "2026-10-02 CME settlement",
+                      "pricedAt": "2026-10-03T17:37:52.272Z",
+                      "warnings": []
+                    }
+                  ],
+                  "product": "XAU",
+                  "horizon": "expiry",
+                  "netCashflow": 1458.5903509003742,
+                  "delta": 4.352127066007723,
+                  "gamma": -0.009275230133534058,
+                  "vega": -79.21394869308024,
+                  "theta": 7.132119875370511,
+                  "hedgeUnits": -4.352127066007723,
+                  "points": [
+                    {
+                      "movePct": -20,
+                      "spot": 3310.027976,
+                      "pnl": -6816.429889099625
+                    },
+                    {
+                      "movePct": -18,
+                      "spot": 3392.7786754,
+                      "pnl": -5988.922895099624
+                    },
+                    {
+                      "movePct": -16,
+                      "spot": 3475.5293747999995,
+                      "pnl": -5161.415901099628
+                    },
+                    {
+                      "movePct": -14,
+                      "spot": 3558.2800741999995,
+                      "pnl": -4333.908907099629
+                    },
+                    {
+                      "movePct": -12,
+                      "spot": 3641.0307736,
+                      "pnl": -3506.4019130996235
+                    },
+                    {
+                      "movePct": -10,
+                      "spot": 3723.781473,
+                      "pnl": -2678.894919099623
+                    },
+                    {
+                      "movePct": -8,
+                      "spot": 3806.5321724,
+                      "pnl": -1851.3879250996229
+                    },
+                    {
+                      "movePct": -6,
+                      "spot": 3889.2828717999996,
+                      "pnl": -1023.8809310996271
+                    },
+                    {
+                      "movePct": -4,
+                      "spot": 3972.0335711999996,
+                      "pnl": -196.3739370996268
+                    },
+                    {
+                      "movePct": -2,
+                      "spot": 4054.7842705999997,
+                      "pnl": 631.1330569003735
+                    },
+                    {
+                      "movePct": 0,
+                      "spot": 4137.53497,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 2,
+                      "spot": 4220.2856694,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 4,
+                      "spot": 4303.0363688,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 6,
+                      "spot": 4385.7870682,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 8,
+                      "spot": 4468.5377676,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 10,
+                      "spot": 4551.288467,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 12,
+                      "spot": 4634.0391664,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 14,
+                      "spot": 4716.7898658,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 16,
+                      "spot": 4799.540565199999,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 18,
+                      "spot": 4882.2912645999995,
+                      "pnl": 1458.5903509003742
+                    },
+                    {
+                      "movePct": 20,
+                      "spot": 4965.041963999999,
+                      "pnl": 1458.5903509003742
+                    }
+                  ],
+                  "note": "Vade sonu ödeme ve prim hesabı. Başlangıç primi belirtilmediyse bu hesap anındaki model primi esas alınır. Net model primi bütün bacakların şu anki fiyatlarıyla hesaplanır; geçmiş tahsilat/ödeme değildir."
+                },
+                {
+                  "label": "Korumalı Short Put (Long Put Hedeli)",
+                  "quotes": [
+                    {
+                      "id": "XAU-Put-Short-4137.53-2026-12-28-vanilla-",
+                      "product": "XAU",
+                      "type": "Put",
+                      "position": "Short",
+                      "inputs": {
+                        "spot": 4137.53497,
+                        "rate": 4,
+                        "lease": -0.9849658431503996,
+                        "vol": 0,
+                        "manualVol": false,
+                        "strike": 4137.53,
+                        "contractSize": 10,
+                        "basis": 365,
+                        "tradeDate": "2026-10-03",
+                        "expiryDate": "2026-12-28"
+                      },
+                      "premiumPerUnit": 145.85903509003742,
+                      "premiumTotal": 1458.5903509003742,
+                      "premiumPctSpot": 3.5252641040526953,
+                      "premiumPctStrike": 3.5252683385990538,
+                      "cashflow": 1458.5903509003742,
+                      "delta": 4.352127066007723,
+                      "gamma": -0.009275230133534058,
+                      "vega": -79.21394869308024,
+                      "theta": 7.132119875370511,
+                      "hedgeUnits": -4.352127066007723,
+                      "effectiveVol": 21.17327446177728,
+                      "volMode": "model",
+                      "model": "Terminal X · Avrupa / GK",
+                      "spotSource": "XAU/USD (Twelve Data)",
+                      "spotAt": "2026-10-03T17:37:49.193Z",
+                      "surfaceAt": "2026-10-02 CME settlement",
+                      "pricedAt": "2026-10-03T17:37:52.280Z",
+                      "warnings": []
+                    },
+                    {
+                      "id": "XAU-Put-Long-3723.78-2026-12-28-vanilla-",
+                      "product": "XAU",
+                      "type": "Put",
+                      "position": "Long",
+                      "inputs": {
+                        "spot": 4137.53497,
+                        "rate": 4,
+                        "lease": -0.9849658431503996,
+                        "vol": 0,
+                        "manualVol": false,
+                        "strike": 3723.78,
+                        "contractSize": 10,
+                        "basis": 365,
+                        "tradeDate": "2026-10-03",
+                        "expiryDate": "2026-12-28"
+                      },
+                      "premiumPerUnit": 35.0992723731506,
+                      "premiumTotal": 350.992723731506,
+                      "premiumPctSpot": 0.8483136125167444,
+                      "premiumPctStrike": 0.9425710534228819,
+                      "cashflow": -350.992723731506,
+                      "delta": -1.3919221863047802,
+                      "gamma": 0.004709411094815991,
+                      "vega": 44.55915927225049,
+                      "theta": -5.251996206323428,
+                      "hedgeUnits": 1.3919221863047802,
+                      "effectiveVol": 23.45748481683224,
+                      "volMode": "model",
+                      "model": "Terminal X · Avrupa / GK",
+                      "spotSource": "XAU/USD (Twelve Data)",
+                      "spotAt": "2026-10-03T17:37:49.193Z",
+                      "surfaceAt": "2026-10-02 CME settlement",
+                      "pricedAt": "2026-10-03T17:37:52.280Z",
+                      "warnings": []
+                    }
+                  ],
+                  "product": "XAU",
+                  "horizon": "expiry",
+                  "netCashflow": 1107.5976271688683,
+                  "delta": 2.960204879702943,
+                  "gamma": -0.0045658190387180666,
+                  "vega": -34.65478942082975,
+                  "theta": 1.8801236690470828,
+                  "hedgeUnits": -2.960204879702943,
+                  "points": [
+                    {
+                      "movePct": -20,
+                      "spot": 3310.027976,
+                      "pnl": -3029.9023728311276
+                    },
+                    {
+                      "movePct": -18,
+                      "spot": 3392.7786754,
+                      "pnl": -3029.9023728311267
+                    },
+                    {
+                      "movePct": -16,
+                      "spot": 3475.5293747999995,
+                      "pnl": -3029.9023728311267
+                    },
+                    {
+                      "movePct": -14,
+                      "spot": 3558.2800741999995,
+                      "pnl": -3029.9023728311276
+                    },
+                    {
+                      "movePct": -12,
+                      "spot": 3641.0307736,
+                      "pnl": -3029.902372831127
+                    },
+                    {
+                      "movePct": -10,
+                      "spot": 3723.781473,
+                      "pnl": -3029.887642831129
+                    },
+                    {
+                      "movePct": -8,
+                      "spot": 3806.5321724,
+                      "pnl": -2202.380648831129
+                    },
+                    {
+                      "movePct": -6,
+                      "spot": 3889.2828717999996,
+                      "pnl": -1374.873654831133
+                    },
+                    {
+                      "movePct": -4,
+                      "spot": 3972.0335711999996,
+                      "pnl": -547.3666608311328
+                    },
+                    {
+                      "movePct": -2,
+                      "spot": 4054.7842705999997,
+                      "pnl": 280.1403331688675
+                    },
+                    {
+                      "movePct": 0,
+                      "spot": 4137.53497,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 2,
+                      "spot": 4220.2856694,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 4,
+                      "spot": 4303.0363688,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 6,
+                      "spot": 4385.7870682,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 8,
+                      "spot": 4468.5377676,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 10,
+                      "spot": 4551.288467,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 12,
+                      "spot": 4634.0391664,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 14,
+                      "spot": 4716.7898658,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 16,
+                      "spot": 4799.540565199999,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 18,
+                      "spot": 4882.2912645999995,
+                      "pnl": 1107.5976271688683
+                    },
+                    {
+                      "movePct": 20,
+                      "spot": 4965.041963999999,
+                      "pnl": 1107.5976271688683
+                    }
+                  ],
+                  "note": "Vade sonu ödeme ve prim hesabı. Başlangıç primi belirtilmediyse bu hesap anındaki model primi esas alınır. Net model primi bütün bacakların şu anki fiyatlarıyla hesaplanır; geçmiş tahsilat/ödeme değildir."
+                }
+              ]
+            }
+          ],
+          "messages": [
+            "Mevcut XAU terminal eğrisi üzerinden 10 ons short put pozisyonu ile aynı vade ve miktarda 3723.78 kullanım fiyatlı long put koruması eklenen alternatif yapı karşılaştırılmıştır. \n\nBaşlangıç primi bilinmediğinden karşılaştırma terminalin güncel model fiyatları baz alınarak yapılmıştır. Long put koruması eklenmesi ek prim maliyeti getirir ve net nakit akışını sınırlar, ancak dayanak varlık fiyatının düşüş senaryolarında vade sonu maksimum kaybını sınırlı bir seviyede tutar. Senaryo grafikleri ve detaylı risk kırılımları yukarıdaki kartlarda sunulmuştur."
+          ],
+          "modelCalls": 2,
+          "providerRequestIndices": [
+            0,
+            1
+          ],
+          "checks": {
+            "expectedIntent": true,
+            "engineAndQuantityAgreement": true,
+            "noWebArtifacts": true,
+            "hasFinalText": true
+          },
+          "totalDurationMs": 6689,
+          "evaluationPacingMs": 2885
+        },
+        {
+          "prompt": "Bu varsayımsal test müşterisinin geçmişte tahsil ettiği birim prim 10 USD/ons idi. Bu bilgiyi yalnız mevcut short bacağın geçmiş primi olarak kullan. İki alternatifi vade sonunda tekrar karşılaştır; koruma bacağının giriş maliyeti bugünkü terminal model primi olsun.",
+          "state": "automated_checks_passed_manual_review_pending",
+          "artifacts": [
+            {
+              "kind": "scenarios",
+              "results": [
+                {
+                  "label": "Short Put Pozisyonu (10 USD Girişli)",
+                  "quotes": [
+                    {
+                      "id": "XAU-Put-Short-4137.53-2026-12-28-vanilla-",
+                      "product": "XAU",
+                      "type": "Put",
+                      "position": "Short",
+                      "inputs": {
+                        "spot": 4137.53497,
+                        "rate": 4,
+                        "lease": -0.9849658431503996,
+                        "vol": 0,
+                        "manualVol": false,
+                        "strike": 4137.53,
+                        "contractSize": 10,
+                        "basis": 365,
+                        "tradeDate": "2026-10-03",
+                        "expiryDate": "2026-12-28"
+                      },
+                      "premiumPerUnit": 145.85903509003742,
+                      "premiumTotal": 1458.5903509003742,
+                      "premiumPctSpot": 3.5252641040526953,
+                      "premiumPctStrike": 3.5252683385990538,
+                      "cashflow": 1458.5903509003742,
+                      "delta": 4.352127066007723,
+                      "gamma": -0.009275230133534058,
+                      "vega": -79.21394869308024,
+                      "theta": 7.132119875370511,
+                      "hedgeUnits": -4.352127066007723,
+                      "effectiveVol": 21.17327446177728,
+                      "volMode": "model",
+                      "model": "Terminal X · Avrupa / GK",
+                      "spotSource": "XAU/USD (Twelve Data)",
+                      "spotAt": "2026-10-03T17:37:49.193Z",
+                      "surfaceAt": "2026-10-02 CME settlement",
+                      "pricedAt": "2026-10-03T17:38:02.371Z",
+                      "warnings": []
+                    }
+                  ],
+                  "product": "XAU",
+                  "horizon": "expiry",
+                  "netCashflow": 1458.5903509003742,
+                  "delta": 4.352127066007723,
+                  "gamma": -0.009275230133534058,
+                  "vega": -79.21394869308024,
+                  "theta": 7.132119875370511,
+                  "hedgeUnits": -4.352127066007723,
+                  "points": [
+                    {
+                      "movePct": -20,
+                      "spot": 3310.027976,
+                      "pnl": -8175.020239999999
+                    },
+                    {
+                      "movePct": -18,
+                      "spot": 3392.7786754,
+                      "pnl": -7347.513245999999
+                    },
+                    {
+                      "movePct": -16,
+                      "spot": 3475.5293747999995,
+                      "pnl": -6520.006252000003
+                    },
+                    {
+                      "movePct": -14,
+                      "spot": 3558.2800741999995,
+                      "pnl": -5692.499258000003
+                    },
+                    {
+                      "movePct": -12,
+                      "spot": 3641.0307736,
+                      "pnl": -4864.992263999998
+                    },
+                    {
+                      "movePct": -10,
+                      "spot": 3723.781473,
+                      "pnl": -4037.4852699999974
+                    },
+                    {
+                      "movePct": -8,
+                      "spot": 3806.5321724,
+                      "pnl": -3209.978275999997
+                    },
+                    {
+                      "movePct": -6,
+                      "spot": 3889.2828717999996,
+                      "pnl": -2382.4712820000013
+                    },
+                    {
+                      "movePct": -4,
+                      "spot": 3972.0335711999996,
+                      "pnl": -1554.964288000001
+                    },
+                    {
+                      "movePct": -2,
+                      "spot": 4054.7842705999997,
+                      "pnl": -727.4572940000007
+                    },
+                    {
+                      "movePct": 0,
+                      "spot": 4137.53497,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 2,
+                      "spot": 4220.2856694,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 4,
+                      "spot": 4303.0363688,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 6,
+                      "spot": 4385.7870682,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 8,
+                      "spot": 4468.5377676,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 10,
+                      "spot": 4551.288467,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 12,
+                      "spot": 4634.0391664,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 14,
+                      "spot": 4716.7898658,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 16,
+                      "spot": 4799.540565199999,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 18,
+                      "spot": 4882.2912645999995,
+                      "pnl": 100
+                    },
+                    {
+                      "movePct": 20,
+                      "spot": 4965.041963999999,
+                      "pnl": 100
+                    }
+                  ],
+                  "note": "Vade sonu ödeme ve prim hesabı. Başlangıç primi belirtilmediyse bu hesap anındaki model primi esas alınır. Net model primi bütün bacakların şu anki fiyatlarıyla hesaplanır; geçmiş tahsilat/ödeme değildir."
+                },
+                {
+                  "label": "Korumalı Short Put (10 USD Girişli)",
+                  "quotes": [
+                    {
+                      "id": "XAU-Put-Short-4137.53-2026-12-28-vanilla-",
+                      "product": "XAU",
+                      "type": "Put",
+                      "position": "Short",
+                      "inputs": {
+                        "spot": 4137.53497,
+                        "rate": 4,
+                        "lease": -0.9849658431503996,
+                        "vol": 0,
+                        "manualVol": false,
+                        "strike": 4137.53,
+                        "contractSize": 10,
+                        "basis": 365,
+                        "tradeDate": "2026-10-03",
+                        "expiryDate": "2026-12-28"
+                      },
+                      "premiumPerUnit": 145.85903509003742,
+                      "premiumTotal": 1458.5903509003742,
+                      "premiumPctSpot": 3.5252641040526953,
+                      "premiumPctStrike": 3.5252683385990538,
+                      "cashflow": 1458.5903509003742,
+                      "delta": 4.352127066007723,
+                      "gamma": -0.009275230133534058,
+                      "vega": -79.21394869308024,
+                      "theta": 7.132119875370511,
+                      "hedgeUnits": -4.352127066007723,
+                      "effectiveVol": 21.17327446177728,
+                      "volMode": "model",
+                      "model": "Terminal X · Avrupa / GK",
+                      "spotSource": "XAU/USD (Twelve Data)",
+                      "spotAt": "2026-10-03T17:37:49.193Z",
+                      "surfaceAt": "2026-10-02 CME settlement",
+                      "pricedAt": "2026-10-03T17:38:02.374Z",
+                      "warnings": []
+                    },
+                    {
+                      "id": "XAU-Put-Long-3723.78-2026-12-28-vanilla-",
+                      "product": "XAU",
+                      "type": "Put",
+                      "position": "Long",
+                      "inputs": {
+                        "spot": 4137.53497,
+                        "rate": 4,
+                        "lease": -0.9849658431503996,
+                        "vol": 0,
+                        "manualVol": false,
+                        "strike": 3723.78,
+                        "contractSize": 10,
+                        "basis": 365,
+                        "tradeDate": "2026-10-03",
+                        "expiryDate": "2026-12-28"
+                      },
+                      "premiumPerUnit": 35.0992723731506,
+                      "premiumTotal": 350.992723731506,
+                      "premiumPctSpot": 0.8483136125167444,
+                      "premiumPctStrike": 0.9425710534228819,
+                      "cashflow": -350.992723731506,
+                      "delta": -1.3919221863047802,
+                      "gamma": 0.004709411094815991,
+                      "vega": 44.55915927225049,
+                      "theta": -5.251996206323428,
+                      "hedgeUnits": 1.3919221863047802,
+                      "effectiveVol": 23.45748481683224,
+                      "volMode": "model",
+                      "model": "Terminal X · Avrupa / GK",
+                      "spotSource": "XAU/USD (Twelve Data)",
+                      "spotAt": "2026-10-03T17:37:49.193Z",
+                      "surfaceAt": "2026-10-02 CME settlement",
+                      "pricedAt": "2026-10-03T17:38:02.374Z",
+                      "warnings": []
+                    }
+                  ],
+                  "product": "XAU",
+                  "horizon": "expiry",
+                  "netCashflow": 1107.5976271688683,
+                  "delta": 2.960204879702943,
+                  "gamma": -0.0045658190387180666,
+                  "vega": -34.65478942082975,
+                  "theta": 1.8801236690470828,
+                  "hedgeUnits": -2.960204879702943,
+                  "points": [
+                    {
+                      "movePct": -20,
+                      "spot": 3310.027976,
+                      "pnl": -4388.492723731501
+                    },
+                    {
+                      "movePct": -18,
+                      "spot": 3392.7786754,
+                      "pnl": -4388.492723731501
+                    },
+                    {
+                      "movePct": -16,
+                      "spot": 3475.5293747999995,
+                      "pnl": -4388.492723731501
+                    },
+                    {
+                      "movePct": -14,
+                      "spot": 3558.2800741999995,
+                      "pnl": -4388.492723731501
+                    },
+                    {
+                      "movePct": -12,
+                      "spot": 3641.0307736,
+                      "pnl": -4388.492723731501
+                    },
+                    {
+                      "movePct": -10,
+                      "spot": 3723.781473,
+                      "pnl": -4388.477993731503
+                    },
+                    {
+                      "movePct": -8,
+                      "spot": 3806.5321724,
+                      "pnl": -3560.970999731503
+                    },
+                    {
+                      "movePct": -6,
+                      "spot": 3889.2828717999996,
+                      "pnl": -2733.4640057315073
+                    },
+                    {
+                      "movePct": -4,
+                      "spot": 3972.0335711999996,
+                      "pnl": -1905.957011731507
+                    },
+                    {
+                      "movePct": -2,
+                      "spot": 4054.7842705999997,
+                      "pnl": -1078.4500177315067
+                    },
+                    {
+                      "movePct": 0,
+                      "spot": 4137.53497,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 2,
+                      "spot": 4220.2856694,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 4,
+                      "spot": 4303.0363688,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 6,
+                      "spot": 4385.7870682,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 8,
+                      "spot": 4468.5377676,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 10,
+                      "spot": 4551.288467,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 12,
+                      "spot": 4634.0391664,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 14,
+                      "spot": 4716.7898658,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 16,
+                      "spot": 4799.540565199999,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 18,
+                      "spot": 4882.2912645999995,
+                      "pnl": -250.99272373150598
+                    },
+                    {
+                      "movePct": 20,
+                      "spot": 4965.041963999999,
+                      "pnl": -250.99272373150598
+                    }
+                  ],
+                  "note": "Vade sonu ödeme ve prim hesabı. Başlangıç primi belirtilmediyse bu hesap anındaki model primi esas alınır. Net model primi bütün bacakların şu anki fiyatlarıyla hesaplanır; geçmiş tahsilat/ödeme değildir."
+                }
+              ]
+            }
+          ],
+          "messages": [
+            "Geçmiş 10 USD/ons tahsilat primi ve mevcut terminal yüzeyinden alınan koruma maliyeti dikkate alınarak vade sonu senaryo analizi güncellenmiştir. Long put koruma bacağının eklenmesi, altın fiyatlarındaki derin düşüş senaryolarında portföyün vade sonu azami zararını sınırlar; ancak bu koruma bir prim maliyeti yaratarak net tahsilat tutarını azaltır. Karşılaştırma sonuçları ve vade sonu getiri eğrileri yukarıda listelenmiştir."
+          ],
+          "modelCalls": 2,
+          "providerRequestIndices": [
+            2,
+            3
+          ],
+          "checks": {
+            "expectedIntent": true,
+            "engineAndQuantityAgreement": true,
+            "noWebArtifacts": true,
+            "hasFinalText": true
+          },
+          "totalDurationMs": 10042,
+          "evaluationPacingMs": 6119
+        }
+      ]
+    }
+  ]
+}

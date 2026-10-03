@@ -1,6 +1,6 @@
 # Terminal Asistanı — ilk sürüm ve kurulum
 
-Durum: Sağ alt sohbet paneli, Gemini sunucu bağlantısı ve motor araçları yerelde geliştirildi. Yeni kullanıcı talebiyle asistanın bütün manuel piyasa varsayımı yolları kapatıldı; eski manuel gösterim kartları kaldırıldı. Mevcut yerel panel modeli Gemini 3.5 Flash. Gemini 3.5 Flash-Lite ile üç sınırlı canlı davranış denemesi toplam beş model çağrısıyla tamamlandı. Amaç yalnız kullanıcının kişisel sunumu; şube ölçekleme bu aşamanın kapsamı değil. Sesli giriş/yanıt sonraki aşama.
+Durum: Sağ alt sohbet paneli, Gemini sunucu bağlantısı ve motor araçları hazır. Turso yerelde bağlandı; fiyatlar yalnız terminalin mevcut eğrisinden gelir. Sunum modeli Gemini 3.5 Flash-Lite. Son gerçek model değerlendirmesinin kapsamı ve başarısız önceki denemeleri `ASSISTANT_FINAL_REVIEW.md` belgesindedir. Amaç kullanıcının kişisel sunumu; sesli giriş/yanıt sonraki aşama.
 
 ## Kesin fiyatlama sınırı
 
@@ -34,7 +34,7 @@ Bu ilk sürüm yöntem farklarını açıklayabilir; bulduğu fark üzerine moto
 
 ```dotenv
 GEMINI_API_KEY=buraya_kendi_anahtariniz
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 ASSISTANT_ACCESS_CODE=uzun_rastgele_asistan_erisim_kodu
 ASSISTANT_SESSION_SECRET=ayri_uzun_rastgele_oturum_sirri
 ASSISTANT_DAILY_MODEL_CALL_LIMIT=300
@@ -46,7 +46,7 @@ ASSISTANT_REQUESTS_PER_MINUTE=20
 3. Yerelde `npm ci` ve `npm run dev` ile açın. Production ortam ayarlarını değiştirdikten sonra yeniden dağıtın. Panelde erişim koduyla giriş yapın; yalnız Gönder basılınca Gemini çağrılır. Panel açmak, yazmak ve örnek seçmek ücretli çağrı başlatmaz.
 4. Küçük miktarlı, anonim örnekle kartı aynı otomatik veriyle çalışan ekran fiyatıyla karşılaştırın. Hedef prim, ulaşılamayan hedef, manuel talebin reddi, eksik piyasa verisi, hedge grafiği ve yöntem araştırması akışlarını deneyin. `docs/ASSISTANT_EVAL_CASES.json` Astra'nın hazırladığı 24 vakalık soru setidir; `docs/ASSISTANT_EVAL_REPORT.md` gerçek doğrulama kapsamını açıklar. Bu süreç talimat/kod iyileştirmesidir, fine-tuning değildir.
 
-Varsayılan model ortam değişkeniyle değiştirilebilir. Model/Google Search erişimi, proje kotası ve faturalandırma anahtarın bağlı olduğu projeye göre doğrulanmalıdır; Gemini 3.8 Flash ve Gemini 3.5 Flash ile gerçek çağrı ve function calling denendi; yerelde 3.5 Flash kullanılıyor. Ortam değişkeni verilmezse kodun varsayılanı 3.8 Flash olur; başka modeller ve Google Search erişimi ayrıca doğrulanmalı. Google AI Pro/Plus uygulama aboneliği terminalin API çağrılarını otomatik kapsamaz.
+Varsayılan ve yerel sunum modeli Gemini 3.5 Flash-Lite; ortam değişkeniyle değiştirilebilir. Gerçek Turso/Gemini senaryolarının kayıtları `ASSISTANT_FINAL_LIVE_EVAL.json` içindedir. 3.5 Flash son denemede tekrarlanan 503 sağlayıcı hatası verdi (`ASSISTANT_FINAL_FLASH_EVAL.json`); otomatik model geçişi yapılmaz. Model/Google Search erişimi, proje kotası ve faturalandırma anahtarın bağlı olduğu projeye göre doğrulanmalıdır. Google AI Pro/Plus uygulama aboneliği terminalin API çağrılarını otomatik kapsamaz.
 
 ## Hız, sınırlar ve maliyet
 
@@ -58,17 +58,21 @@ Günlük sınır varsayılan olarak bütün terminal için 300 model çağrısı
 
 ## Yerel görsel kontrol
 
-Push öncesi Astra tasarım incelemesi ve Sol düzeltmeleri tamamlandı. Grafik eksenleri, kart kimliği, mobil taşmalar, erişilebilir kontroller, sohbet kaydırması ve ilk açılışta yükleme iyileştirildi. Ayrıntılar `docs/ASSISTANT_DESIGN_REVIEW.md` içinde. Mobil server/client görünüm uyuşmazlığına regresyon testi eklendi; son test takımı 116/116 geçti.
+Push öncesi Astra tasarım incelemesi ve Sol düzeltmeleri tamamlandı. Grafik eksenleri, kart kimliği, mobil taşmalar, erişilebilir kontroller, sohbet kaydırması ve ilk açılışta yükleme iyileştirildi. Ayrıntılar `docs/ASSISTANT_DESIGN_REVIEW.md` içinde. Mobil server/client görünüm uyuşmazlığına regresyon testi eklendi; son test takımı 122/122 geçti.
 
 `npx tsx scripts/validate-terminal-live.ts --live` Gemini çağrısı yapmadan mevcut terminal bağlantısı ve aynı eğriyle motor aktarımını, hedef aramasını ve senaryoları kontrol eder. Sonuç `docs/TERMINAL_LIVE_VALIDATION.json` dosyasına yazılır. Bu kontrol bağımsız piyasa kalibrasyonu doğrulaması değildir; `docs/RATE_LEASE_AUDIT.md` içindeki faiz/kira bulguları ayrıca çözümlenmelidir. Bağlantı eksikliği başarılı fiyatlama olarak raporlanmaz.
 
 `/assistant-preview` yalnız development ortamında açılır. Asistanı ve eğriyle fiyatlama kuralını tanıtır; manuel/sentetik fiyat kartı üretmez. Fiyat kartları için mevcut terminal verisine erişim gerekir. Production'da 404 döner.
 
-Kontroller: `npm test` 116/116 geçti; `npx tsc --noEmit -p tsconfig.build.json`, değişen dosyalarda ESLint ve `npm run build` başarılı. Asistan testleri aynı motor fiyatını, manuel girdi reddini, veri eksikliğini, birim/yön doğrulamasını, hedef çözümünü, çoklu kökü, hedge toplamlarını, değiştirilmeyen eğriden senaryo IV sorgusunu, yalnız kurulu eğri okumasını, araştırma izolasyonunu, şifreli geçmişi, eşzamanlı kota sınırını ve bounded model döngüsünü doğrular. SDK testleri taklit yanıtlarla, sayısal testler sentetik terminal fixture'larıyla çalışır; canlı kotasyon değildir. Önceki manuel canlı fiyat örneği yeni eğri politikasının canlı sayısal doğrulaması sayılmaz.
+Kontroller: `npm test` 122/122 geçti; `npx tsc --noEmit -p tsconfig.build.json`, değişen dosyalarda ESLint ve `npm run build` başarılı. Asistan testleri aynı motor fiyatını, manuel girdi reddini, veri eksikliğini, birim/yön doğrulamasını, hedef çözümünü, çoklu kökü, hedge toplamlarını, değiştirilmeyen eğriden senaryo IV sorgusunu, yalnız kurulu eğri okumasını, araştırma izolasyonunu, şifreli geçmişi, eşzamanlı kota sınırını ve bounded model döngüsünü doğrular. SDK testleri taklit yanıtlarla, sayısal testler sentetik terminal fixture'larıyla çalışır; canlı kotasyon değildir. Önceki manuel canlı fiyat örneği yeni eğri politikasının canlı sayısal doğrulaması sayılmaz.
 
-Canlı davranış denemesi: `npx tsx scripts/eval-assistant-live.ts --live`. Ayrı değerlendirme sürecinde yalnız 3.5 Flash-Lite kullanır; panelin model ayarını değiştirmez. Çalıştırma başına sekiz model çağrısıyla sınırlıdır. Sonuçlar `docs/ASSISTANT_LIVE_EVAL_RESULTS.json` içinde kayıtlıdır. Manuel talep reddedildi, yüzde birimi soruldu, terminal eğrisi bulunmayınca fiyat üretimi durdu. Yerelde Turso bağlantısı bulunmadığı için canlı sayısal fiyatlama veya hedge kalitesi doğrulanmadı. Üç örnek 24 vakanın tamamı için başarı ölçümü değildir.
+İlk davranış denemesi: `npx tsx scripts/eval-assistant-live.ts --live`. Turso henüz bağlı değilken üç davranış kontrolü yapıldı; kayıt `ASSISTANT_LIVE_EVAL_RESULTS.json` içindedir. Bu ilk deneme sayısal fiyatlama onayı değildir.
 
-Sonraki adımlar: Kullanıcının mevcut terminal veri bağlantısıyla hedef prim ve hedge akışlarını doğrulama; 24 vaka üzerinden talimat/kod iyileştirmesi; sunum provasının ardından bas-konuş ve sesli yanıt. Müşteri pozisyonlarını otomatik okuma ayrı bir bağlantı aşamasıdır. Geliştirme ve sunum aynı Google proje kotasını tüketir; 20 çağrılık Flash sınırı eğitim/prova için dardır, Lite'ın 500 çağrılık kotası daha uygundur.
+Turso bağlı son değerlendirme: `npx tsx scripts/eval-assistant-final-live.ts --live`. Ekran miktarı 100 ons, kullanıcının talebi 10/20 ons olacak şekilde sekiz temel vakayı çalıştırır; XAU/XAG, yüzde bazının sorulması, toplam USD hedefi, ulaşılamayan hedef, geçmiş primli hedge, manuel varsayım reddi ve eksik bariyer geçmişini kapsar. Gerçek SDK çağrıları, araç argümanları, kartlar ve son metin kaydedilir; yanıt veya fiyat taklidi yoktur. Lite denemesi 30 model çağrısıyla sınırlıdır; değerlendirmede RPM için eklenen bekleme normal panel gecikmesi değildir. `--probe --cases=PANEL_explicit_trade,PANEL_quantity_override` gerçek panelin farklı miktar/strike/vade bağlamını ayrıca sınar. Önceki koşular ayrı kayıt olarak korunur.
+
+Yüzde bazını kullanıcı belirlemediyse sunucu aramayı engeller. Her araç bacağında miktar zorunludur; tek açık kullanıcı miktarına aykırı args kart üretmez. Çok bacaklı farklı miktarlar korunur; bu metin kontrolleri bütün doğal dil biçimlerini kapsama garantisi değildir. Araç çağrıları `VALIDATED` modunda istenir. Sağlayıcının `MALFORMED_FUNCTION_CALL` yanıtı çalıştırılmaz veya geçmişe eklenmez; geçici servis hatasıyla paylaşılan tek tekrar hakkı içinde yeniden denenebilir. En fazla altı çağrı/55 saniye sınırı korunur. [Google araç çağrısı belgeleri](https://ai.google.dev/gemini-api/docs/generate-content/function-calling?authuser=0&hl=en) bu modun hatalı biçimlenmiş çağrıları azaltmayı amaçladığını açıklar; hatasız hizmet garantisi değildir.
+
+Sonraki adımlar: 24 vakalık setin kalan senaryoları ve parafrazları; faiz/kira kalibrasyon bulgularının uygun sözleşme/vade verisiyle çözümlenmesi; Vercel asistan ortam ayarları ve sunum provasının ardından bas-konuş/sesli yanıt. Müşteri pozisyonlarını otomatik okuma ayrı bir bağlantı aşamasıdır. Geliştirme ve sunum aynı Google proje kotasını tüketir; kullanıcının ekranındaki 20 çağrılık Flash sınırı prova için dardır, Lite'ın gösterilen 500 çağrılık kotası daha uygundur.
 
 Resmi referanslar (3 Ekim 2026):
 - [Gemini modelleri](https://ai.google.dev/gemini-api/docs/models)

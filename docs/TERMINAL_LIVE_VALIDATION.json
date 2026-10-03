@@ -1,12 +1,36 @@
 {
-  "at": "2026-10-03T16:34:51.176Z",
-  "terminalDatabaseConfigured": false,
+  "at": "2026-10-03T16:48:57.880Z",
+  "terminalDatabaseConfigured": true,
   "scope": "Terminalin mevcut servisleri ve kayıtlı eğrisiyle bağlantı/hesap aktarımı kontrolü. Bağımsız piyasa kotasyonu veya faiz/kira kalibrasyonu doğrulaması değildir.",
   "calibrationStatus": "unverified_known_rate_lease_audit_findings",
   "products": [
     {
-      "state": "blocked_missing_terminal_database",
-      "pricingValidated": false
+      "product": "XAU",
+      "state": "engine_wiring_checks_passed",
+      "engineAgreement": true,
+      "targetSearchReached": true,
+      "expiryScenarioPoints": 21,
+      "nowScenario": "passed",
+      "surfaceAt": "2026-10-02 CME settlement",
+      "spotAt": "2026-10-03T16:48:58.451Z",
+      "spotSource": "XAU/USD (Twelve Data)",
+      "expiryDate": "2026-10-09",
+      "warnings": [],
+      "rateLeaseCalibrationValidated": false
+    },
+    {
+      "product": "XAG",
+      "state": "engine_wiring_checks_passed",
+      "engineAgreement": true,
+      "targetSearchReached": true,
+      "expiryScenarioPoints": 21,
+      "nowScenario": "passed",
+      "surfaceAt": "2026-10-02 CME settlement",
+      "spotAt": "2026-10-03T16:44:29.948Z",
+      "spotSource": "XAG/USD (Tiingo)",
+      "expiryDate": "2026-10-09",
+      "warnings": [],
+      "rateLeaseCalibrationValidated": false
     }
   ]
 }

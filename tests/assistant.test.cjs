@@ -50,6 +50,40 @@ const market = { product: 'XAU', spot: 100, spotSource: 'Terminal test fixture',
 const near = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) <= tolerance, `${a} vs ${b}`);
 const quote = (o = {}, c = context, m = market) => quoteOption({ type: 'Put', position: 'Short', ...o }, c, m);
 
+test('ambiguous percentage cannot reach pricing or unlock diagnostic web research', async () => {
+  let marketCalls = 0, researchCalls = 0;
+  const artifacts = [];
+  const execute = createToolExecutor(context, 'Strike 100 olsun, yüzde 5 prim bul.', {
+    market: async () => { marketCalls++; return market; }, artifact: a => artifacts.push(a),
+    research: async () => { researchCalls++; return { text: '', sources: [] }; }, signal: new AbortController().signal,
+  });
+  for (const unit of ['pct_spot', 'pct_strike']) {
+    const result = await execute('find_options', { option: { type: 'Put', position: 'Short', contractSize: 10 }, target: 5, unit });
+    assert.equal(result.clarificationRequired, true);
+    assert.match(result.error, /spot nominali mi kullanım fiyatı nominali mi/);
+  }
+  assert.ok((await execute('research_diagnostic', { topic: 'units_and_dates' })).error);
+  assert.equal(marketCalls, 0); assert.equal(researchCalls, 0); assert.equal(artifacts.length, 0);
+});
+
+test('percentage search respects explicit user basis, history, and current correction', async () => {
+  const { assertPremiumBasis } = load('src/lib/assistant/policy.ts');
+  for (const text of ['Spot nominalinin yüzde 5 primi', 'Yüzde 5 spot üzerinden olsun'])
+    assert.doesNotThrow(() => assertPremiumBasis('pct_spot', text));
+  assert.doesNotThrow(() => assertPremiumBasis('pct_strike', 'Kullanım fiyatı nominali üzerinden yüzde 5'));
+  assert.doesNotThrow(() => assertPremiumBasis('pct_spot', 'Aynı hedef yüzde 6 olsun', ['Spot nominali üzerinden olsun']));
+  assert.doesNotThrow(() => assertPremiumBasis('pct_strike', 'Bu kez strike bazında olsun', ['Spot nominali üzerinden olsun']));
+  assert.throws(() => assertPremiumBasis('pct_spot', 'Strike bazında olsun'), /uymuyor/);
+  assert.throws(() => assertPremiumBasis('pct_spot', 'Spot nominali mi strike nominali mi?'), /net değil/);
+  assert.doesNotThrow(() => assertPremiumBasis('total_usd', 'Toplam 200 USD'));
+  for (const text of ['Spot nominali üzerinden istemiyorum; yüzde 5 prim bul.',
+    'Spot nominali ne demek? Henüz baz seçmedim, yüzde 5 hedefi ara.', 'Artık spot nominalini kullanma. Yüzde 5 hedefi bul.',
+    'Spotun yüzde 5’i olsun istemiyorum, baz seçmedim.', 'Spot nominali üzerinden mi hesaplıyorsun?'])
+    assert.throws(() => assertPremiumBasis('pct_spot', text, ['Spot nominali üzerinden olsun']), /net değil/);
+  assert.throws(() => assertPremiumBasis('pct_spot', "Hayır, bu kez kullanım fiyatının yüzde 5'i olsun.", ['Spot nominali üzerinden olsun']), /uymuyor/);
+  assert.doesNotThrow(() => assertPremiumBasis('pct_strike', "Hayır, bu kez kullanım fiyatının yüzde 5'i olsun.", ['Spot nominali üzerinden olsun']));
+});
+
 test('assistant and screen share the exact vanilla model, quantities and signed risks', () => {
   const p = calculatePricing(context, surface), q = quote();
   near(q.premiumPerUnit, p.result.put);
@@ -59,6 +93,48 @@ test('assistant and screen share the exact vanilla model, quantities and signed 
   near(quote({ position: 'Long' }).delta, -q.delta);
   near(q.premiumPctSpot, q.premiumPerUnit / context.spot * 100);
   near(quote({ strike: 90 }).premiumPctStrike, quote({ strike: 90 }).premiumPerUnit / 90 * 100);
+});
+
+test('screen quantity cannot replace a single explicit user quantity or omitted tool quantity', async () => {
+  const artifacts = []; let marketCalls = 0;
+  const execute = createToolExecutor({ ...context, contractSize: 100 }, 'Müşteri 10 ons put satacak.', {
+    market: async () => { marketCalls++; return market; }, artifact: a => artifacts.push(a),
+    research: async () => { throw new Error('not allowed'); }, signal: new AbortController().signal,
+  });
+  for (const contractSize of [undefined, 1, 100]) {
+    const option = { type: 'Put', position: 'Short', ...(contractSize === undefined ? {} : { contractSize }) };
+    assert.equal((await execute('price_option', option)).clarificationRequired, true);
+    assert.equal((await execute('find_options', { option, target: 10, unit: 'total_usd' })).clarificationRequired, true);
+    assert.equal((await execute('compare_strategies', { horizon: 'expiry', strategies: [{ label: 'Mevcut', legs: [{ option }] }] })).clarificationRequired, true);
+  }
+  assert.equal(marketCalls, 0); assert.equal(artifacts.length, 0);
+  const correct = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  assert.equal(correct.quote.inputs.contractSize, 10);
+  near(correct.quote.premiumTotal, correct.quote.premiumPerUnit * 10);
+});
+
+test('quantity guard preserves explicit multi-leg sizes and distinguishes entry premium from quantity', () => {
+  const { assertTradeQuantity } = load('src/lib/assistant/policy.ts');
+  assert.doesNotThrow(() => assertTradeQuantity(5, '10 ons short put ve 5 ons long put'));
+  assert.throws(() => assertTradeQuantity(100, 'Başlangıç primi 10 USD/ons', ['Müşteri 10 ons short put']), /uymuyor/);
+  assert.doesNotThrow(() => assertTradeQuantity(10, 'Başlangıç primi 10 USD/ons', ['Müşteri 10 ons short put']));
+  assert.doesNotThrow(() => assertTradeQuantity(1.5, 'Müşteri 1,5 ons alacak'));
+  assert.throws(() => assertTradeQuantity(1, 'Müşteri 1.000 ons alacak'), /ayracı belirsiz/);
+  assert.throws(() => assertTradeQuantity(10, '10 ons istemiyorum'), /ret veya düzeltme/);
+});
+
+test('multi-leg hedge can use a different protection ratio without changing the existing quantity', async () => {
+  const artifacts = [];
+  const execute = createToolExecutor({ ...context, contractSize: 100 }, 'Mevcut 10 ons short put için koruma alternatifini hesapla.', {
+    market: async () => market, artifact: a => artifacts.push(a), research: async () => { throw new Error('not allowed'); },
+    signal: new AbortController().signal,
+  });
+  const result = await execute('compare_strategies', { horizon: 'expiry', strategies: [{ label: 'Kısmi koruma', legs: [
+    { option: { type: 'Put', position: 'Short', contractSize: 10 } },
+    { option: { type: 'Put', position: 'Long', contractSize: 5, strike: 90 } },
+  ] }] });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(Array.from(artifacts[0].results[0].quotes, q => q.inputs.contractSize), [10, 5]);
 });
 
 test('missing terminal spot or IV never silently falls back to screen defaults or manual vol', () => {
@@ -155,8 +231,8 @@ test('repeated equivalent tool arguments reuse one calculation and one market sn
   let marketCalls = 0; const artifacts = [];
   const execute = createToolExecutor(context, 'Fiyatla', { market: async () => { marketCalls++; return market; },
     artifact: a => artifacts.push(a), research: async () => { throw new Error('must not search'); }, signal: new AbortController().signal });
-  const a = await execute('price_option', { type: 'Put', position: 'Short' });
-  const b = await execute('price_option', { position: 'Short', type: 'Put' });
+  const a = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  const b = await execute('price_option', { contractSize: 10, position: 'Short', type: 'Put' });
   assert.equal(a, b); assert.equal(marketCalls, 1); assert.equal(artifacts.length, 1);
 });
 
@@ -176,7 +252,7 @@ test('diagnostic research remains isolated from pricing inputs and model convers
   const result = await execute('research_diagnostic', { topic: 'european_model' });
   assert.equal(result.deliveredAsSeparateResearchCard, true);
   assert.ok(!JSON.stringify(result).includes('999'));
-  const blocked = await execute('price_option', { type: 'Put', position: 'Short' });
+  const blocked = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
   assert.ok(blocked.error); assert.equal(artifacts.length, 1); assert.equal(artifacts[0].kind, 'research');
 });
 
@@ -213,7 +289,7 @@ function mockRunner(responses) {
       return response;
     } };
   }
-  const runner = modules({ '@google/genai': { GoogleGenAI, FunctionCallingConfigMode: { AUTO: 'AUTO', NONE: 'NONE' }, ThinkingLevel: { LOW: 'LOW' } },
+  const runner = modules({ '@google/genai': { GoogleGenAI, FunctionCallingConfigMode: { AUTO: 'AUTO', VALIDATED: 'VALIDATED', NONE: 'NONE' }, ThinkingLevel: { LOW: 'LOW' } },
     './market': { terminalMarket: async () => market }, './limits': { reserveModelCall: async () => { reservations++; } } },
     { GEMINI_API_KEY: 'test-only-key' })('src/lib/assistant/runner.ts');
   return { requests, events, reservations: () => reservations,
@@ -221,14 +297,15 @@ function mockRunner(responses) {
       emit: event => events.push(event) }) };
 }
 const toolReply = { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [
-  { functionCall: { name: 'price_option', args: { type: 'Put', position: 'Short' }, id: 'call-1' }, thoughtSignature: 'keep-this-signature' },
-] } }], functionCalls: [{ name: 'price_option', args: { type: 'Put', position: 'Short' }, id: 'call-1' }] };
+  { functionCall: { name: 'price_option', args: { type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }, thoughtSignature: 'keep-this-signature' },
+] } }], functionCalls: [{ name: 'price_option', args: { type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }] };
 const finalReply = { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ text: 'Motor kartı hazır.' }] } }], text: 'Motor kartı hazır.' };
 
 test('Gemini loop uses only terminal functions, preserves signatures and emits trusted cards before final text', async () => {
   const fixture = mockRunner([toolReply, finalReply]), result = await fixture.run();
   assert.equal(result.modelCalls, 2); assert.equal(fixture.reservations(), 2);
   assert.ok(fixture.requests.every(r => r.config.tools.every(t => !t.googleSearch && t.functionDeclarations)));
+  assert.ok(fixture.requests.every(r => r.config.toolConfig.functionCallingConfig.mode === 'VALIDATED'));
   const history = fixture.requests[1].contents;
   assert.equal(history[1].parts[0].thoughtSignature, 'keep-this-signature');
   assert.equal(history[2].parts[0].functionResponse.id, 'call-1');
@@ -267,6 +344,21 @@ test('authentication, permission and quota failures are not retried', async () =
     await assert.rejects(fixture.run(), error => error.status === status && !error.message.includes('test-only-key'));
     assert.equal(fixture.requests.length, 1);
   }
+});
+
+test('malformed model calls execute nothing and share one bounded retry with provider failures', async () => {
+  const malformed = { ...toolReply, candidates: [{ ...toolReply.candidates[0], finishReason: 'MALFORMED_FUNCTION_CALL' }] };
+  const fixture = mockRunner([malformed, toolReply, finalReply]);
+  const result = await fixture.run();
+  assert.equal(result.modelCalls, 3); assert.equal(fixture.reservations(), 3);
+  assert.equal(fixture.events.filter(e => e.type === 'artifact').length, 1);
+  assert.equal(fixture.requests[1].contents.length, 1);
+  const repeated = mockRunner([malformed]);
+  await assert.rejects(repeated.run(), e => e.modelFinishReason === 'MALFORMED_FUNCTION_CALL');
+  assert.equal(repeated.requests.length, 2); assert.equal(repeated.events.filter(e => e.type === 'artifact').length, 0);
+  const mixed = mockRunner([Object.assign(new Error('temporary'), { status: 503 }), malformed]);
+  await assert.rejects(mixed.run(), e => e.modelFinishReason === 'MALFORMED_FUNCTION_CALL');
+  assert.equal(mixed.requests.length, 2);
 });
 
 test('API fails closed without production access and refuses foreign origins before model execution', async () => {
@@ -324,6 +416,6 @@ test('target search remains available when the active strike is outside the curv
     signal: new AbortController().signal,
   });
   const target = quote({ strike: 104 }).premiumPctSpot;
-  const result = await execute('find_options', { option: { type: 'Put', position: 'Short' }, target, unit: 'pct_spot', minStrike: 80, maxStrike: 120 });
+  const result = await execute('find_options', { option: { type: 'Put', position: 'Short', contractSize: 10 }, target, unit: 'pct_spot', minStrike: 80, maxStrike: 120 });
   assert.equal(result.reached, true); assert.equal(artifacts.length, 1);
 });

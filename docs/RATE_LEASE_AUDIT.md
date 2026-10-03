@@ -1,6 +1,6 @@
 # Faiz ve kira hesabı incelemesi — 3 Ekim 2026
 
-İnceleme yerel `codex/terminal-audit-stage3` kaynak kodunda yapıldı. Üretimdeki Turso kayıtları okunmadı; gerçek kotasyonların hatalı olduğu veya hata büyüklüğü hakkında ölçüm yapılmadı. Fiyatlama kodu bu incelemede değiştirilmedi. Dış kaynaklar yalnız yöntem ve piyasa konvansiyonu doğrulaması için kullanıldı; fiyatlama girdisi alınmadı. Astra bağımsız kod incelemesi yaptı.
+İlk inceleme yerel `codex/terminal-audit-stage3` kaynak kodunda yapıldı; bu aşamada Turso kayıtları okunmamıştı. Ardından kullanıcı bağlantıyı sağladı ve mevcut XAU/XAG yüzeyleriyle canlı aktarım kontrolü yapıldı (`TERMINAL_LIVE_VALIDATION.json`). Bu kontrol kayıtlı yüzeyin motor/asistan arasında aynı kullanılmasını doğrular; gerçek kotasyonların hata büyüklüğünü veya faiz/kira kalibrasyonunu doğrulamaz. Bu denetimde fiyatlama/kalibrasyon kodu değiştirilmedi. Dış kaynaklar yalnız yöntem ve konvansiyon içindir; fiyatlama girdisi alınmadı. Astra bağımsız kaynak incelemesi yaptı.
 
 ## Sonuç
 

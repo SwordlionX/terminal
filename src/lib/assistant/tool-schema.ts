@@ -6,14 +6,14 @@ const optionProperties = {
   type: { type: 'string', enum: ['Call', 'Put'] },
   position: { type: 'string', enum: ['Long', 'Short'], description: 'MÜŞTERİ yönü. Long prim öder; Short prim alır. Banka yönü ayrı.' },
   strike: numeric('Kullanım fiyatı; belirtilmediyse aktif ekrandan alınır.'),
-  contractSize: numeric('XAU/XAG için ons; GLD/SLV için adet. Nominal USD ile karıştırma.'),
+  contractSize: numeric('ZORUNLU. XAU/XAG ons; GLD/SLV adet. Açık kullanıcı miktarı ekran miktarından öncelikli. Birim fiyat için 1 yapma; miktar hiç belirtilmediyse ekran miktarını gönder. Nominal USD ile karıştırma.'),
   tradeDate: { type: 'string', description: 'Değerleme tarihi YYYY-MM-DD; belirtilmediyse aktif ekran.' },
   expiryDate: { type: 'string', description: 'Vade YYYY-MM-DD; belirtilmediyse aktif ekran.' },
   basis: { type: 'integer', enum: [360, 365] },
   barrier: { type: 'object', description: 'Yeni, sürekli gözlemli bariyer. Eski işlem değerlemesinde geçmiş gözlem olmadan kullanma.',
     properties: { variant: { type: 'string', enum: ['uo', 'do', 'ui', 'di'] }, level: numeric('Bariyer seviyesi'), rebate: numeric('Birim başına USD rebate') }, required: ['variant', 'level'] },
 };
-const option = { type: 'object', properties: optionProperties, required: ['type', 'position'], additionalProperties: false };
+const option = { type: 'object', properties: optionProperties, required: ['type', 'position', 'contractSize'], additionalProperties: false };
 
 export const toolDeclarations: FunctionDeclaration[] = [
   { name: 'get_market_context', description: 'Yalnız Terminal X mevcut veri servisinden piyasa, veri tarihi, forward ve örnek IV eğrisini oku. Dış araştırma veya yeni opsiyon zinciri indirmesi yapmaz.',

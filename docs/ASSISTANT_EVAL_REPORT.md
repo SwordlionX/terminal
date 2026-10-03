@@ -1,5 +1,9 @@
 # Terminal X asistan değerlendirmesi
 
+## Güncel canlı sonuç
+
+Turso bağlandı. XAU/XAG mevcut terminal eğrisiyle sekiz temel model vakası, ekran miktarı 100 iken kullanıcı miktarı 10/20 olacak şekilde çalıştırıldı. Tam koşunun bağımsız incelemesi ve hedge dili için hedefli tekrar `ASSISTANT_FINAL_REVIEW.md` belgesindedir. İlk koşulardan gelen yüzde bazı, risk dili, miktar aktarımı ve prim maliyeti sorunları gizlenmedi; ham kayıtlar ayrı saklandı. Gerçek panelde farklı miktar/strike/vade aktarımı da doğrulandı. Aşağıdaki ilk değerlendirmeler tarihsel kayıttır; güncel kapsam bütün 24 vakayı veya faiz/kira kalibrasyonunu onaylamaz.
+
 Bu çalışma kişisel sunumdaki Türkçe opsiyon asistanı içindir. 24 gerçekçi vaka, ek ifade biçimleri ve dört çok turlu konuşma hazırlandı. Veri seti `ASSISTANT_EVAL_CASES.json` içindedir. Bu bir değerlendirme çalışmasıdır; modele fine-tuning uygulanmadı.
 
 ## Kesin kabul koşulu

@@ -1,4 +1,48 @@
-import type { MarketSnapshot, ScreenContext } from './types';
+import type { MarketSnapshot, PremiumUnit, ScreenContext } from './types';
+
+export class PremiumBasisClarification extends Error {}
+export class TradeQuantityClarification extends Error {}
+
+/** Reject omissions and conflicts with a single explicit quantity; do not infer hedge ratios. */
+export function assertTradeQuantity(quantity: number | undefined, message: string, priorUserMessages: string[] = []) {
+  if (quantity === undefined)
+    throw new TradeQuantityClarification('Her opsiyon bacağında contractSize zorunlu. Açık kullanıcı miktarını kullan; yalnız miktar belirtilmemişse ekran miktarını açıkça gönder.');
+  const quantitiesIn = (text: string) => [...text.matchAll(/(?<![\d.,])(\d+(?:[.,]\d+)?)\s*(?:ons|adet)(?!\p{L})/giu)]
+    .map(m => m[1]).map(s => /^\d+[.,]\d{3}$/.test(s) ? NaN : Number(s.replace(',', '.')));
+  if (/(?:ons|adet)(?:\s+\p{L}+){0,3}\s+(?:istemiyor\p{L}*|değil|olmasın|kullanma|alma)(?!\p{L})/iu.test(message))
+    throw new TradeQuantityClarification('Miktar ifadesi ret veya düzeltme içeriyor. Kullanıcıdan geçerli miktarı netleştirmesini iste; ret ifadesindeki sayıyı işlem miktarı sayma.');
+  let quantities = quantitiesIn(message);
+  if (!quantities.length) {
+    for (const prior of [...priorUserMessages].reverse()) {
+      quantities = quantitiesIn(prior);
+      if (quantities.length) break;
+    }
+  }
+  if (quantities.some(q => !Number.isFinite(q)))
+    throw new TradeQuantityClarification('Miktardaki binlik/ondalık ayracı belirsiz. Kullanıcıdan ons/adet miktarını netleştirmesini iste; fiyat kartı üretme.');
+  const unique = [...new Set(quantities)];
+  if (unique.length === 1 && quantity !== unique[0])
+    throw new TradeQuantityClarification(`Araç miktarı açık kullanıcı miktarına uymuyor. Bu istekte miktar ${unique[0]} ons/adet; ekran miktarı veya birim başına 1 ile değiştirme. Doğru miktarı araçta gönder.`);
+}
+
+/** Only the user's words can authorize a percentage basis, never a model's tool arguments. */
+export function assertPremiumBasis(unit: PremiumUnit, message: string, priorUserMessages: string[] = []) {
+  if (unit !== 'pct_spot' && unit !== 'pct_strike') return;
+  const basisIn = (text: string): PremiumUnit | 'ambiguous' | undefined => {
+    const normalized = text.toLocaleLowerCase('tr-TR');
+    const referencesBasis = /(?:spot|strike|kullanım fiyatı\p{L}*)\s+(?:nominal\p{L}*|baz\p{L}*|üzerinden|üzerine|based|basis|yüzde|%)/u.test(normalized);
+    const spot = /spot(?:un| fiyatının)?\s+(?:nominal\p{L}*|baz\p{L}*|üzerinden|üzerine|based|basis|yüzde|%)/u.test(normalized);
+    const strike = /(?:strike(?:ın)?|kullanım fiyatı(?:nın)?)\s+(?:nominal\p{L}*|baz\p{L}*|üzerinden|üzerine|based|basis|yüzde|%)/u.test(normalized);
+    if ((referencesBasis || spot || strike) && /(?:istemiyor|kullanma|değil|ne demek|seçmedim|bilmiyor|emin değil|olsun mu|hangisi|(?:üzerinden|nominali|bazında|üzerine)\s+m[ıiuü]\b)/u.test(normalized)) return 'ambiguous';
+    if (spot && strike) return 'ambiguous';
+    return spot ? 'pct_spot' : strike ? 'pct_strike' : referencesBasis ? 'ambiguous' : undefined;
+  };
+  const basis = basisIn(message) ?? priorUserMessages.map(basisIn).findLast(v => v !== undefined);
+  if (!basis || basis === 'ambiguous')
+    throw new PremiumBasisClarification('Yüzde primin spot nominali mi kullanım fiyatı nominali mi olduğu net değil. Arama yapmadan kullanıcıya bu tek soruyu sor; kendin baz seçme.');
+  if (basis !== unit)
+    throw new PremiumBasisClarification('Seçilen yüzde prim birimi kullanıcının belirttiği nominal bazına uymuyor. Kullanıcının belirttiği baz ile devam et.');
+}
 
 export const MANUAL_PRICING_BLOCKED = 'Manuel spot, volatilite, faiz veya kira varsayımı terminal eğrisiyle fiyatlama tutarlılığını bozar. Asistan manuel fiyatlama yapmaz; terminalin otomatik verisini ve mevcut eğrisini kullanır. Manuel spot/IV modunu kapatın.';
 const marketOverrides = ['spot', 'vol', 'manualVol', 'manualSpot', 'rate', 'lease'];

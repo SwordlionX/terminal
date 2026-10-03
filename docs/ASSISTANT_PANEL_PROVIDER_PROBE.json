@@ -1,0 +1,283 @@
+{
+  "at": "2026-10-03T17:41:54.192Z",
+  "model": "gemini-3.5-flash-lite",
+  "requestedModelSource": "local_panel_environment",
+  "maxModelCalls": 30,
+  "minProviderIntervalMs": 5000,
+  "screenQuantity": 100,
+  "selectedCases": [
+    "PANEL_explicit_trade",
+    "PANEL_quantity_override"
+  ],
+  "scope": "Seçilen temel gerçek Gemini vakaları; ekran miktarı 100, istenen miktarlar 10/20. Bütün 24 vaka/parafrazlar veya faiz/kira kalibrasyonu onayı değildir. Terminalin mevcut kayıtlı eğrisi kullanılır.",
+  "calibrationValidated": false,
+  "state": "automated_checks_passed_manual_review_pending",
+  "providerRequests": [
+    {
+      "startedAt": "2026-10-03T17:41:54.196Z",
+      "durationMs": 1391,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 3768,
+        "candidatesTokenCount": 77,
+        "totalTokenCount": 3845,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 3768
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "functionCalls": [
+        {
+          "name": "price_option",
+          "args": {
+            "tradeDate": "2026-10-03",
+            "position": "Short",
+            "strike": 4137.53,
+            "product": "XAU",
+            "contractSize": 10,
+            "type": "Put",
+            "expiryDate": "2026-12-28"
+          },
+          "id": "call_1337901"
+        }
+      ],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "functionCall",
+          "thoughtSignature"
+        ]
+      ]
+    },
+    {
+      "startedAt": "2026-10-03T17:41:59.199Z",
+      "durationMs": 1344,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 4343,
+        "candidatesTokenCount": 57,
+        "totalTokenCount": 4400,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 4343
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "functionCalls": [],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "text",
+          "thoughtSignature"
+        ]
+      ]
+    },
+    {
+      "startedAt": "2026-10-03T17:42:04.200Z",
+      "durationMs": 1721,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 3733,
+        "candidatesTokenCount": 80,
+        "totalTokenCount": 4000,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 3733
+          }
+        ],
+        "thoughtsTokenCount": 187,
+        "serviceTier": "standard"
+      },
+      "functionCalls": [
+        {
+          "name": "price_option",
+          "args": {
+            "strike": 3700,
+            "position": "Short",
+            "expiryDate": "2027-01-01",
+            "product": "XAU",
+            "contractSize": 10,
+            "type": "Put",
+            "tradeDate": "2026-10-03",
+            "basis": 365
+          },
+          "id": "call_1375813"
+        }
+      ],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "functionCall",
+          "thoughtSignature"
+        ]
+      ]
+    },
+    {
+      "startedAt": "2026-10-03T17:42:09.210Z",
+      "durationMs": 1241,
+      "modelVersion": "gemini-3.5-flash-lite",
+      "usageMetadata": {
+        "promptTokenCount": 4494,
+        "candidatesTokenCount": 51,
+        "totalTokenCount": 4545,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 4494
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "functionCalls": [],
+      "finishReason": "STOP",
+      "contentPartKinds": [
+        [
+          "text",
+          "thoughtSignature"
+        ]
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "PANEL_explicit_trade",
+      "state": "automated_checks_passed_manual_review_pending",
+      "turns": [
+        {
+          "prompt": "XAU için müşteri 10 ons put satacak. Kullanım fiyatı 4137.53, değerleme tarihi 2026-10-03, vade 2026-12-28, gün bazı 365. Terminalin mevcut eğrisiyle endikatif fiyatla ve kartı göster.",
+          "state": "automated_checks_passed_manual_review_pending",
+          "artifacts": [
+            {
+              "kind": "quote",
+              "quote": {
+                "id": "XAU-Put-Short-4137.53-2026-12-28-vanilla-",
+                "product": "XAU",
+                "type": "Put",
+                "position": "Short",
+                "inputs": {
+                  "spot": 4137.53497,
+                  "rate": 4,
+                  "lease": -0.9849658431503996,
+                  "vol": 0,
+                  "manualVol": false,
+                  "strike": 4137.53,
+                  "contractSize": 10,
+                  "basis": 365,
+                  "tradeDate": "2026-10-03",
+                  "expiryDate": "2026-12-28"
+                },
+                "premiumPerUnit": 145.85903509003742,
+                "premiumTotal": 1458.5903509003742,
+                "premiumPctSpot": 3.5252641040526953,
+                "premiumPctStrike": 3.5252683385990538,
+                "cashflow": 1458.5903509003742,
+                "delta": 4.352127066007723,
+                "gamma": -0.009275230133534058,
+                "vega": -79.21394869308024,
+                "theta": 7.132119875370511,
+                "hedgeUnits": -4.352127066007723,
+                "effectiveVol": 21.17327446177728,
+                "volMode": "model",
+                "model": "Terminal X · Avrupa / GK",
+                "spotSource": "XAU/USD (Twelve Data)",
+                "spotAt": "2026-10-03T17:41:53.283Z",
+                "surfaceAt": "2026-10-02 CME settlement",
+                "pricedAt": "2026-10-03T17:41:55.717Z",
+                "warnings": []
+              }
+            }
+          ],
+          "messages": [
+            "Terminal X motorunun mevcut eğrisini kullanarak talep edilen XAU put opsiyonunun endikatif fiyatlandırması yapılmıştır. Müşteri bu işlemde Short konumda olduğundan prim tahsil edecektir. Sonuçlar yukarıdaki kartta yer almaktadır."
+          ],
+          "modelCalls": 2,
+          "providerRequestIndices": [
+            0,
+            1
+          ],
+          "checks": {
+            "expectedIntent": true,
+            "engineAndQuantityAgreement": true,
+            "noWebArtifacts": true,
+            "hasFinalText": true
+          },
+          "totalDurationMs": 6352,
+          "evaluationPacingMs": 3479
+        }
+      ]
+    },
+    {
+      "id": "PANEL_quantity_override",
+      "state": "automated_checks_passed_manual_review_pending",
+      "turns": [
+        {
+          "prompt": "Ekrandaki altın için müşteri 10 ons put satacak. Strike, vade ve gün bazı ekrandaki gibi. Terminalin mevcut eğrisinde fiyatla; endikatif kartı göster.",
+          "state": "automated_checks_passed_manual_review_pending",
+          "artifacts": [
+            {
+              "kind": "quote",
+              "quote": {
+                "id": "XAU-Put-Short-3700-2027-01-01-vanilla-",
+                "product": "XAU",
+                "type": "Put",
+                "position": "Short",
+                "inputs": {
+                  "spot": 4137.53497,
+                  "rate": 4,
+                  "lease": -0.9849658431503996,
+                  "vol": 0,
+                  "manualVol": false,
+                  "strike": 3700,
+                  "contractSize": 10,
+                  "basis": 365,
+                  "tradeDate": "2026-10-03",
+                  "expiryDate": "2027-01-01"
+                },
+                "premiumPerUnit": 33.786066996628506,
+                "premiumTotal": 337.86066996628506,
+                "premiumPctSpot": 0.8165747780164021,
+                "premiumPctStrike": 0.9131369458548245,
+                "cashflow": 337.86066996628506,
+                "delta": 1.3191251701347497,
+                "gamma": -0.004417855414531765,
+                "vega": -43.93687792955842,
+                "theta": 4.968534827225904,
+                "hedgeUnits": -1.3191251701347497,
+                "effectiveVol": 23.560510446735304,
+                "volMode": "model",
+                "model": "Terminal X · Avrupa / GK",
+                "spotSource": "XAU/USD (Twelve Data)",
+                "spotAt": "2026-10-03T17:41:53.283Z",
+                "surfaceAt": "2026-10-02 CME settlement",
+                "pricedAt": "2026-10-03T17:42:06.466Z",
+                "warnings": []
+              }
+            }
+          ],
+          "messages": [
+            "Terminal X motoru ve mevcut eğrisi kullanılarak yapılan endikatif fiyatlama sonuçları ekrandaki kartta gösterilmektedir. Müşteri kısa pozisyonda (Short) put opsiyonu sattığı için prim tahsil edecektir."
+          ],
+          "modelCalls": 2,
+          "providerRequestIndices": [
+            2,
+            3
+          ],
+          "checks": {
+            "expectedIntent": true,
+            "engineAndQuantityAgreement": true,
+            "noWebArtifacts": true,
+            "hasFinalText": true
+          },
+          "totalDurationMs": 9905,
+          "evaluationPacingMs": 6383
+        }
+      ]
+    }
+  ]
+}

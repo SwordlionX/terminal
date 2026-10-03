@@ -3,13 +3,14 @@ import { surfaceVolEstimate } from '../vol/surface';
 import { quoteOption } from './pricing';
 import { premiumValue, searchPremium } from './search';
 import { scenarioPortfolio } from './scenarios';
-import { assertCurvePricing, terminalCurveInputs } from './policy';
+import { assertCurvePricing, assertPremiumBasis, assertTradeQuantity, PremiumBasisClarification, TradeQuantityClarification, terminalCurveInputs } from './policy';
 import { choice, number, object, products, validateOption } from './validation';
 import type { AssistantArtifact, MarketSnapshot, PremiumUnit, Product, Quote, ScenarioResult, ScreenContext } from './types';
 
 export type DiagnosticTopic = 'european_model' | 'volatility_surface' | 'barrier_monitoring' | 'units_and_dates';
 export const diagnosticTopics = ['european_model', 'volatility_surface', 'barrier_monitoring', 'units_and_dates'] as const;
 interface Dependencies {
+  priorUserMessages?: string[];
   market: (product: Product) => Promise<MarketSnapshot>;
   artifact: (artifact: AssistantArtifact) => void;
   research: (topic: DiagnosticTopic) => Promise<{ text: string; sources: { title: string; url: string }[]; searchEntryHtml?: string }>;
@@ -25,9 +26,10 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
     if (!markets.has(product)) markets.set(product, deps.market(product));
     return markets.get(product)!;
   };
-  const price = async (value: unknown): Promise<Quote> => {
+  const price = async (value: unknown, enforceMessageQuantity = true): Promise<Quote> => {
     deps.signal.throwIfAborted();
     const r = validateOption(value);
+    assertTradeQuantity(r.contractSize, enforceMessageQuantity ? message : '', enforceMessageQuantity ? deps.priorUserMessages : []);
     assertCurvePricing(r, screen);
     return quoteOption(r, screen, await getMarket(r.product ?? screen.product));
   };
@@ -59,13 +61,15 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
       case 'find_options': {
         assertCurvePricing(args, screen);
         const r = validateOption(args.option);
+        assertTradeQuantity(r.contractSize, message, deps.priorUserMessages);
+        const unit = choice(args.unit, ['usd_per_unit', 'total_usd', 'pct_spot', 'pct_strike'] as const, 'Prim birimi') as PremiumUnit;
+        assertPremiumBasis(unit, message, deps.priorUserMessages);
         const product = r.product ?? screen.product, m = await getMarket(product);
         if (m.product !== product) throw new Error('Piyasa verisi farklı bir ürüne ait.');
         const curve = terminalCurveInputs(screen, m);
         if (!(dateDay(r.expiryDate ?? screen.expiryDate) > dateDay(r.tradeDate ?? screen.tradeDate)))
           throw new Error('Geçerli değerleme tarihi ve ileri vade gerekli.');
         const target = number(args.target, 'Hedef prim', 0, 1e12);
-        const unit = choice(args.unit, ['usd_per_unit', 'total_usd', 'pct_spot', 'pct_strike'] as const, 'Prim birimi') as PremiumUnit;
         const ref = curve.spot;
         if (!ref) throw new Error('Arama için terminal spotu gerekli.');
         const min = args.minStrike === undefined ? ref * 0.65 : number(args.minStrike, 'Alt strike', ref * 0.05, ref * 5);
@@ -87,7 +91,8 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
           if (typeof s.label !== 'string' || !s.label.trim() || s.label.length > 100) throw new Error('Kısa alternatif adı gerekli.');
           if (!Array.isArray(s.legs) || !s.legs.length || s.legs.length > 8) throw new Error('Bir ila sekiz bacak gerekli.');
           const legs = s.legs.map(object);
-          const quotes = await Promise.all(legs.map(l => price(l.option)));
+          // Multi-leg hedges may use different, model-chosen ratios. Every leg still requires quantity.
+          const quotes = await Promise.all(legs.map(l => price(l.option, legs.length === 1)));
           const entries = legs.map(l => l.entryPremiumPerUnit === undefined ? undefined : number(l.entryPremiumPerUnit, 'Başlangıç primi', 0, 1e9));
           const market = await getMarket(quotes[0].product);
           results.push(scenarioPortfolio(s.label, quotes, horizon, entries, market.surface));
@@ -119,6 +124,8 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
     const signature = JSON.stringify([name, canonical(args)]);
     if (!cache.has(signature)) cache.set(signature, run(name, args).catch(e => {
       if (deps.signal.aborted) throw e;
+      if (e instanceof PremiumBasisClarification || e instanceof TradeQuantityClarification)
+        return { error: e.message, clarificationRequired: true, noExternalPriceFallback: true };
       if (['price_option', 'find_options', 'compare_strategies', 'get_market_context'].includes(name)) issues.add('tool_validation_or_pricing_error');
       return { error: e instanceof Error ? e.message : 'Terminal aracı çalışmadı.', noExternalPriceFallback: true };
     }));
