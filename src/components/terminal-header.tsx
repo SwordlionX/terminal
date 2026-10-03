@@ -8,6 +8,7 @@ const routeTitles: Record<string, string> = {
   "/dashboard": "Ana Ekran",
   "/pricing/reverse-engineering": "Tersine Mühendislik",
   "/pricing/delta-hedge": "Delta Hedge",
+  "/pricing/position-analysis": "Pozisyon Analizi",
   "/margin": "Risk ve Teminat",
   "/customers": "Müşteriler",
   "/trades": "İşlemler",

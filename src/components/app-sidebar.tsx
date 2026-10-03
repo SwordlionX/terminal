@@ -45,6 +45,7 @@ const groups = [
         icon: CircleDollarSign,
         children: [
           { title: "Ana Fiyatlama", url: "/" },
+          { title: "Pozisyon Analizi", url: "/pricing/position-analysis", icon: Activity },
           { title: "Tersine Mühendislik", url: "/pricing/reverse-engineering", icon: TrendingUpDown },
           { title: "Delta Hedge", url: "/pricing/delta-hedge", icon: Shield },
         ],
@@ -105,7 +106,7 @@ export function AppSidebar() {
                       <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton
                           isActive={isActive}
-                          className="h-10 rounded-lg px-3 text-[13px] data-active:bg-cyan-400/10 data-active:text-cyan-200 data-active:shadow-[inset_2px_0_0_0_rgb(34_211_238)]"
+                          className="h-10 rounded-lg px-3 text-[13px] data-active:bg-cyan-400/10 data-active:text-cyan-200 data-active:shadow-[inset_2px_0_0_0_var(--primary)]"
                           render={
                             <Link href={item.url} className="flex items-center gap-3">
                               <item.icon className={cn(isActive && "text-cyan-300")} />
@@ -122,7 +123,7 @@ export function AppSidebar() {
                       <SidebarMenuButton
                         isActive={isActive}
                         onClick={() => setPricingOpen((value) => !value)}
-                        className="h-10 rounded-lg px-3 text-[13px] data-active:bg-cyan-400/10 data-active:text-cyan-200 data-active:shadow-[inset_2px_0_0_0_rgb(34_211_238)]"
+                        className="h-10 rounded-lg px-3 text-[13px] data-active:bg-cyan-400/10 data-active:text-cyan-200 data-active:shadow-[inset_2px_0_0_0_var(--primary)]"
                       >
                         <item.icon className={cn(isActive && "text-cyan-300")} />
                         <span>{item.title}</span>

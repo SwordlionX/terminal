@@ -1,5 +1,6 @@
 import type { PricingInputs } from '../pricing/engine';
 import type { VolSurface } from '../vol/surface';
+import type { PositionAnalysis } from '../pricing/position-analysis';
 
 export type Product = 'XAU' | 'XAG' | 'GLD' | 'SLV';
 export type OptionType = 'Call' | 'Put';
@@ -78,6 +79,7 @@ export interface ScenarioResult {
   note: string;
 }
 export type AssistantArtifact =
+  | { kind: 'position_analysis'; result: PositionAnalysis }
   | { kind: 'quote'; quote: Quote }
   | { kind: 'search'; result: SearchResult }
   | { kind: 'scenarios'; results: ScenarioResult[] }

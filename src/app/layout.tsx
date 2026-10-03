@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./terminal-design.css";
+import { TERMINAL_DESIGN } from '@/lib/terminal-design';
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TerminalHeader } from "@/components/terminal-header";
@@ -18,7 +20,8 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
-      className="h-full antialiased dark"
+      className={`h-full antialiased ${TERMINAL_DESIGN === 'terminal' ? 'dark' : ''}`}
+      data-terminal-design={TERMINAL_DESIGN}
     >
       <body className="min-h-full overflow-x-hidden bg-background text-foreground">
         <SidebarProvider>

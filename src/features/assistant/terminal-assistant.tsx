@@ -16,6 +16,7 @@ const ResultCard = dynamic(() => import('./result-cards').then(mod => mod.Result
 });
 const iconButton = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white/5 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300';
 const suggestions = [
+  { title: 'Pozisyonun haritasını gör', text: 'Ekrandaki koşullarla müşteri put satışının fiyat ve tarih kâr zarar haritasını, delta ve gamma riskini göster. Avrupa tipi opsiyon için vade öncesi kullanım varsayma.' },
   { title: 'Bir fiyat al', text: 'Ekrandaki girdilerle müşteri için put satışını fiyatla.' },
   { title: 'Hedef primi bul', text: 'Ekrandaki ürün ve vade için spot nominalinin %5’i kadar prim sağlayan müşteri put satışını bul.' },
   { title: 'Alternatifleri karşılaştır', text: 'Ekrandaki strike ile müşteri put satışı ve aynı vadede daha düşük strike put alımı eklenmiş yapıyı karşılaştır. Maliyet ve vade sonu grafiğini göster.' },
@@ -143,7 +144,7 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
 
   return <>
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent showCloseButton={false} finalFocus={() => document.getElementById('terminal-assistant-launcher')} className={`gap-0 border-white/10 bg-[#09141e] p-0 text-slate-100 motion-reduce:transition-none ${expanded ? '!w-full sm:!max-w-[900px]' : '!w-full sm:!max-w-[560px]'}`}>
+      <SheetContent showCloseButton={false} finalFocus={() => document.getElementById('terminal-assistant-launcher')} className={`gap-0 border-border bg-background p-0 text-foreground motion-reduce:transition-none ${expanded ? '!w-full sm:!max-w-[900px]' : '!w-full sm:!max-w-[560px]'}`}>
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
           <div className="flex min-w-0 gap-3"><span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-200/10 min-[380px]:flex"><Sparkles size={19} className="text-cyan-200" /></span>
             <div className="min-w-0"><SheetTitle className="text-base text-white">Terminal Asistanı</SheetTitle><SheetDescription className="mt-1 text-xs text-slate-400">Fiyatla, karşılaştır, birlikte değerlendir.</SheetDescription></div></div>

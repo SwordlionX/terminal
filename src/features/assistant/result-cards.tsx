@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from 'react';
+import { PositionAnalysisView } from '@/features/pricing/position-analysis-view';
 import { ArrowUpRight, ChevronDown, ChevronUp, Check, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMarketData } from '@/store/marketData';
+import { useAnalysisDraft } from '@/store/analysis-draft';
 import type { AssistantArtifact, Quote, ScenarioResult } from '@/lib/assistant/types';
 
 const fmt = (n: number, digits = 2) => Number.isFinite(n) ? n.toLocaleString('tr-TR', { maximumFractionDigits: digits, minimumFractionDigits: digits }) : '—';
@@ -21,6 +23,7 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
   const unit = q.product === 'XAU' || q.product === 'XAG' ? 'ons' : 'adet';
   const apply = () => {
     const md = useMarketData.getState();
+    useAnalysisDraft.getState().selectQuote(q.type, q.position);
     md.setProduct(q.product, q.inputs.spot, q.inputs.lease, q.effectiveVol);
     const fields = { ...q.inputs, vol: q.effectiveVol, manualVol: false, manualSpot: false };
     for (const [key, value] of Object.entries(fields)) {
@@ -30,7 +33,7 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
     router.push('/');
     onApply?.();
   };
-  return <section className="overflow-hidden rounded-2xl border border-cyan-400/20 bg-[#0e202b]" aria-label={`${q.product} ${q.position} ${q.type} fiyatı`}>
+  return <section className="overflow-hidden rounded-2xl border border-primary/20 bg-card" aria-label={`${q.product} ${q.position} ${q.type} fiyatı`}>
     <div className="flex flex-wrap items-start justify-between gap-2 border-b border-white/5 px-4 py-3">
       <div className="min-w-0 flex-1 basis-40">{caption && <p className="mb-1 break-words text-xs text-slate-300">{caption}</p>}
         <p className="text-xs font-semibold text-cyan-200">{`${q.product} · ${q.position === 'Short' ? 'Müşteri satışı' : 'Müşteri alışı'} · ${q.type}`}</p>
@@ -39,8 +42,7 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
     </div>
     <div className="p-4">
       <p className="text-xs text-slate-400">{q.position === 'Short' ? 'Müşterinin alacağı model primi' : 'Müşterinin ödeyeceği model primi'}</p>
-      <p className="mt-1 break-words text-xl font-semibold tracking-tight text-white sm:text-2xl">{money(q.premiumTotal)}</p>
-      <p className="mt-1 text-xs text-slate-400">{fmt(q.premiumPerUnit, 4)} USD/{unit} · %{fmt(q.premiumPctSpot, 4)} spot nominali</p>
+      <div className="mt-2 grid grid-cols-2 gap-3"><div><p className="break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{money(q.premiumTotal)}</p><p className="mt-1 text-xs text-muted-foreground">{fmt(q.premiumPerUnit, 4)} USD/{unit}</p></div><div><p className="break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">%{fmt(q.premiumPctSpot)}</p><p className="mt-1 text-xs text-muted-foreground">Spot nominali üzerinden</p></div></div>
       <dl className="mt-4 grid grid-cols-2 gap-3 text-xs [&>div]:min-w-0 [&_dd]:break-words min-[420px]:grid-cols-3">
         <div><dt className="text-slate-400">Strike</dt><dd className="mt-1 font-mono text-slate-200">{fmt(q.inputs.strike, 4)}</dd></div>
         <div><dt className="text-slate-400">Vade</dt><dd className="mt-1 text-slate-200">{q.inputs.expiryDate}</dd></div>
@@ -69,7 +71,7 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
   </section>;
 }
 
-const colors = ['#67e8f9', '#a5b4fc', '#fbbf24'];
+const colors = ['var(--primary)', 'var(--chart-4)', 'var(--analysis-positive)'];
 export function ScenarioChart({ results, onApply }: { results: ScenarioResult[]; onApply?: () => void }) {
   const [selected, setSelected] = useState(10);
   const all = results.flatMap(r => r.points.map(p => p.pnl));
@@ -79,7 +81,7 @@ export function ScenarioChart({ results, onApply }: { results: ScenarioResult[];
   const x = (i: number) => 8 + i / 20 * 284;
   const y = (v: number) => 10 + (max - v) / span * 160;
   const selectedPoint = results[0]?.points[selected];
-  return <section className="rounded-2xl border border-white/10 bg-[#0e1c27] p-4" aria-label="Pozisyon senaryo karşılaştırması">
+  return <section className="rounded-2xl border border-border bg-card p-4" aria-label="Pozisyon senaryo karşılaştırması">
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-slate-100">{results[0]?.horizon === 'expiry' ? 'Vade sonu karşılaştırması' : 'Bugünkü spot şoku'}</h3><span className="text-xs text-slate-400">MOTOR HESABI</span></div>
     <p className="mt-3 text-xs text-slate-400">Toplam kâr / zarar (USD)</p>
     <div className="mt-2 flex gap-2">
@@ -124,6 +126,7 @@ export function ScenarioChart({ results, onApply }: { results: ScenarioResult[];
 }
 
 export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact; onApply?: () => void }) {
+  if (artifact.kind === 'position_analysis') return <section className="min-w-0"><p className="mb-3 text-sm font-semibold">{artifact.result.label}</p><PositionAnalysisView result={artifact.result} compact /></section>;
   if (artifact.kind === 'quote') return <QuoteCard quote={artifact.quote} onApply={onApply} />;
   if (artifact.kind === 'scenarios') return <ScenarioChart results={artifact.results} onApply={onApply} />;
   if (artifact.kind === 'research') return <section className="rounded-2xl border border-indigo-300/20 bg-indigo-300/5 p-4">

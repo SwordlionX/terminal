@@ -16,6 +16,13 @@ const optionProperties = {
 const option = { type: 'object', properties: optionProperties, required: ['type', 'position', 'contractSize'], additionalProperties: false };
 
 export const toolDeclarations: FunctionDeclaration[] = [
+  { name: 'analyze_position', description: 'Avrupa tipi vanilya pozisyonu için birleşik K/Z, fiyat × tarih haritası ve delta/gamma risk görünümü üret. Vade öncesi kullanım veya fesih yapmaz. Eksik hücreyi boş bırakır. Yalnız terminal motoru; manuel piyasa girdisi yok.',
+    parametersJsonSchema: { type: 'object', properties: {
+      label: { type: 'string', description: 'Kısa pozisyon adı.' },
+      scenarioDate: { type: 'string', description: 'İsteğe bağlı YYYY-MM-DD; bugün ile ilk opsiyon vadesi arasında. Yoksa otomatik tarih haritası.' },
+      legs: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'object', properties: { option,
+        entryPremiumPerUnit: numeric('Yalnız verilen geçmiş işlem primi, USD/birim. Eksikse bugünkü motor primi referans; gerçekleşmiş müşteri K/Z’si sayılmaz.') }, required: ['option'], additionalProperties: false } },
+    }, required: ['legs'], additionalProperties: false } },
   { name: 'get_market_context', description: 'Yalnız Terminal X mevcut veri servisinden piyasa, veri tarihi, forward ve örnek IV eğrisini oku. Dış araştırma veya yeni opsiyon zinciri indirmesi yapmaz.',
     parametersJsonSchema: { type: 'object', properties: { product: optionProperties.product }, additionalProperties: false } },
   { name: 'price_option', description: 'Terminal X mevcut eğrisi ve AYNI motoruyla endikatif vanilya veya bariyer opsiyon fiyatla. Manuel piyasa varsayımı yasak; eksik veri fiyatlamayı durdurur. Bütün fiyat ve Greeks kartları yalnız bu motorun çıktısıdır.', parametersJsonSchema: option },

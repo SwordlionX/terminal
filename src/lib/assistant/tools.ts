@@ -3,6 +3,7 @@ import { surfaceVolEstimate } from '../vol/surface';
 import { quoteOption } from './pricing';
 import { premiumValue, searchPremium } from './search';
 import { scenarioPortfolio } from './scenarios';
+import { analyzeEuropeanPosition } from '../pricing/position-analysis';
 import { assertCurvePricing, assertPremiumBasis, assertTradeQuantity, PremiumBasisClarification, TradeQuantityClarification, terminalCurveInputs } from './policy';
 import { choice, number, object, products, validateOption } from './validation';
 import type { AssistantArtifact, MarketSnapshot, PremiumUnit, Product, Quote, ScenarioResult, ScreenContext } from './types';
@@ -37,6 +38,26 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
     deps.signal.throwIfAborted();
     if (++toolCalls > 12) throw new Error('Bu isteğin hesaplama sınırına ulaşıldı; sonuçlarla devam edin.');
     switch (name) {
+      case 'analyze_position': {
+        assertCurvePricing(args, screen);
+        if (!Array.isArray(args.legs) || !args.legs.length || args.legs.length > 8) throw new Error('Bir ila sekiz vanilya bacağı gerekli.');
+        const legs = args.legs.map(value => {
+          const leg = object(value), option = validateOption(leg.option);
+          const single = args.legs instanceof Array && args.legs.length === 1;
+          assertTradeQuantity(option.contractSize, single ? message : '', single ? deps.priorUserMessages : []);
+          return { option, entryPremiumPerUnit: leg.entryPremiumPerUnit === undefined ? undefined : number(leg.entryPremiumPerUnit, 'Geçmiş birim prim', 0, 1e9) };
+        });
+        const label = args.label === undefined ? 'Pozisyon analizi' : args.label;
+        if (typeof label !== 'string' || !label.trim() || label.length > 100) throw new Error('Kısa pozisyon adı gerekli.');
+        const dates = args.scenarioDate === undefined ? undefined : [...new Set([screen.tradeDate, String(args.scenarioDate)])].sort();
+        const market = await getMarket(legs[0].option.product ?? screen.product);
+        const result = analyzeEuropeanPosition(screen, market, legs, label, dates);
+        deps.artifact({ kind: 'position_analysis', result });
+        // The complete grid goes to a deterministic card, not into repeated model calls.
+        return { label: result.label, dates: result.dates, delta: result.delta, gamma: result.gamma,
+          limits: result.limits, missingCells: result.missingCells, notes: result.notes,
+          unchangedSpot: result.rows.find(row => row.movePct === 0), chartDelivered: true };
+      }
       case 'get_market_context': {
         assertCurvePricing(args, screen);
         const product = args.product === undefined ? screen.product : choice(args.product, products, 'Ürün');
@@ -126,7 +147,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
       if (deps.signal.aborted) throw e;
       if (e instanceof PremiumBasisClarification || e instanceof TradeQuantityClarification)
         return { error: e.message, clarificationRequired: true, noExternalPriceFallback: true };
-      if (['price_option', 'find_options', 'compare_strategies', 'get_market_context'].includes(name)) issues.add('tool_validation_or_pricing_error');
+      if (['price_option', 'find_options', 'compare_strategies', 'get_market_context', 'analyze_position'].includes(name)) issues.add('tool_validation_or_pricing_error');
       return { error: e instanceof Error ? e.message : 'Terminal aracı çalışmadı.', noExternalPriceFallback: true };
     }));
     return cache.get(signature)!;

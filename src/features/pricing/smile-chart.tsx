@@ -59,7 +59,7 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
   );
 
   const { near, pts, targetM, target, quotedMin, quotedMax, xMin, xMax, curve, ivMin, ivMax } = view;
-  const W = 480, H = 220, padL = 44, padR = 16, padT = 14, padB = 34;
+  const W = 800, H = 300, padL = 56, padR = 24, padT = 24, padB = 42;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const xOf = (m: number) => padL + (m - xMin) / (xMax - xMin) * plotW;
   const yOf = (ivPct: number) => padT + (1 - (ivPct - ivMin) / (ivMax - ivMin)) * plotH;
@@ -90,7 +90,7 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
       </CardHeader>
       <CardContent>
         <div className="w-full overflow-x-auto">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[560px] min-w-[360px] h-auto" role="img" aria-label={manualVol ? "Referans smile grafiği; manuel volatilite fiyatlamada kullanılıyor" : "Volatilite smile grafiği: kote noktaları, fiyatlamada kullanılan eğri ve strike işaretçisi"}>
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[420px] h-auto" role="img" aria-label={manualVol ? "Referans smile grafiği; manuel volatilite fiyatlamada kullanılıyor" : "Volatilite smile grafiği: kote noktaları, fiyatlamada kullanılan eğri ve strike işaretçisi"}>
             <rect x={padL} y={padT} width={plotW} height={plotH} fill="none" stroke="currentColor" className="text-zinc-800" strokeWidth={1} />
             {yTicks.map((t, i) => <g key={`y${i}`}>
               <line x1={padL} x2={padL + plotW} y1={yOf(t)} y2={yOf(t)} stroke="currentColor" className="text-zinc-800/60" strokeWidth={1} strokeDasharray="2 3" />
