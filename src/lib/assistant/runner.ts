@@ -95,6 +95,8 @@ export async function runAssistant(input: RunInput): Promise<{ contents: Content
       catch (error) {
         input.signal.throwIfAborted();
         const status = (error as { status?: number }).status;
+        // Log only bounded diagnostic metadata; SDK messages may contain request data or keys.
+        console.warn('Assistant provider failed:', model, Number.isInteger(status) ? status : 'transport', 'calls:', modelCalls, 'retries:', retries);
         if (status !== undefined && [500, 502, 503, 504].includes(status) && retries < 1 && modelCalls < 6) {
           retries++;
           input.emit({ type: 'status', text: 'Gemini geçici olarak yanıt vermedi; bir kez yeniden deneniyor…' });
