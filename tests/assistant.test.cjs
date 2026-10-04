@@ -309,7 +309,7 @@ function mockRunner(responses) {
       return response;
     } };
   }
-  const runner = modules({ '@google/genai': { GoogleGenAI, FunctionCallingConfigMode: { AUTO: 'AUTO', VALIDATED: 'VALIDATED', NONE: 'NONE' }, ThinkingLevel: { LOW: 'LOW' } },
+  const runner = modules({ '@google/genai': { GoogleGenAI, FunctionCallingConfigMode: { AUTO: 'AUTO', VALIDATED: 'VALIDATED', ANY: 'ANY', NONE: 'NONE' }, ThinkingLevel: { LOW: 'LOW' } },
     './market': { terminalMarket: async () => market }, './limits': { reserveModelCall: async () => { reservations++; } } },
     { GEMINI_API_KEY: 'test-only-key' })('src/lib/assistant/runner.ts');
   return { requests, events, reservations: () => reservations,
@@ -381,6 +381,8 @@ test('malformed model calls execute nothing and share one bounded retry with pro
   assert.equal(result.modelCalls, 3); assert.equal(fixture.reservations(), 3);
   assert.equal(fixture.events.filter(e => e.type === 'artifact').length, 1);
   assert.equal(fixture.requests[1].contents.length, 1);
+  assert.equal(fixture.requests[1].config.toolConfig.functionCallingConfig.mode, 'ANY');
+  assert.equal(fixture.requests[2].config.toolConfig.functionCallingConfig.mode, 'VALIDATED');
   const repeated = mockRunner([malformed]);
   await assert.rejects(repeated.run(), e => e.modelFinishReason === 'MALFORMED_FUNCTION_CALL');
   assert.equal(repeated.requests.length, 2); assert.equal(repeated.events.filter(e => e.type === 'artifact').length, 0);
@@ -477,4 +479,37 @@ test('selected barrier context is validated and cannot silently produce a vanill
   });
   const separate = await vanilla('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
   assert.equal(separate.quote.barrier, undefined);
+});
+
+test('selected-ticket pricing preserves the complete barrier ticket without model arguments', async () => {
+  const screen = { ...context, type: 'Put', position: 'Short', barrier: { variant: 'do', level: 80, rebate: 0 } };
+  const artifacts = []; let reads = 0;
+  const execute = createToolExecutor(screen, 'Ekrandaki seçili 10 ons işlemi fiyatla.', {
+    market: async () => { reads++; return market; }, artifact: a => artifacts.push(a),
+    research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
+  });
+  const result = await execute('price_selected_option', {});
+  near(result.quote.premiumTotal, quote({ type: screen.type, position: screen.position, strike: screen.strike,
+    contractSize: screen.contractSize, tradeDate: screen.tradeDate, expiryDate: screen.expiryDate, basis: screen.basis, barrier: screen.barrier }).premiumTotal);
+  assert.equal(result.quote.barrier.level, 80);
+  assert.equal(result.quote.inputs.contractSize, 10);
+  assert.equal(result.quote.inputs.expiryDate, screen.expiryDate);
+  assert.equal(reads, 1); assert.equal(artifacts.length, 1);
+  assert.ok((await execute('price_selected_option', { barrier: null })).error);
+});
+
+test('selected-ticket tool rejects manual assumptions, changed quantity and recorded positions', async () => {
+  const screen = { ...context, type: 'Put', position: 'Short' };
+  let reads = 0;
+  const deps = { market: async () => { reads++; return market; }, artifact() {},
+    research: async () => { throw new Error('No research'); }, signal: new AbortController().signal };
+  for (const message of ['Manuel spot 110 kullanıp fiyatla.', '20 ons işlemi fiyatla.']) {
+    const result = await createToolExecutor(screen, message, deps)('price_selected_option', {});
+    assert.ok(result.error);
+  }
+  const recorded = await createToolExecutor(screen, 'Seçili işlemi fiyatla.', {
+    ...deps, workspace: { area: 'positions', trades: [{ id: 'recorded-trade' }] },
+  })('price_selected_option', {});
+  assert.ok(recorded.error);
+  assert.equal(reads, 0);
 });

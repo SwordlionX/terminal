@@ -1,6 +1,6 @@
 # Terminal X çalışma alanları — 4 Ekim 2026
 
-Pozisyonlar ve Risk/Teminat görselleri kullanıcı tarafından onaylandı; aşağıdaki düzen gerçek uygulamaya geçirildi. Bloomberg ve Meridian aynı işlevleri, motoru ve doğrulanmış veri paketini kullanır. `src/lib/terminal-design.ts` tema seçiminde branch'ler arasındaki tek farktır.
+Pozisyonlar ve Risk/Teminat görselleri kullanıcı tarafından onaylandı; aşağıdaki düzen Bloomberg branch'inde gerçek uygulamaya geçirildi. Meridian geliştirmesi kullanıcının isteğiyle durduruldu; son sidebar ve bariyer bağlantısı değişiklikleri Meridian'a taşınmadı. İki tasarımın fiyatlama motoru aynı doğrulanmış veri paketini kullanır.
 
 | Alan | Uygulanan davranış |
 | --- | --- |
@@ -12,7 +12,7 @@ Pozisyonlar ve Risk/Teminat görselleri kullanıcı tarafından onaylandı; aşa
 
 ## Asistan bağlantısı
 
-Tek sağ üst düğme; masaüstünde alan ayıran sağ panel, dar ekranda tam ekran panel. Konuşma panel kapatılınca kaybolmaz. Ekrandaki soru düğmeleri mesajı hazırlar; kullanıcının gönderimi olmadan Gemini çağrısı yapılmaz.
+Sağ altta sabit asistan düğmesi; masaüstünde sağda açılan panel, dar ekranda tam ekran panel. Konuşma panel kapatılınca kaybolmaz. Ekrandaki soru düğmeleri mesajı hazırlar; kullanıcının gönderimi olmadan Gemini çağrısı yapılmaz. `price_selected_option`, yeni fiyatlama ekranındaki koşulları bariyer dahil değiştirmeden okur; farklı koşullar için `price_option` kullanılır. Bozuk model komutu yürütülmez; ortak tek tekrar hakkıyla onarılır.
 
 İstemci yalnız seçili müşteri/işlem kimliklerini gönderir. Sunucu kayıtların varlığını ve müşteri sahipliğini denetleyip geçmiş primi ve işlem koşullarını veritabanından okur. `get_workspace_context` dosya ve kaynak uyarılarını getirir; `analyze_selected_position` gerçek giriş primini koruyan ortak analiz motorunu çalıştırır. Sohbet devamı seçim ve işlem koşullarına bağlanır; başka müşteri seçilince eski model bağlamı taşınmaz. Asistan kayıt/emir/teminat çağrısı yazamaz.
 
@@ -24,7 +24,7 @@ Vade öncesi kullanım veya otomatik kapatma yoktur. Hedge/ters işlem/yeni vade
 
 ## Tasarım ve kaynaklar
 
-Bloomberg: grafit/siyah, amber sayılar, ince çizgiler, dikdörtgen kontroller. Meridian: açık zemin ve mor vurgu; aynı sayfa akışı. Grafikler ve müşteri tabloları asistan açıkken dar alana uyarlanır; mobilde menü yatay kayar, içerik tek sütuna iner.
+Bloomberg: grafit/siyah, amber sayılar, ince çizgiler, dikdörtgen kontroller. Sol menü masaüstünde daraltılabilir; mobilde çekmece açılır ve içerik tek sütuna iner. Ana fiyatlamada bariyer seçeneği bulunur; hedef prim, pozisyon analizi ve delta hedge fiyatlama alt menüsündedir. Müşteri işlemleri ortak tablo düzenine geçirildi; USD prim ve yüzdesi yan yana görünür. Meridian'ın açık zemin ve mor vurgu tasarımı mevcut halinde bekler.
 
 Faiz/taşıma/IV onaylanan **endikatif CME/SOFR proxy** paketinden gelir. Banka OIS veya metal kira kotasyonu iddiası yok; ayrıntılar `PRICING_CURVE_PROXY.md` içinde. Yapay sıfır/eski MTM yerine eksik sonuç ve gerekçesi gösterilir.
 

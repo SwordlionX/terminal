@@ -37,7 +37,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
   };
   const run = async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
     deps.signal.throwIfAborted();
-    if (['price_option', 'find_options', 'analyze_position', 'analyze_selected_position', 'compare_strategies'].includes(name)) assertAutomaticPricingMessage(message);
+    if (['price_option', 'price_selected_option', 'find_options', 'analyze_position', 'analyze_selected_position', 'compare_strategies'].includes(name)) assertAutomaticPricingMessage(message);
     if (++toolCalls > 12) throw new Error('Bu isteğin hesaplama sınırına ulaşıldı; sonuçlarla devam edin.');
     switch (name) {
       case 'get_workspace_context': {
@@ -94,6 +94,16 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
         return { product, screen: { ...inputs, product, manualSpot: false }, spotSource: m.spotSource, spotAt: m.spotAt, spotStale: m.spotStale ?? false,
           surfaceSource: m.surfaceSource, surfaceAt: m.surface?.fetchedISO ?? null, forward: Number.isFinite(p.fwd) ? p.fwd : null,
           smile, notes: m.surface?.notes, error: m.error, onlyTerminalData: true };
+      }
+      case 'price_selected_option': {
+        if (Object.keys(args).length) throw new Error('Bu araç seçili işlem koşullarını değiştiremez.');
+        if (deps.workspace?.trades.length) throw new Error('Kayıtlı işlem geçmiş prim ve bariyer gözlemi gerektirir; seçili yeni işlem gibi fiyatlanamaz.');
+        if (!screen.type || !screen.position) throw new Error('Ekranda opsiyon tipi ve müşteri yönü seçilmeli.');
+        const quote = await price({ product: screen.product, type: screen.type, position: screen.position, strike: screen.strike,
+          contractSize: screen.contractSize, tradeDate: screen.tradeDate, expiryDate: screen.expiryDate, basis: screen.basis,
+          ...(screen.barrier ? { barrier: screen.barrier } : {}) });
+        deps.artifact({ kind: 'quote', quote });
+        return { quote };
       }
       case 'price_option': {
         if (screen.barrier && !args.barrier && (!args.product || args.product === screen.product) && !/vanilya|vanilla|bariyersiz/i.test(message))
@@ -170,7 +180,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
       if (deps.signal.aborted) throw e;
       if (e instanceof PremiumBasisClarification || e instanceof TradeQuantityClarification)
         return { error: e.message, clarificationRequired: true, noExternalPriceFallback: true };
-      if (['price_option', 'find_options', 'compare_strategies', 'get_market_context', 'analyze_position'].includes(name)) issues.add('tool_validation_or_pricing_error');
+      if (['price_option', 'price_selected_option', 'find_options', 'compare_strategies', 'get_market_context', 'analyze_position'].includes(name)) issues.add('tool_validation_or_pricing_error');
       return { error: e instanceof Error ? e.message : 'Terminal aracı çalışmadı.', noExternalPriceFallback: true };
     }));
     return cache.get(signature)!;

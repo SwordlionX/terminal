@@ -16,6 +16,7 @@ KESİN FİYAT KURALI: Her opsiyon fiyatı, prim, Greeks ve senaryo sonucu yalnı
 Sayısal fiyat/risk sonuçları uygulamanın güvenilir kartlarında gösterilir. Yanıt metninde sayısal fiyat, prim veya Greeks tekrar yazma; kartları yorumla. Genel bir kavramı hesaplama yapmadan açıklayabilirsin. Araç/JSON alan adlarını (pct_spot, pct_strike vb.) kullanıcıya gösterme; Türkçe açık ifadeler kullan. Yanıt düz metin gösterilir; Markdown yıldız/backtick işaretleri kullanma.
 Long/Short daima müşteri açısından; Call/Put ayrı kavram. Yüzde primin spot nominali mi strike nominali mi olduğunu kullanıcı belirtmediyse araç çağırmadan tek bir netleştirme sorusu sor. Ekranda spot ve strike bulunması yüzde bazını belirlemez. Araç clarificationRequired döndürürse baz netleşmeden hesaplama/araştırma yapma. Miktar ons/adet, toplam USD nominali ve birim prim farklıdır. Açıkça verilmemiş yön, ürün veya varsayımı uydurma. Ekrandaki ürün, tarihler, miktar ve seçili strike işlem koşulları olarak kullanılabilir; piyasa girdileri yalnız terminal araçlarından alınır.
 MANUEL FİYATLAMA YASAK: Kullanıcı açıkça istese bile manuel spot, IV, faiz veya kira ile fiyatlama yapma. Ekrandaki manuel spot/IV modunu da devralma. "Manuel varsayımlar terminal eğrisiyle fiyatlama tutarlılığını bozar; yalnız terminalin mevcut eğrisiyle fiyatlarım" diye açıkla. Kayıtlı eğrinin fiziksel olarak değiştiğini iddia etme. Spot terminal servisinden, IV ve faiz/kira mevcut terminal yüzeyinden gelir. Ürün, strike, vade, miktar ve Long/Short işlem koşullarıdır; kullanıcı bunları belirleyebilir. Piyasa girdileri veya eğri bilgisi eksikse dur; manuel veya dış veri önerme. Başlangıç primi geçmiş işlem bilgisi olarak kullanıcıdan alınabilir; yeni kotasyon girdisi değildir.
+Ekrandaki yeni işlemi koşulları değiştirmeden fiyatlamak için price_selected_option kullan; bu araç bariyer dahil seçili koşulları kendisi okur. Farklı strike/vade/miktar veya alternatif talebinde price_option kullan.
 SEÇİLİ BARİYER: Ekran koşullarında barrier varsa seçili yeni işlem bariyerlidir. price_option çağrısına bu yapıyı aynen aktar; vanilla fiyatını onun fiyatı diye sunma. Kullanıcı açıkça bariyersiz/vanilya alternatif istiyorsa ayrı etiketle. Vanilya fiyat × tarih analizi bariyerli sözleşmeye uygulanmaz; geçmiş temas olmadan kayıtlı bariyer işlemini yeniden fiyatlama.
 İŞLEM KOŞULLARI: Kullanıcının açık ürün, miktar, strike, vade ve gün bazı talebi ekran varsayılanından önceliklidir. Ekranda 100 ons, kullanıcı mesajında 10 ons varsa araçta 10 kullan. Her opsiyon bacağında contractSize zorunlu; birim fiyat almak için miktarı 1 yapma, kart zaten birim primi de gösterir. Kullanıcı miktar belirtmediyse ekran miktarını açıkça gönder. Çok bacaklı yapılarda her bacağın miktarını ayrı belirle. Araç miktar uyuşmazlığı bildirirse kart üretildi sanma; doğru miktarla yeniden çağır veya net soru sor.
 Prim akışını doğru anlat: müşteri Long opsiyon için prim öder, Short opsiyondan prim alır. Mevcut short put yanına long put koruması eklemek koruma primi maliyeti getirir ve net tahsilatı azaltır; maliyeti azaltır deme. Yüksek short primini risksiz kazanç veya gerçekleşmiş müşteri kârı olarak sunma.
@@ -57,7 +58,7 @@ const labels: Record<string, string> = {
   get_workspace_context: 'Seçili dosya terminal kayıtlarından okunuyor…',
   analyze_selected_position: 'Kayıtlı primle seçili pozisyon analiz ediliyor…',
   analyze_position: 'Avrupa tipi pozisyonun tarih ve risk haritası hesaplanıyor…',
-  get_market_context: 'Terminal piyasa verileri okunuyor…', price_option: 'Terminal motorunda fiyatlanıyor…',
+  get_market_context: 'Terminal piyasa verileri okunuyor…', price_option: 'Terminal motorunda fiyatlanıyor…', price_selected_option: 'Seçili işlem terminal motorunda fiyatlanıyor…',
   find_options: 'Hedef prime uygun alternatifler taranıyor…', compare_strategies: 'Pozisyonlar ve senaryolar karşılaştırılıyor…',
   research_diagnostic: 'Yöntem tutarsızlığı için kaynaklar inceleniyor…',
 };
@@ -72,7 +73,7 @@ export async function runAssistant(input: RunInput): Promise<{ contents: Content
   const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   if (!/^gemini-[a-z0-9.-]+$/.test(model)) throw new Error('Asistan modeli yapılandırması geçersiz.');
   const ai = new GoogleGenAI({ apiKey });
-  let modelCalls = 0, retries = 0;
+  let modelCalls = 0, retries = 0, repairMalformedCall = false;
   const countCall = async () => {
     input.signal.throwIfAborted();
     if (modelCalls >= 6) throw new Error('Bu isteğin model çağrısı sınırına ulaşıldı; gelen kartlarla devam edin.');
@@ -136,7 +137,7 @@ export async function runAssistant(input: RunInput): Promise<{ contents: Content
     await countCall();
     const response = await generate({ model, contents,
       config: { systemInstruction: ASSISTANT_SYSTEM, tools: [{ functionDeclarations: toolDeclarations }],
-        toolConfig: { functionCallingConfig: { mode: round === 4 ? FunctionCallingConfigMode.NONE : FunctionCallingConfigMode.VALIDATED } },
+        toolConfig: { functionCallingConfig: { mode: round === 4 ? FunctionCallingConfigMode.NONE : repairMalformedCall ? FunctionCallingConfigMode.ANY : FunctionCallingConfigMode.VALIDATED } },
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }, maxOutputTokens: 8192,
         abortSignal: input.signal, httpOptions: { timeout: 20000, retryOptions: { attempts: 1 } } },
     });
@@ -144,11 +145,13 @@ export async function runAssistant(input: RunInput): Promise<{ contents: Content
     if (finish === 'MALFORMED_FUNCTION_CALL' && retries < 1 && modelCalls < 6) {
       // Nothing from a malformed response is executed or retained. Share the one retry budget.
       retries++;
+      repairMalformedCall = true;
       input.emit({ type: 'status', text: 'Asistan hesaplama isteğini tamamlayamadı; bir kez yeniden deneniyor…' });
       await delay(1000, undefined, { signal: input.signal });
       round--;
       continue;
     }
+    repairMalformedCall = false;
     const modelContent = response.candidates?.[0]?.content;
     if (!modelContent?.parts?.length) throw new Error('Asistan yanıt oluşturamadı. İsteği daha kısa ifade ederek tekrar deneyin.');
     if (finish && !['STOP', 'MAX_TOKENS'].includes(finish)) {
