@@ -43,7 +43,7 @@ const { validateOption } = load('src/lib/assistant/validation.ts');
 const { createToolExecutor } = load('src/lib/assistant/tools.ts');
 const screen = dataset.fixture.screen;
 const market = dataset.fixture.market;
-const option = { type: 'Put', position: 'Short', contractSize: 10 };
+const option = { product: screen.product, strike: screen.strike, expiryDate: screen.expiryDate, tradeDate: screen.tradeDate, basis: screen.basis, type: 'Put', position: 'Short', contractSize: 10 };
 function executor(screenPatch = {}, marketPatch = {}) {
   const artifacts = []; let researchCalls = 0;
   const execute = createToolExecutor({ ...screen, ...screenPatch }, 'Müşteri put satışını fiyatla', {
@@ -74,16 +74,15 @@ test('E12/E13/E15: each manual assumption is rejected independently, even manual
     assert.throws(() => quoteOption({ ...option, ...override }, screen, market));
   }
 });
-test('E14: inherited manual modes cannot price even when terminal data exists', async () => {
+test('E14: independent chat pricing always uses terminal data despite manual screen modes', async () => {
   for (const patch of [{ manualSpot: true }, { manualVol: true }]) {
     const f = executor(patch);
-    for (const [name, args] of [['price_option', option], ['get_market_context', {}],
-      ['find_options', { option, target: 2, unit: 'pct_spot' }]]) {
-      const result = await f.execute(name, args);
-      assert.ok(result.error, name); assert.equal(f.artifacts.length, 0);
-    }
+    const result = await f.execute('price_option', option);
+    assert.ok(result.quote); assert.equal(result.quote.inputs.manualVol, false);
+    assert.equal(result.quote.inputs.spot, market.spot);
   }
 });
+
 test('E15: tool injection fails without quote artifact', async () => {
   const f = executor();
   const probe = dataset.cases.find(c => c.id === 'E15').tool_probes[0];

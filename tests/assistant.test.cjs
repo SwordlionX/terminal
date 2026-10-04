@@ -47,6 +47,7 @@ const context = { product: 'XAU', spot: 100, strike: 100, rate: 5, lease: 1, vol
 const surface = { symbol: 'GC', spot: 100, fetchedISO: '2026-01-01', builtWithR: .05, impliedLeaseRate: .01,
   expiries: [{ days: 90, date: '2026-04-01', points: [{ m: .65, iv: .2 }, { m: 1.4, iv: .2 }] }] };
 const market = { product: 'XAU', spot: 100, spotSource: 'Terminal test fixture', spotAt: '2026-01-01T00:00:00Z', surface, surfaceSource: 'cme' };
+const terms = { product: 'XAU', strike: 100, expiryDate: '2026-04-01', tradeDate: '2026-01-01', basis: 365 };
 const near = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) <= tolerance, `${a} vs ${b}`);
 const quote = (o = {}, c = context, m = market) => quoteOption({ type: 'Put', position: 'Short', ...o }, c, m);
 
@@ -58,7 +59,7 @@ test('explicit natural-language market overrides cannot become a silent automati
   const execute = createToolExecutor(context, '10 ons put fiyatla; manuel spot 100, faiz yüzde 2 olsun.', {
     market: async () => { reads++; return market; }, artifact: a => artifacts.push(a), research: async () => { throw new Error('no research'); }, signal: new AbortController().signal,
   });
-  const result = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  const result = await execute('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: 10 });
   assert.ok(result.error); assert.equal(artifacts.length, 0); assert.equal(reads, 0);
 });
 
@@ -78,7 +79,7 @@ test('ambiguous percentage cannot reach pricing or unlock diagnostic web researc
     research: async () => { researchCalls++; return { text: '', sources: [] }; }, signal: new AbortController().signal,
   });
   for (const unit of ['pct_spot', 'pct_strike']) {
-    const result = await execute('find_options', { option: { type: 'Put', position: 'Short', contractSize: 10 }, target: 5, unit });
+    const result = await execute('find_options', { option: { ...terms, type: 'Put', position: 'Short', contractSize: 10 }, target: 5, unit });
     assert.equal(result.clarificationRequired, true);
     assert.match(result.error, /spot nominali mi kullanım fiyatı nominali mi/);
   }
@@ -122,13 +123,13 @@ test('screen quantity cannot replace a single explicit user quantity or omitted 
     research: async () => { throw new Error('not allowed'); }, signal: new AbortController().signal,
   });
   for (const contractSize of [undefined, 1, 100]) {
-    const option = { type: 'Put', position: 'Short', ...(contractSize === undefined ? {} : { contractSize }) };
+    const option = { ...terms, type: 'Put', position: 'Short', ...(contractSize === undefined ? {} : { contractSize }) };
     assert.equal((await execute('price_option', option)).clarificationRequired, true);
     assert.equal((await execute('find_options', { option, target: 10, unit: 'total_usd' })).clarificationRequired, true);
     assert.equal((await execute('compare_strategies', { horizon: 'expiry', strategies: [{ label: 'Mevcut', legs: [{ option }] }] })).clarificationRequired, true);
   }
   assert.equal(marketCalls, 0); assert.equal(artifacts.length, 0);
-  const correct = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  const correct = await execute('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: 10 });
   assert.equal(correct.quote.inputs.contractSize, 10);
   near(correct.quote.premiumTotal, correct.quote.premiumPerUnit * 10);
 });
@@ -150,8 +151,8 @@ test('multi-leg hedge can use a different protection ratio without changing the 
     signal: new AbortController().signal,
   });
   const result = await execute('compare_strategies', { horizon: 'expiry', strategies: [{ label: 'Kısmi koruma', legs: [
-    { option: { type: 'Put', position: 'Short', contractSize: 10 } },
-    { option: { type: 'Put', position: 'Long', contractSize: 5, strike: 90 } },
+    { option: { ...terms, type: 'Put', position: 'Short', contractSize: 10 } },
+    { option: { ...terms, type: 'Put', position: 'Long', contractSize: 5, strike: 90 } },
   ] }] });
   assert.equal(result.error, undefined);
   assert.deepEqual(Array.from(artifacts[0].results[0].quotes, q => q.inputs.contractSize), [10, 5]);
@@ -251,8 +252,8 @@ test('repeated equivalent tool arguments reuse one calculation and one market sn
   let marketCalls = 0; const artifacts = [];
   const execute = createToolExecutor(context, 'Fiyatla', { market: async () => { marketCalls++; return market; },
     artifact: a => artifacts.push(a), research: async () => { throw new Error('must not search'); }, signal: new AbortController().signal });
-  const a = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
-  const b = await execute('price_option', { contractSize: 10, position: 'Short', type: 'Put' });
+  const a = await execute('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: 10 });
+  const b = await execute('price_option', { contractSize: 10, position: 'Short', type: 'Put', ...terms });
   assert.equal(a, b); assert.equal(marketCalls, 1); assert.equal(artifacts.length, 1);
 });
 
@@ -272,7 +273,7 @@ test('diagnostic research remains isolated from pricing inputs and model convers
   const result = await execute('research_diagnostic', { topic: 'european_model' });
   assert.equal(result.deliveredAsSeparateResearchCard, true);
   assert.ok(!JSON.stringify(result).includes('999'));
-  const blocked = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  const blocked = await execute('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: 10 });
   assert.ok(blocked.error); assert.equal(artifacts.length, 1); assert.equal(artifacts[0].kind, 'research');
 });
 
@@ -313,12 +314,12 @@ function mockRunner(responses) {
     './market': { terminalMarket: async () => market }, './limits': { reserveModelCall: async () => { reservations++; } } },
     { GEMINI_API_KEY: 'test-only-key' })('src/lib/assistant/runner.ts');
   return { requests, events, reservations: () => reservations,
-    run: (message = 'Put satışını fiyatla') => runner.runAssistant({ message, context, contents: [], signal: new AbortController().signal,
-      emit: event => events.push(event) }) };
+    run: (message = 'Put satışını fiyatla', input = {}) => runner.runAssistant({ message, context, contents: [], signal: new AbortController().signal,
+      emit: event => events.push(event), ...input }) };
 }
 const toolReply = { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [
-  { functionCall: { name: 'price_option', args: { type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }, thoughtSignature: 'keep-this-signature' },
-] } }], functionCalls: [{ name: 'price_option', args: { type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }] };
+  { functionCall: { name: 'price_option', args: { ...terms, type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }, thoughtSignature: 'keep-this-signature' },
+] } }], functionCalls: [{ name: 'price_option', args: { ...terms, type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }] };
 const finalReply = { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ text: 'Motor kartı hazır.' }] } }], text: 'Motor kartı hazır.' };
 
 test('manual override refusal is deterministic, explicit and consumes no provider calls', async () => {
@@ -446,7 +447,7 @@ test('target search remains available when the active strike is outside the curv
     signal: new AbortController().signal,
   });
   const target = quote({ strike: 104 }).premiumPctSpot;
-  const result = await execute('find_options', { option: { type: 'Put', position: 'Short', contractSize: 10 }, target, unit: 'pct_spot', minStrike: 80, maxStrike: 120 });
+  const result = await execute('find_options', { option: { ...terms, type: 'Put', position: 'Short', contractSize: 10 }, target, unit: 'pct_spot', minStrike: 80, maxStrike: 120 });
   assert.equal(result.reached, true); assert.equal(artifacts.length, 1);
 });
 
@@ -470,14 +471,14 @@ test('selected barrier context is validated and cannot silently produce a vanill
   const execute = createToolExecutor(screen, 'Ekrandaki 10 ons işlemi fiyatla.', {
     market: async () => market, artifact: a => artifacts.push(a), research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
   });
-  const omitted = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  const omitted = await execute('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: 10 });
   assert.match(omitted.error, /bariyerli işlem/); assert.equal(artifacts.length, 0);
-  const correct = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10, barrier });
+  const correct = await execute('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: 10, barrier });
   assert.equal(correct.quote.barrier.level, 80); near(correct.quote.premiumTotal, quote({ barrier, contractSize: 10 }).premiumTotal);
   const vanilla = createToolExecutor(screen, '10 ons bariyersiz vanilya fiyatını da göster.', {
     market: async () => market, artifact: () => {}, research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
   });
-  const separate = await vanilla('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  const separate = await vanilla('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: 10 });
   assert.equal(separate.quote.barrier, undefined);
 });
 
@@ -512,4 +513,81 @@ test('selected-ticket tool rejects manual assumptions, changed quantity and reco
   })('price_selected_option', {});
   assert.ok(recorded.error);
   assert.equal(reads, 0);
+});
+
+test('missing independent trade terms never inherit a complete open ticket', async () => {
+  let reads = 0; const artifacts = [];
+  const execute = createToolExecutor({ ...context, type: 'Put', position: 'Short' }, 'Yeni işlem fiyatla.', {
+    market: async () => { reads++; return market; }, artifact: a => artifacts.push(a),
+    research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
+  });
+  const complete = { ...terms, type: 'Put', position: 'Short', contractSize: 10 };
+  for (const field of ['product', 'type', 'position', 'contractSize', 'strike', 'expiryDate']) {
+    const incomplete = { ...complete }; delete incomplete[field];
+    const result = await execute('price_option', incomplete);
+    assert.equal(result.clarificationRequired, true, field);
+  }
+  assert.equal((await execute('price_selected_option', {})).clarificationRequired, true);
+  assert.equal((await execute('get_market_context', {})).clarificationRequired, true);
+  assert.equal(reads, 0); assert.equal(artifacts.length, 0);
+});
+
+test('independent pricing ignores the page product, barrier, dates and manual market modes', async () => {
+  const request = { ...terms, type: 'Put', position: 'Short', contractSize: 10 };
+  const screens = [context, { ...context, product: 'XAG', strike: 999, contractSize: 888, expiryDate: '2040-01-01',
+    tradeDate: '2000-01-01', basis: 360, barrier: { variant: 'uo', level: 200 }, manualSpot: true, manualVol: true }];
+  const quotes = [];
+  for (const screen of screens) {
+    const execute = createToolExecutor(screen, 'XAU 10 ons müşteri put satışını fiyatla.', {
+      market: async product => { assert.equal(product, 'XAU'); return market; }, artifact() {},
+      research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
+    });
+    const result = await execute('price_option', request);
+    assert.equal(result.error, undefined); quotes.push(result.quote);
+  }
+  near(quotes[0].premiumTotal, quotes[1].premiumTotal);
+  assert.equal(quotes[1].barrier, undefined); assert.equal(quotes[1].inputs.basis, 365);
+  assert.equal(quotes[1].inputs.contractSize, 10); assert.equal(quotes[1].inputs.tradeDate, terms.tradeDate);
+});
+
+test('screen access is explicit and excludes negated requests', () => {
+  const { requestsScreenContext } = load('src/lib/assistant/policy.ts');
+  for (const s of ['Ekrandaki işlemi fiyatla.', 'Seçili müşteri dosyasını oku.', 'Bu ekranı incele.', 'Ekranı oku.']) assert.equal(requestsScreenContext(s), true, s);
+  for (const s of ['Bir fiyat al.', 'Altın fiyatla.', 'Müşteri dosyası istiyorum.', 'Ekrandaki değerleri kullanma; başka işlem istiyorum.']) assert.equal(requestsScreenContext(s), false, s);
+});
+
+test('generic price requests ask for a new ticket with zero provider calls', async () => {
+  const f = mockRunner([toolReply]);
+  const result = await f.run('Kanka, bir fiyat al.', { contents: [{ role: 'model', parts: [{ text: 'Old customer and ticket' }] }] });
+  assert.equal(result.modelCalls, 0); assert.equal(f.requests.length, 0);
+  assert.match(f.events[0].text, /Altın mı gümüş mü/);
+  assert.equal(result.contents.length, 2); assert.ok(!JSON.stringify(result.contents).includes('Old customer'));
+});
+
+test('model does not receive screen defaults until asked, and page changes keep the chat history', async () => {
+  const f = mockRunner([finalReply]);
+  const first = await f.run('Gümüşte hangi vadeler var?');
+  const user = f.requests[0].contents[0].parts[0].text;
+  assert.ok(!user.includes('"strike":100')); assert.ok(!user.includes('"product":"XAU"'));
+  assert.ok(!user.includes('2026-04-01'));
+  await f.run('Aynı konuşmadan devam edelim.', { contents: first.contents, context: { ...context, product: 'XAG', strike: 999 } });
+  assert.equal(f.requests[1].contents[0].parts[0].text, user);
+  const selected = mockRunner([finalReply]);
+  await selected.run('Ekrandaki seçili yeni işlemi fiyatla.');
+  assert.ok(selected.requests[0].contents[0].parts[0].text.includes('"strike":100'));
+});
+
+test('named customer access works from pricing but cannot choose an unsolicited screen customer', async () => {
+  let reads = 0; const artifacts = [];
+  const deps = { market: async () => market, artifact: a => artifacts.push(a),
+    research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
+    customerFile: async query => { reads++; return { matches: [{ id: 'c1', name: query }], truncated: false,
+      snapshot: { area: 'customers', observedAt: '2026-10-04', customer: { id: 'c1', name: query }, trades: [], totalTrades: 0, truncated: false } }; } };
+  const unspecified = createToolExecutor(context, 'Müşteri dosyasını oku.', deps);
+  assert.equal((await unspecified('get_customer_file', { query: 'Ahmet' })).clarificationRequired, true);
+  assert.equal((await unspecified('get_workspace_context', {})).clarificationRequired, true);
+  assert.equal(reads, 0);
+  const explicit = createToolExecutor(context, 'Ahmet müşteri dosyasını oku.', deps);
+  const result = await explicit('get_customer_file', { query: 'Ahmet' });
+  assert.equal(result.customer.name, 'Ahmet'); assert.equal(reads, 1); assert.equal(artifacts[0].kind, 'workspace');
 });

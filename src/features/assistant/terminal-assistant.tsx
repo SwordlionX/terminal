@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { useShallow } from 'zustand/react/shallow';
 import { ArrowUp, Sparkles, Square, RotateCcw, LockKeyhole, X, ChevronRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useWorkspace } from '@/store/workspace';
@@ -10,7 +9,6 @@ import { useAnalysisDraft } from '@/store/analysis-draft';
 import { areaLabels, workspaceArea } from '@/lib/workspace';
 import { useMarketData } from '@/store/marketData';
 import type { AssistantArtifact, AssistantEvent, ScreenContext } from '@/lib/assistant/types';
-import { MANUAL_PRICING_BLOCKED } from '@/lib/assistant/policy';
 
 interface Message { id: number; role: 'user' | 'assistant'; text: string; artifacts: AssistantArtifact[]; error?: string }
 interface Availability { ready: boolean; accessRequired: boolean }
@@ -19,10 +17,10 @@ const ResultCard = dynamic(() => import('./result-cards').then(mod => mod.Result
 });
 const iconButton = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white/5 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300';
 const suggestions = [
-  { title: 'Pozisyonun haritasını gör', text: 'Ekranda seçili opsiyon ve müşteri yönünü koruyarak fiyat ve tarih kâr zarar haritasını, delta ve gamma riskini göster. Avrupa tipi opsiyon için vade öncesi kullanım varsayma.' },
-  { title: 'Bir fiyat al', text: 'Ekrandaki ürün, opsiyon tipi, müşteri yönü, miktar ve vade ile fiyatla.' },
-  { title: 'Hedef primi bul', text: 'Ekrandaki ürün, opsiyon tipi, müşteri yönü, miktar ve vade için spot nominalinin %5’i kadar prim sağlayan strike’ı bul.' },
-  { title: 'Alternatifleri karşılaştır', text: 'Ekrandaki strike ile müşteri put satışı ve aynı vadede daha düşük strike put alımı eklenmiş yapıyı karşılaştır. Maliyet ve vade sonu grafiğini göster.' },
+  { title: 'Bir fiyat al', text: 'Yeni bir opsiyon fiyatlamak istiyorum. Gerekli işlem koşullarını sor.' },
+  { title: 'Hedef primi bul', text: 'Bir prim hedefi için opsiyon bulmak istiyorum. Gerekli koşulları ve hedefimi sor.' },
+  { title: 'Müşteri dosyasını incele', text: 'Bir müşterinin işlemlerini incelemek istiyorum. Hangi müşteri olduğunu sor.' },
+  { title: 'Ekrandaki işlemi fiyatla', text: 'Ekrandaki seçili yeni işlemi, varsa bariyer yapısını da koruyarak terminal motorunda fiyatla.' },
 ];
 
 export function TerminalAssistant({ open, onOpenChange, onApplied }: {
@@ -33,8 +31,6 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
   const prompt = useWorkspace(s => s.prompt);
   const active = selection?.pathname === pathname ? selection : null;
   const area = workspaceArea(pathname);
-  const scope = JSON.stringify({ area, customerId: active?.customerId, tradeIds: active?.tradeIds });
-  const lastScope = useRef(scope);
   const lastPrompt = useRef<number | null>(null);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -78,8 +74,6 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
   const scrollContent = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const following = useRef(true);
-  const md = useMarketData(useShallow(s => ({ product: s.product, contractSize: s.contractSize,
-    tradeDate: s.tradeDate, expiryDate: s.expiryDate, manualSpot: s.manualSpot, manualVol: s.manualVol })));
   useEffect(() => {
     if (!open || !messages.length) return;
     if (following.current) {
@@ -134,8 +128,6 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
     let complete = false, failed = false;
     try {
       const { product, spot, strike, rate, lease, vol, manualVol, manualSpot, contractSize, basis, tradeDate, expiryDate } = useMarketData.getState();
-      const requestScope = JSON.stringify([scope, product, strike, contractSize, basis, tradeDate, expiryDate, useAnalysisDraft.getState().quoteType, useAnalysisDraft.getState().quotePosition, area === 'pricing' ? useAnalysisDraft.getState().quoteBarrier : null]);
-      if (lastScope.current !== requestScope) { conversation.current = undefined; lastScope.current = requestScope; }
       const context = { product, spot, strike, rate, lease, vol, manualVol, manualSpot, contractSize, basis, tradeDate, expiryDate } as ScreenContext;
       context.type = useAnalysisDraft.getState().quoteType;
       context.position = useAnalysisDraft.getState().quotePosition;
@@ -180,7 +172,6 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
     } }
   };
   const reset = () => { if (busy) return; setMessages([]); conversation.current = undefined; setDraft(''); setAnnouncement('Yeni sohbet açıldı.'); setHasNewResponse(false); following.current = true; composer.current?.focus(); };
-  const days = Math.round((Date.parse(md.expiryDate) - Date.parse(md.tradeDate)) / 86400000);
 
   return <>
     <aside ref={panel} tabIndex={-1} id="terminal-assistant-panel" aria-label="Terminal asistanı" hidden={!open} className="assistant-dock">
@@ -193,13 +184,11 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
           </div>
         </header>
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 bg-white/[0.025] px-5 py-2.5 text-xs text-slate-400">
-          <span className="flex items-center gap-1.5 text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />{md.product}</span>
-          {!active?.customerId && <><span>{Number.isFinite(days) && days > 0 ? `${days} gün` : 'Vade kontrol edilmeli'}</span><span>{md.contractSize.toLocaleString('tr-TR')} {md.product === 'XAU' || md.product === 'XAG' ? 'ons' : 'adet'}</span>
-          <span className="ml-auto text-slate-400">Aktif fiyatlama koşulları</span></>}
+          <span className="flex items-center gap-1.5 text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />Senin talebinle</span>
+          <span className="ml-auto text-slate-400">XAU / XAG</span>
         </div>
-        <div className="assistant-context"><span>SEÇİLİ BAĞLAM</span><strong>{active?.label ?? areaLabels[area]}</strong><small>{active?.tradeIds?.length ? `${active.tradeIds.length} kayıt · sunucudan doğrulanır` : active?.customerId ? "Müşteri dosyası · kayıtlı işlemler" : "Güncel işlem koşulları"}</small></div>
+        <div className="assistant-context"><span>AÇIK EKRAN</span><strong>{active?.label ?? areaLabels[area]}</strong><small>Yalnız okumamı istediğinde kullanırım.</small></div>
         <p className="shrink-0 border-b border-white/5 px-5 py-2 text-xs leading-relaxed text-slate-400">Terminal eğrisi · Manuel piyasa girdisi kullanılmaz.</p>
-        {(md.manualSpot || md.manualVol) && <p role="alert" className="shrink-0 border-b border-amber-300/15 bg-amber-300/5 px-5 py-2 text-xs leading-relaxed text-amber-200">{MANUAL_PRICING_BLOCKED}</p>}
         <div ref={scrollArea} onScroll={e => {
           const area = e.currentTarget;
           following.current = area.scrollHeight - area.scrollTop - area.clientHeight < 96;
@@ -209,7 +198,7 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
           {!messages.length && <div className="py-7">
             <p className="text-xs font-semibold tracking-[0.2em] text-cyan-200">TERMINAL X</p>
             <h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">Birlikte değerlendirelim.</h2>
-            <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-400">Hedefini yaz veya ekrandan bir pozisyon seç.</p>
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-400">Ne yapmak istediğini yaz. Eksik işlem bilgilerini sana sorarım.</p>
             <div className="mt-7 space-y-2">{(active?.customerId ? [
               { title: 'Seçili dosyayı özetle', text: 'Seçili müşteri dosyasını terminal kayıtlarından oku. Açık işlemler, yaklaşan vadeler ve teminat durumunu özetle. Teminat prosedürünü model K/Z ile karıştırma.' },
               ...(active.tradeIds?.length ? [{ title: 'Seçili pozisyonu analiz et', text: 'Seçili kayıtlı pozisyonun geçmiş primini kullanarak fiyat ve tarih K/Z haritasını, delta ve gamma riskini göster.' }] : []),

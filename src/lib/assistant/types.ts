@@ -80,6 +80,7 @@ export interface ScenarioResult {
   note: string;
 }
 export type AssistantArtifact =
+  | { kind: 'customers'; matches: { id: string; name: string }[]; truncated: boolean }
   | { kind: 'workspace'; snapshot: WorkspaceSnapshot }
   | { kind: 'position_analysis'; result: PositionAnalysis }
   | { kind: 'quote'; quote: Quote }

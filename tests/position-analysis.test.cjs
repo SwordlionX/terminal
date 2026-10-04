@@ -27,7 +27,7 @@ const screen = { product: 'XAU', spot: 100, strike: 100, rate: 88, lease: -50, v
 const surface = { symbol: 'GC', spot: 100, fetchedISO: '2026-01-01', builtWithR: .04, impliedLeaseRate: .01,
   expiries: [{ days: 90, date: '2026-04-01', points: [{ m: .65, iv: .2 }, { m: 1.45, iv: .2 }] }, { days: 181, date: '2026-07-01', points: [{ m: .65, iv: .22 }, { m: 1.45, iv: .22 }] }] };
 const market = { product: 'XAU', spot: 100, spotSource: 'Terminal fixture', spotAt: '2026-01-01T00:00:00Z', surface, surfaceSource: 'cme' };
-const leg = (changes = {}, premium = 5) => ({ option: { type: 'Put', position: 'Short', strike: 100, expiryDate: '2026-04-01', contractSize: 10, ...changes }, entryPremiumPerUnit: premium });
+const leg = (changes = {}, premium = 5) => ({ option: { product: 'XAU', tradeDate: '2026-01-01', basis: 365, type: 'Put', position: 'Short', strike: 100, expiryDate: '2026-04-01', contractSize: 10, ...changes }, entryPremiumPerUnit: premium });
 const near = (a, b, eps = 1e-7) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
 
 test('European expiry grid uses intrinsic payoff; short put loss is finite and short call unbounded', () => {

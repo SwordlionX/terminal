@@ -2,11 +2,31 @@ import type { MarketSnapshot, PremiumUnit, ScreenContext } from './types';
 
 export class PremiumBasisClarification extends Error {}
 export class TradeQuantityClarification extends Error {}
+export class TradeTermsClarification extends Error {}
+
+/** Screen data is opt-in, never a default for a free-standing conversation. */
+export function requestsScreenContext(message: string): boolean {
+  const text = message.normalize('NFKC').toLocaleLowerCase('tr-TR');
+  if (/(?:ekran|seçili)[^.;\n]{0,65}(?:kullanma|alma|okuma|bakma|devralma|istemiyorum)/u.test(text)) return false;
+  return /ekrandaki|ekrandan|ekranı\s+(?:oku|incele)|ekranda\s+(?:seçili|açık|görünen|gördüğün)|(?:bu|o|mevcut|açık)\s+ekran|seçili\s+(?:müşteri|dosya|kayıt|pozisyon|işlem|opsiyon)/u.test(text);
+}
+
+export function valuationToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+export const ASSISTANT_CONVERSATION_SCOPE = 'request-led-v2';
+
+export function genericPricingQuestion(message: string): string | undefined {
+  const text = message.normalize('NFKC').toLocaleLowerCase('tr-TR').trim().replace(/[.!?,]+$/u, '').replace(/^(?:kanka|lütfen)\s*,?\s*/u, '');
+  if (!/^(?:bana\s+)?(?:bir fiyat (?:al|ver)|fiyatla|(?:bir\s+)?opsiyon fiyatla|(?:yeni\s+)?bir opsiyon fiyatlamak istiyorum(?:\. gerekli işlem koşullarını sor)?)$/u.test(text)) return;
+  return 'Hangi işlemi fiyatlayalım? Altın mı gümüş mü, call mu put mu, müşteri alacak mı satacak mı? Ons miktarını, kullanım fiyatını ve vadeyi de belirtir misin?';
+}
 
 /** Reject omissions and conflicts with a single explicit quantity; do not infer hedge ratios. */
 export function assertTradeQuantity(quantity: number | undefined, message: string, priorUserMessages: string[] = []) {
   if (quantity === undefined)
-    throw new TradeQuantityClarification('Her opsiyon bacağında contractSize zorunlu. Açık kullanıcı miktarını kullan; yalnız miktar belirtilmemişse ekran miktarını açıkça gönder.');
+    throw new TradeQuantityClarification('İşlem miktarı eksik. Kaç ons olduğunu kullanıcıya sor; ekran miktarını kendiliğinden alma.');
   const quantitiesIn = (text: string) => [...text.matchAll(/(?<![\d.,])(\d+(?:[.,]\d+)?)\s*(?:ons|adet)(?!\p{L})/giu)]
     .map(m => m[1]).map(s => /^\d+[.,]\d{3}$/.test(s) ? NaN : Number(s.replace(',', '.')));
   if (/(?:ons|adet)(?:\s+\p{L}+){0,3}\s+(?:istemiyor\p{L}*|değil|olmasın|kullanma|alma)(?!\p{L})/iu.test(message))

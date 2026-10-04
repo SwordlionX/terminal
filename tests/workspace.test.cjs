@@ -97,3 +97,18 @@ test('a missing spot cannot silently advertise a verified safe margin status', a
   assert.match(result.margin.dataWarning, /giriş spotu/);
   assert.equal(result.margin.totalMtmLoss, 0); // Original procedure fallback, now explicitly identified.
 });
+
+test('customer name lookup disambiguates without opening files and returns only sanitized matches', async () => {
+  let fileReads = 0;
+  const customers = [{ ...customer, companyName: 'Ahmet Yılmaz' }, { ...customer, id: 'c2', companyName: 'Ahmet Kaya' }];
+  const reader = modules({ '@/services/mockDb': { db: { customers: { findMany: async () => customers } } },
+    './workspace-context': { resolveWorkspace: async ({ customerId }) => { fileReads++; return { snapshot: { customer: { id: customerId }, trades: [] } }; } },
+  })('src/lib/assistant/customer-file.ts').readCustomerFile;
+  const partial = await reader('Ahmet', screen);
+  assert.equal(partial.matches.length, 2); assert.equal(partial.snapshot, undefined); assert.equal(fileReads, 0);
+  assert.ok(!JSON.stringify(partial).includes('PRIVATE'));
+  const exact = await reader('Ahmet Yılmaz', screen);
+  assert.equal(exact.snapshot.customer.id, 'c1'); assert.equal(fileReads, 1);
+  const missing = await reader('Bilinmeyen', screen);
+  assert.equal(missing.matches.length, 0); assert.equal(fileReads, 1);
+});

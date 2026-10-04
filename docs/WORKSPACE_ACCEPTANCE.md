@@ -43,3 +43,11 @@ Vercel Preview ortamında yalnız `codex/terminal-bloomberg-v1` için asistan su
 `eae9186` yayını üzerinde aynı bariyerli istek bir kez yeniden denendi ve tamamlandı: XAG müşteri satışı put, 10 ons, strike 60,37, vade 2027-01-02, UO bariyer 66,41. Asistan kartı ana ekranla aynı **31,26 USD**, **3,1256 USD/ons**, **%5,18 spot nominali** verdi; bariyer ve miktar korundu. Manuel spot/IV/faiz isteği ayrı kontrol edildi: açık eğri tutarlılığı gerekçesiyle ret, yeni fiyat kartı yok; sunucu ön kontrolü model çağrısı yapmaz. Bu tur ek Databento indirmesi yapılmadı. Başarılı tekrar ilk canlı hatayı gizlemez; bu sınırlı kabul bütün serbest metin senaryolarını kapsamaz.
 
 Canlı branch adresi: https://terminal-git-codex-terminal-bloomberg-v1-swordlionxs-projects.vercel.app/
+
+## Talep odaklı asistan — ekran varsayımları kaldırıldı
+
+Kullanıcının son talebiyle fiyatlama ekranı bir başlangıç öncülü olmaktan çıkarıldı. Bağımsız fiyat, hedef ve analiz araçları eksik ürün/yön/tip/miktar/strike/vadeyi ekrandan tamamlamaz. Hedef aramasında strike sonuç olduğu için zorunlu değildir. Değerleme tarihi belirtilmediyse İstanbul takviminde bugün, gün bazı belirtilmediyse ACT/365 kullanılır. Piyasa girdileri her zaman terminalin ilgili metal eğrisidir. Ekran koşulları modele yalnız açık ekran okuma isteğinde gönderilir; selected araçları da bu isteği sunucuda kontrol eder. Sayfa/ürün/strike değişiklikleri sohbeti sıfırlamaz. Genel "bir fiyat al" isteği önce yeni işlem bilgilerini sorar ve model çağrısı harcamaz.
+
+Müşterinin adıyla istenen dosya her sayfadan aranabilir; belirsiz eşleşmede tam adı sorulur, dosya kendiliğinden seçilmez. Özel notlar/vergi numarası modele taşınmaz. Bu istekte açıkça okunmuş dosya geçmiş primle analiz edilebilir. Yazma/emir/teminat çağrısı yetkisi eklenmedi.
+
+189 test geçti. Yeni regresyonlar: altı işlem koşulunun ayrı ayrı eksikliği, ekran okuma isteğinin olmaması/negasyonu, farklı metal ve bariyerli ekranın bağımsız fiyata etkisizliği, model mesajında ekran koşullarının gizlenmesi, sohbet devamı, adı verilmemiş müşteri dosyasının reddi ve çoklu müşteri eşleşmesinde dosyanın okunmaması. ESLint ve üretim derlemesi başarılı; gerçek dil kabulü son yayında sınırlı iki mesajla kontrol edilecek.

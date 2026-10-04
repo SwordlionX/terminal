@@ -3,6 +3,8 @@ import { reserveRequest } from '@/lib/assistant/limits';
 import { runAssistant } from '@/lib/assistant/runner';
 import { object, validateContext } from '@/lib/assistant/validation';
 import type { AssistantEvent } from '@/lib/assistant/types';
+import { validateWorkspace } from '@/lib/workspace';
+import { ASSISTANT_CONVERSATION_SCOPE, requestsScreenContext } from '@/lib/assistant/policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,9 +27,10 @@ export async function POST(request: Request) {
     const body = object(JSON.parse(raw));
     if (typeof body.message !== 'string' || !body.message.trim() || body.message.length > 4000) throw new Error('Bir ila dört bin karakterlik mesaj gerekli.');
     let context = validateContext(body.context);
-    const workspace = body.workspace === undefined ? undefined : await (await import('@/lib/assistant/workspace-context')).resolveWorkspace(body.workspace, context);
+    const selection = body.workspace === undefined ? undefined : validateWorkspace(body.workspace);
+    const workspace = selection && requestsScreenContext(body.message) ? await (await import('@/lib/assistant/workspace-context')).resolveWorkspace(selection, context) : undefined;
     if (workspace) context = workspace.screen;
-    const scope = JSON.stringify([workspace?.selection ?? null, context.product, context.strike, context.contractSize, context.tradeDate, context.expiryDate, context.basis, context.type, context.position, context.barrier]);
+    const scope = ASSISTANT_CONVERSATION_SCOPE;
     const contents = openConversation(body.conversation, scope);
     await reserveRequest();
     const controller = new AbortController();
