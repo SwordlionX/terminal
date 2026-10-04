@@ -1,0 +1,92 @@
+{
+  "at": "2026-10-04T17:39:32.172Z",
+  "model": "gemini-3.5-flash-lite",
+  "state": "passed",
+  "modelCalls": 5,
+  "scope": "Four bounded local production API cases with real Gemini and existing terminal data; no financial writes, refresh or Databento download. Names, identifiers and credentials excluded.",
+  "cases": [
+    {
+      "id": "customer_current_pnl_from_other_screen",
+      "pass": true,
+      "checks": {
+        "completed": true,
+        "noError": true,
+        "responseText": true,
+        "noExternalResearch": true,
+        "requestedCustomerRead": true,
+        "allSavedLegs": true,
+        "originalPremium": true,
+        "todayValuationAndMap": true,
+        "currentPnlUsesEntryAndMark": true
+      },
+      "modelCalls": 3,
+      "durationMs": 6697,
+      "artifactKinds": [
+        "workspace",
+        "position_analysis"
+      ],
+      "errorCount": 0,
+      "finalText": "[Müşteri/veri metni rapora kaydedilmedi.]"
+    },
+    {
+      "id": "hedge_comparison_and_combined_map",
+      "pass": true,
+      "checks": {
+        "completed": true,
+        "noError": true,
+        "responseText": true,
+        "noExternalResearch": true,
+        "correctComparison": true,
+        "protectionCostsPremium": true,
+        "combinedMap": true,
+        "historicalEntryInScenarios": true,
+        "lossBoundReduced": true,
+        "europeanContractRemains": true
+      },
+      "modelCalls": 2,
+      "durationMs": 4882,
+      "artifactKinds": [
+        "position_analysis",
+        "scenarios"
+      ],
+      "errorCount": 0,
+      "finalText": "[Müşteri/veri metni rapora kaydedilmedi.]"
+    },
+    {
+      "id": "manual_market_inputs_refused",
+      "pass": true,
+      "checks": {
+        "completed": true,
+        "noError": true,
+        "responseText": true,
+        "noExternalResearch": true,
+        "noPrice": true,
+        "explainsCurveConsistency": true,
+        "noModelCall": true
+      },
+      "modelCalls": 0,
+      "durationMs": 115,
+      "artifactKinds": [],
+      "errorCount": 0,
+      "finalText": "[Müşteri/veri metni rapora kaydedilmedi.]"
+    },
+    {
+      "id": "unspecified_price_asks_terms",
+      "pass": true,
+      "checks": {
+        "completed": true,
+        "noError": true,
+        "responseText": true,
+        "noExternalResearch": true,
+        "noPrice": true,
+        "asksTerms": true,
+        "noModelCall": true
+      },
+      "modelCalls": 0,
+      "durationMs": 92,
+      "artifactKinds": [],
+      "errorCount": 0,
+      "finalText": "[Müşteri/veri metni rapora kaydedilmedi.]"
+    }
+  ]
+}
