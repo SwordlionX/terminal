@@ -31,3 +31,15 @@ Gerçek üretim API'si, erişim kodu ve Gemini `gemini-3.5-flash-lite` ile üç 
 | Manuel spot/IV/faiz/kira | İlk tur 2 çağrıda manuel sayılar kullanılmadan otomatik fiyat kartı verilmiş, açık ret gerekçesi eksik kalmıştı. Sunucu ön kontrolü eklendi. Yalnız bu vaka yeniden çalıştırıldı: **0 model çağrısı**, fiyat kartı yok, eğri tutarlılığı gerekçesiyle açık ret. |
 
 Son durum: bu üç kabul vakası geçti. Bu sınırlı değerlendirme bütün serbest metinleri/model paraphrase'lerini doğruladığı anlamına gelmez. Önceki başarısız ilk tur raporu silinmez veya başarıya çevrilmez.
+
+## Bloomberg sidebar ve Vercel kabulü — 4 Ekim
+
+Bloomberg branch'inde sol menü, fiyatlama alt menüsü, ana fiyatlamada bariyer seçimi, sağ altta sabit asistan düğmesi ve müşteri işlem tablosu uygulandı. Meridian geliştirmesi durduruldu; bu değişiklikler aktarılmadı.
+
+182 otomatik test, ESLint ve üretim derlemesi geçti. Desktop ve 390px dar görünüm, menü açma/daraltma, bariyer açma/kapatma, eski bariyer URL'sinin ana fiyatlamaya yönlenmesi, müşteri filtreleri ve kayıt bağlantıları tarayıcıda kontrol edildi. Kabul için finansal kayıtlara yazılmadı.
+
+Vercel Preview ortamında yalnız `codex/terminal-bloomberg-v1` için asistan sunucu ayarları kaydedildi. İlk gerçek canlı fiyatlama testi `MALFORMED_FUNCTION_CALL` ile başarısız oldu. Modelin seçili işlem koşullarını tekrar üretmesini gerektirmeyen `price_selected_option` aracı ve ortak tek tekrar hakkını koruyan onarım eklendi; bozuk cevap yürütülmez.
+
+`eae9186` yayını üzerinde aynı bariyerli istek bir kez yeniden denendi ve tamamlandı: XAG müşteri satışı put, 10 ons, strike 60,37, vade 2027-01-02, UO bariyer 66,41. Asistan kartı ana ekranla aynı **31,26 USD**, **3,1256 USD/ons**, **%5,18 spot nominali** verdi; bariyer ve miktar korundu. Manuel spot/IV/faiz isteği ayrı kontrol edildi: açık eğri tutarlılığı gerekçesiyle ret, yeni fiyat kartı yok; sunucu ön kontrolü model çağrısı yapmaz. Bu tur ek Databento indirmesi yapılmadı. Başarılı tekrar ilk canlı hatayı gizlemez; bu sınırlı kabul bütün serbest metin senaryolarını kapsamaz.
+
+Canlı branch adresi: https://terminal-git-codex-terminal-bloomberg-v1-swordlionxs-projects.vercel.app/
