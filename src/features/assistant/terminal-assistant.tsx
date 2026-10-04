@@ -185,7 +185,7 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
     <aside ref={panel} tabIndex={-1} id="terminal-assistant-panel" aria-label="Terminal asistanı" hidden={!open} className="assistant-dock">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
           <div className="flex min-w-0 gap-3"><span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-200/10 min-[380px]:flex"><Sparkles size={19} className="text-cyan-200" /></span>
-            <div className="min-w-0"><h2 className="text-base font-semibold">Terminal Asistanı</h2><p className="mt-1 text-xs text-muted-foreground">Seçili bağlamı birlikte değerlendir.</p></div></div>
+            <div className="min-w-0"><h2 className="text-base font-semibold">Terminal Asistanı</h2></div></div>
           <div className="flex gap-1">
             <button onClick={reset} disabled={busy} aria-label="Yeni sohbet" title="Yeni sohbet" className={iconButton}><RotateCcw size={18} /></button>
             <button onClick={() => onOpenChange(false)} aria-label="Asistanı kapat" className={iconButton}><X size={19} /></button>
@@ -197,7 +197,7 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
           <span className="ml-auto text-slate-400">Aktif fiyatlama koşulları</span></>}
         </div>
         <div className="assistant-context"><span>SEÇİLİ BAĞLAM</span><strong>{active?.label ?? areaLabels[area]}</strong><small>{active?.tradeIds?.length ? `${active.tradeIds.length} kayıt · sunucudan doğrulanır` : active?.customerId ? "Müşteri dosyası · kayıtlı işlemler" : "Güncel işlem koşulları"}</small></div>
-        <p className="shrink-0 border-b border-white/5 px-5 py-2 text-xs leading-relaxed text-slate-400">Yalnız terminal eğrisiyle fiyatlama. Manuel piyasa varsayımları eğriyle tutarlılığı bozar.</p>
+        <p className="shrink-0 border-b border-white/5 px-5 py-2 text-xs leading-relaxed text-slate-400">Terminal eğrisi · Manuel piyasa girdisi kullanılmaz.</p>
         {(md.manualSpot || md.manualVol) && <p role="alert" className="shrink-0 border-b border-amber-300/15 bg-amber-300/5 px-5 py-2 text-xs leading-relaxed text-amber-200">{MANUAL_PRICING_BLOCKED}</p>}
         <div ref={scrollArea} onScroll={e => {
           const area = e.currentTarget;
@@ -208,14 +208,14 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
           {!messages.length && <div className="py-7">
             <p className="text-xs font-semibold tracking-[0.2em] text-cyan-200">TERMINAL X</p>
             <h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">Birlikte değerlendirelim.</h2>
-            <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-400">Hedefini veya pozisyonunu anlat. Terminal verileriyle fiyatları ve alternatifleri birlikte inceleyelim.</p>
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-400">Hedefini yaz veya ekrandan bir pozisyon seç.</p>
             <div className="mt-7 space-y-2">{(active?.customerId ? [
               { title: 'Seçili dosyayı özetle', text: 'Seçili müşteri dosyasını terminal kayıtlarından oku. Açık işlemler, yaklaşan vadeler ve teminat durumunu özetle. Teminat prosedürünü model K/Z ile karıştırma.' },
               ...(active.tradeIds?.length ? [{ title: 'Seçili pozisyonu analiz et', text: 'Seçili kayıtlı pozisyonun geçmiş primini kullanarak fiyat ve tarih K/Z haritasını, delta ve gamma riskini göster.' }] : []),
               { title: 'Koruma alternatiflerini incele', text: 'Seçili dosyayı oku ve korunması gereken pozisyon için hedge alternatiflerini değerlendir. Avrupa tipi sözleşme sona ermiş sayılmaz.' },
             ] : suggestions).map(s => <button key={s.title} onClick={() => { setDraft(s.text); composer.current?.focus(); }} className="flex min-h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left transition motion-reduce:transition-none hover:border-cyan-200/30 hover:bg-cyan-200/5 focus-visible:outline-2 focus-visible:outline-cyan-300">
               <span className="text-xs font-medium text-slate-200">{s.title}</span><ChevronRight size={15} className="text-slate-400" /></button>)}</div>
-            <p className="mt-5 text-xs leading-relaxed text-slate-400">Bu örneklerin dışında da sorabilirsin. Bütün fiyatlar Terminal X motorundan gelir.</p>
+
           </div>}
           <div className="space-y-5">{messages.map(m => <article key={m.id} className={m.role === 'user' ? 'ml-8 rounded-2xl rounded-tr-sm border border-white/10 bg-white/5 px-4 py-3' : 'space-y-3'}>
             {m.role === 'assistant' && <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-cyan-200"><Sparkles size={12} />Terminal Asistanı</p>}

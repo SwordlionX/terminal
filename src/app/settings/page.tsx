@@ -143,7 +143,7 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>USD faiz eğrisi · 90 gün · ACT/365 (%)</Label>
                 <Input readOnly value={activeServerInterest != null ? activeServerInterest.toFixed(4) : 'Veri yok'} />
-                <p className="text-[11px] text-zinc-500">CME SR1 + NY Fed SOFR endikatif proxy. Fiyatlama, seçilen vadenin iskonto faktörünü kullanır.</p>
+                <p className="text-[11px] text-zinc-500">CME / NY Fed SOFR · Endikatif proxy</p>
               </div>
               <div className="space-y-2">
                 <Label>USD/TRY Kuru</Label>
@@ -160,7 +160,7 @@ export default function SettingsPage() {
                   <p className={`text-[11px] ${rateMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{rateMsg.text}</p>
                 )}
               </div>
-              <p className="col-span-2 text-xs text-amber-500">Manuel faiz/kira/volatilite girişi eğri–fiyat tutarlılığını bozar. Metal taşıması her vade için CME/SOFR faktörlerinden türetilir; banka kira kotasyonu değildir.</p>
+              <p className="col-span-2 text-xs text-amber-500">Manuel piyasa girdileri eğri–fiyat tutarlılığını bozar.</p>
               <div className="space-y-2">
                 <Label>Gün Bazı (Basis)</Label>
                 <Select value={String(s.basis)} onValueChange={v => s.setSetting('basis', (Number(v) === 360 ? 360 : 365))}>
@@ -173,9 +173,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <Button onClick={applyToPricing} className="w-full">Fiyatlama Ekranına Uygula</Button>
-            <p className="text-[11px] text-zinc-500">
-              Gün bazı oranların gösterimini değiştirir; iskonto faktörünü ve opsiyon primini değiştirmez. USD/TRY teminat dönüşümünde kullanılır.
-            </p>
+            <details className="workspace-notes"><summary>Parametrelerin kullanımı</summary><p>Gün bazı oranların gösterimini değiştirir; iskonto faktörü ve opsiyon primi korunur. USD/TRY teminat dönüşümünde kullanılır. Metal taşıması bankanın kira kotasyonu değildir.</p></details>
           </CardContent>
         </Card>
 
@@ -202,10 +200,7 @@ export default function SettingsPage() {
                 <span className="font-mono">{RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL.toLocaleString('tr-TR')}</span>
               </div>
             </div>
-            <p className="text-[11px] text-zinc-500 mt-4">
-              Bu eşikler prosedür dokümanından gelir; değiştirilmesi gerekirse kod içinde
-              <span className="font-mono"> lib/margin/config.ts</span> güncellenir.
-            </p>
+            <p className="text-[11px] text-zinc-500 mt-4">Prosedür eşikleri · salt okunur</p>
           </CardContent>
         </Card>
       </div>
@@ -215,8 +210,8 @@ export default function SettingsPage() {
           <CardTitle>Veri Kaynağı (IV Yüzeyi)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-xs text-zinc-500">Altın ve gümüş, aynı seansın final CME futures/opsiyon settlement verisi, SOFR projeksiyonu ve settlement saatine yakın Tiingo spotuyla birlikte yenilenir. İki metal doğrulanmadan yeni sürüm devreye girmez. Final veri eksikse önceki doğrulanmış seansın tarihi açıkça gösterilir.</p>
-          <p className="text-xs text-zinc-500">GitHub otomatik yenilemesinin etkinleştirilmesi ayrıca kararlaştırılacak. Yenileme butonu bağlı GitHub işinin sonucunu izler; önizlemede devre dışıdır.</p>
+          <p className="text-xs text-zinc-500">Final seans · XAU/XAG birlikte güncellenir.</p>
+          <details className="workspace-notes"><summary>Veri güncelleme yöntemi</summary><p>CME final futures/opsiyon settlement, SOFR projeksiyonu ve settlement saatine yakın Tiingo spotu ortak paket olarak doğrulanır. Paket eksikse önceki doğrulanmış seans korunur.</p><p>Yenileme bağlı GitHub işinin sonucunu izler; önizlemede devre dışıdır. Otomatik yenilemenin etkinleştirilmesi ayrıca kararlaştırılacak.</p></details>
           {dsItems.map(item => (
             <div key={item.product} className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">
               <div className="min-w-[180px]">

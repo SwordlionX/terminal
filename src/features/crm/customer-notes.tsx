@@ -14,7 +14,7 @@ export function CustomerNotes({ initialNotes }: { customerId: string, initialNot
           </div>
           <div className="bg-secondary/30 p-3 rounded-md border border-dashed">
             <p className="text-muted-foreground text-xs mb-1">Belgeler</p>
-            <p className="text-muted-foreground italic">Sözleşme / ISDA / uygunluk formu yükleme özelliği yol haritasında (henüz aktif değil).</p>
+            <p className="text-muted-foreground italic">Belge yükleme henüz kullanılamıyor.</p>
           </div>
         </div>
       </CardContent>

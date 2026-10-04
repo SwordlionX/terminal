@@ -88,7 +88,7 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
           {renderGroup("Bu Ay", grouped["Bu Ay"], "text-emerald-400 border-emerald-500/50")}
           {renderGroup('Daha Sonra', grouped['Daha Sonra'], 'text-muted-foreground border-border')}
         </div>
-        <p className="text-xs text-muted-foreground mt-4">Gösterilen nominal giriş spotu × miktardır. Vadesi geçen kayıtlar sonucu bekleyen işlemlerdir.</p>
+        <p className="text-xs text-muted-foreground mt-4">Nominal: giriş spotu × miktar.</p>
       </CardContent>
     </Card>
   );

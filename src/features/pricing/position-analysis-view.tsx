@@ -31,7 +31,7 @@ export function PositionCurve({ results, dateIndex = 0 }: { results: PositionAna
         return <g key={index}><path d={d} fill="none" stroke={colors[index % colors.length]} strokeWidth="2.4" />{values.filter(p => p.y !== null).map(p => <circle key={p.x} cx={x(p.x)} cy={y(p.y!)} r="2.5" fill={colors[index % colors.length]}><title>{results[index].label} · {analysisNumber(p.x)} · {analysisMoney(p.y!)}</title></circle>)}</g>;
       })}
     </svg></div>
-    <p className="analysis-footnote">Grafikte taranan aralık teorik maksimum kayıp değildir. Kapsam dışı noktalarda çizgi kesilir.</p>
+    <p className="analysis-footnote">Model senaryosu · Tarama aralığı azami kaybı göstermez.</p>
   </div>;
 }
 
@@ -59,8 +59,8 @@ export function PositionAnalysisView({ result, compact = false }: { result: Posi
           </td>;
         })}</tr>)}
       </tbody></table></div>
-      <p className="analysis-footnote">{metric === 'pnl' ? 'Yüzde bazı: ' + analysisMoney(result.nominal) + ' referans nominal. ' : `Delta: ${unit}. Gamma: ${unit} / (USD/birim). Motorun yerel Greeks değerleri; her senaryoda smile yeniden okunur. `}{result.missingCells > 0 ? `${result.missingCells} hücrede eğri kapsamı yetersiz; fiyat uydurulmadı.` : 'Bütün hücreler mevcut motorla hesaplandı.'}</p>
+      <p className="analysis-footnote">{metric === 'pnl' ? 'Yüzde bazı: ' + analysisMoney(result.nominal) + ' referans nominal. ' : `Delta: ${unit} · Gamma: ${unit} / (USD/birim). `}{result.missingCells > 0 ? `${result.missingCells} hücre eğri kapsamı dışında.` : ''}</p>
     </section>
-    <details className="analysis-assumptions"><summary>Veri, işlem bacakları ve senaryo varsayımları</summary><p>{result.quotes[0].product} · Spot: {result.quotes[0].spotSource} · Eğri: {result.quotes[0].surfaceAt} · Değerleme: {result.valuationDate}</p><ul>{result.notes.map((n, i) => <li key={i}>{n}</li>)}</ul><div className="analysis-table-scroll"><table><thead><tr><th>Yön / tip</th><th>Miktar</th><th>Strike</th><th>Vade</th><th>Model primi</th><th>K/Z referansı · USD/birim</th></tr></thead><tbody>{result.quotes.map((q, i) => <tr key={i}><td>{q.position} {q.type}</td><td>{analysisNumber(q.inputs.contractSize)} {unit}</td><td>{analysisNumber(q.inputs.strike)}</td><td>{q.inputs.expiryDate}</td><td>{analysisMoney(q.premiumTotal)}</td><td>{analysisNumber(result.entryPremiums[i], 4)}</td></tr>)}</tbody></table></div></details>
+    <details className="analysis-assumptions"><summary>İşlem ve model ayrıntıları</summary><p>{result.quotes[0].product} · Spot: {result.quotes[0].spotSource} · Eğri: {result.quotes[0].surfaceAt} · Değerleme: {result.valuationDate}</p><ul>{result.notes.map((n, i) => <li key={i}>{n}</li>)}</ul><div className="analysis-table-scroll"><table><thead><tr><th>Yön / tip</th><th>Miktar</th><th>Strike</th><th>Vade</th><th>Model primi</th><th>K/Z referansı · USD/birim</th></tr></thead><tbody>{result.quotes.map((q, i) => <tr key={i}><td>{q.position} {q.type}</td><td>{analysisNumber(q.inputs.contractSize)} {unit}</td><td>{analysisNumber(q.inputs.strike)}</td><td>{q.inputs.expiryDate}</td><td>{analysisMoney(q.premiumTotal)}</td><td>{analysisNumber(result.entryPremiums[i], 4)}</td></tr>)}</tbody></table></div></details>
   </div>;
 }

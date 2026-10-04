@@ -113,15 +113,17 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
             </text>
           </svg>
         </div>
-        <div className="mt-2 text-[11px] text-zinc-500 space-y-0.5">
-          <div>Noktalar en yakın kote vadeye ({near.expiry.date}) ait: {pts.length} · moneyness {quotedMin.toFixed(3)}–{quotedMax.toFixed(3)}.</div>
-          <div>Çizgi seçilen {daysToExpiry.toFixed(1)} günlük vadenin {manualVol ? 'referans yüzey eğrisidir' : 'fiyatlama eğrisidir'}; kesikli mavi: SSVI uyumu/kanadı.</div>
+        <div className="mt-2 text-[11px] text-zinc-500 space-y-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1"><span>● Kote noktalar</span><span>— Fiyatlama eğrisi</span><span>┄ SSVI modeli</span></div>
           <div className={target.vol == null ? "text-rose-400/90" : "text-emerald-500/80"}>
             {manualVol ? "Referans yüzey (fiyatlamada kullanılmıyor) · " : ""}{modeLabel[target.mode]}{target.vol != null ? ` · %${(target.vol * 100).toFixed(2)}` : ` · ${target.reason ?? "Yüzey IV'si yok."}`}
           </div>
           {manualVol && <div className="text-amber-400">Fiyatlama manuel IV ile çalışıyor{effectiveVol != null ? `: %${effectiveVol.toFixed(2)}` : "; girdiler geçersiz"}. Grafikteki eğri ve işaretçi yalnız referans yüzeyi gösterir.</div>}
-          {target.fitQuality && <div>Uyum hatası: ortalama %{(target.fitQuality.rmseVol * 100).toFixed(2)}, en çok %{(target.fitQuality.maxErrorVol * 100).toFixed(2)} IV.</div>}
-          {target.vol != null && Math.abs(near.days - daysToExpiry) > 1e-8 && <div>Seçilen vadede iki kote vade arasında toplam varyans enterpolasyonu kullanılır.</div>}
+          <details className="workspace-notes"><summary>Eğri ayrıntıları</summary>
+            <p>{pts.length} kote nokta · K / F {quotedMin.toFixed(3)}–{quotedMax.toFixed(3)} · seçili vade {daysToExpiry.toFixed(1)} gün.</p>
+            {target.fitQuality && <p>Uyum hatası: ortalama %{(target.fitQuality.rmseVol * 100).toFixed(2)}, en çok %{(target.fitQuality.maxErrorVol * 100).toFixed(2)} IV.</p>}
+            {target.vol != null && Math.abs(near.days - daysToExpiry) > 1e-8 && <p>Seçili vade için kote vadeler arasında toplam varyans enterpolasyonu kullanılır.</p>}
+          </details>
         </div>
       </CardContent>
     </Card>

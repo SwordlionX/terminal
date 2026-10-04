@@ -78,7 +78,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
       <CardHeader>
         <CardTitle>Mevcut Teminat Varlıkları</CardTitle>
         {addError && <p role="alert" className="text-sm text-rose-400">{addError}</p>}
-        <CardDescription>USD nakit veya fiziki metal (XAU/XAG) teminat. Metaller ons cinsinden girilir, canlı ons fiyatıyla değerlenir.</CardDescription>
+        <CardDescription>USD nakit · XAU/XAG ons</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="rounded-md border border-zinc-800">

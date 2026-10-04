@@ -21,6 +21,8 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
   const [applied, setApplied] = useState(false);
   const router = useRouter();
   const q = quote;
+  const methodNotes = q.warnings.filter(w => /^(Endikatif SOFR futures proxy|Ayın bilinmeyen business-day|Metal taşıması final CME|Futures son işlem tarihi|Gösterilen faiz\/taşıma)/.test(w));
+  const alerts = q.warnings.filter(w => !methodNotes.includes(w));
   const unit = q.product === 'XAU' || q.product === 'XAG' ? 'ons' : 'adet';
   const apply = () => {
     const md = useMarketData.getState();
@@ -65,9 +67,10 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
         <p>Yüzey tarihi: {q.surfaceAt ?? 'Veri yok'}</p>
         <p>Hesap zamanı: {new Date(q.pricedAt).toLocaleString('tr-TR')}. Piyasa değişince yeniden fiyatlayın.</p>
       </div>}
-      {q.warnings.length > 0 && <div className="mt-3 space-y-1 rounded-lg bg-amber-400/5 p-2 text-xs leading-relaxed text-amber-200">
-        {q.warnings.map((warning, i) => <p key={i}>{warning}</p>)}
+      {alerts.length > 0 && <div className="mt-3 space-y-1 rounded-lg bg-amber-400/5 p-2 text-xs leading-relaxed text-amber-200">
+        {alerts.map((warning, i) => <p key={i}>{warning}</p>)}
       </div>}
+      {methodNotes.length > 0 && <details className="workspace-notes"><summary>Model sınırları</summary>{methodNotes.map((note, i) => <p key={i}>{note}</p>)}</details>}
     </div>
   </section>;
 }

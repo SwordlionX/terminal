@@ -33,7 +33,6 @@ export default function DeltaHedgePricingPage() {
     <div className="space-y-6">
       <div className="workspace-heading"><div>
         <h1 className="text-3xl font-bold tracking-tight">Delta Hedge</h1>
-        <p className="text-sm text-muted-foreground mt-1">Müşteri pozisyonunu girin — deltasını ve onu nötrleyecek hedge büyüklüğünü gösterir</p>
       </div><AskAssistant text="Ekranda seçili opsiyon tipi, müşteri yönü, miktar ve vade ile delta hedge gereksinimini terminal motorunda hesapla. Hedge, mevcut Avrupa tipi sözleşmeyi sona erdirmez; spot hareketinde hedge ihtiyacının nasıl değiştiğini açıkla." /></div>
 
       <TradeConditions />
@@ -82,7 +81,6 @@ export default function DeltaHedgePricingPage() {
         <div className="space-y-2">
           <Label className="text-zinc-400 text-xs uppercase tracking-wider">Miktar (Kontrat)</Label>
           <div className="h-9 flex items-center font-mono text-zinc-200">{md.contractSize} ons</div>
-          <p className="text-[11px] text-zinc-500">Piyasa verilerinden (kontrat büyüklüğü)</p>
         </div>
       </div>
 

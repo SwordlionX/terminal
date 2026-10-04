@@ -340,7 +340,7 @@ export default function StockTrackerPage() {
               Anlık Portföy Takibi
             </h1>
             <p className="text-neutral-400 mt-2">
-              BIST hisseleri · Turso veritabanı ile eşzamanlı müşteri prim ve kar/zarar durumu.
+              BIST · prim ve kâr/zarar takibi
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -388,8 +388,7 @@ export default function StockTrackerPage() {
               <Activity className="w-10 h-10 mx-auto text-neutral-700" />
               <div className="text-neutral-300 font-medium">Henüz takip edilen işlem yok</div>
               <p className="text-sm text-neutral-500 max-w-md mx-auto">
-                &quot;Yeni İşlem Ekle&quot; ile bir BIST hissesi, maliyet ve prim girin; anlık fiyat
-                çekilip kar/zarar hesaplanır.
+                Takibe başlamak için işlem ekle.
               </p>
               <Button onClick={openAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl">
                 <Plus className="w-4 h-4 mr-2" /> Yeni İşlem Ekle
