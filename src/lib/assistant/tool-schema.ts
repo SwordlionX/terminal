@@ -123,7 +123,7 @@ const declarations: FunctionDeclaration[] = [
   {
     name: 'get_market_context',
     description:
-      'Yalnız Terminal X mevcut veri servisinden piyasa, veri tarihi, forward ve örnek IV eğrisini oku. Dış araştırma veya yeni opsiyon zinciri indirmesi yapmaz.',
+      'Yalnız Terminal X mevcut veri servisinden spot, veri tarihi, vade bazlı USD faizi ve metal taşıma oranı (termStructure), forward ve örnek IV eğrisini oku. Dış araştırma veya yeni opsiyon zinciri indirmesi yapmaz.',
     parametersJsonSchema: {
       type: 'object',
       properties: { product: optionProperties.product },

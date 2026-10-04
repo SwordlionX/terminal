@@ -48,3 +48,34 @@ export function reserveModelCall(): Promise<void> {
   }).format(new Date());
   return reserve(`assistant:calls:${day}`, configuredLimit('ASSISTANT_DAILY_MODEL_CALL_LIMIT', 300, 10000));
 }
+
+/** Models that recently hit quota or overload, shared across serverless instances in production. */
+const MODEL_BLOCKS_KEY = 'assistant:model-blocks';
+let localBlocks: Record<string, number> = {};
+export async function readModelBlocks(): Promise<Record<string, number>> {
+  if (process.env.NODE_ENV !== 'production' || !process.env.TURSO_DATABASE_URL) return { ...localBlocks };
+  try {
+    const db = await dbc();
+    const result = await db.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [MODEL_BLOCKS_KEY] });
+    const parsed = result.rows.length ? JSON.parse(String(result.rows[0].v)) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return { ...localBlocks };
+  }
+}
+export async function blockModel(model: string, until: number): Promise<void> {
+  const now = Date.now();
+  const blocks = Object.fromEntries(Object.entries(await readModelBlocks()).filter(([, at]) => at > now));
+  blocks[model] = Math.max(blocks[model] ?? 0, until);
+  localBlocks = blocks;
+  if (process.env.NODE_ENV !== 'production' || !process.env.TURSO_DATABASE_URL) return;
+  try {
+    const db = await dbc();
+    await db.execute({
+      sql: 'INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v',
+      args: [MODEL_BLOCKS_KEY, JSON.stringify(blocks)],
+    });
+  } catch {
+    // The in-memory copy still protects this instance; the next request re-reads shared state.
+  }
+}

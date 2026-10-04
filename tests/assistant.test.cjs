@@ -579,6 +579,8 @@ function mockRunner(responses) {
         reserveModelCall: async () => {
           reservations++;
         },
+        readModelBlocks: async () => ({}),
+        blockModel: async () => {},
       },
     },
     { GEMINI_API_KEY: 'test-only-key' },
@@ -688,7 +690,7 @@ test('SDK failures never expose request contents or keys', async () => {
   await assert.rejects(fixture.run(), error => !error.message.includes('test-only-key') && error.status === 502);
 });
 
-test('one transient retry is counted, SDK retries are disabled and repeated failure stops', async () => {
+test('an overloaded model hands over to the next one, SDK retries are disabled and switching is bounded', async () => {
   const transient = Object.assign(new Error('temporary'), { status: 503 });
   const fixture = mockRunner([transient, toolReply, finalReply]);
   const result = await fixture.run();
@@ -696,14 +698,45 @@ test('one transient retry is counted, SDK retries are disabled and repeated fail
   assert.equal(fixture.reservations(), 3);
   assert.ok(fixture.requests.every(r => r.config.httpOptions.retryOptions.attempts === 1));
   assert.equal(fixture.events.filter(e => e.type === 'artifact').length, 1);
+  assert.equal(fixture.requests[0].model, 'gemini-3.8-flash');
+  assert.equal(fixture.requests[1].model, 'gemini-3.7-flash');
+  assert.equal(fixture.requests[2].model, 'gemini-3.7-flash');
   const failed = mockRunner([transient]);
   await assert.rejects(failed.run(), error => error.status === 503);
-  assert.equal(failed.requests.length, 2);
-  assert.equal(failed.reservations(), 2);
+  assert.equal(failed.requests.length, 4);
+  assert.equal(failed.reservations(), 4);
 });
 
-test('authentication, permission and quota failures are not retried', async () => {
-  for (const status of [401, 403, 429]) {
+test('a quota-exhausted model is skipped and history signatures stay valid for the next model', async () => {
+  const quota = Object.assign(new Error('Quota exceeded: GenerateRequestsPerDayPerProjectPerModel-FreeTier'), {
+    status: 429,
+  });
+  const fixture = mockRunner([toolReply, quota, finalReply]);
+  const result = await fixture.run();
+  assert.equal(result.model, 'gemini-3.7-flash');
+  assert.equal(fixture.requests[1].model, 'gemini-3.8-flash');
+  assert.equal(fixture.requests[2].model, 'gemini-3.7-flash');
+  assert.equal(fixture.requests[2].contents[1].parts[0].thoughtSignature, 'skip_thought_signature_validator');
+  assert.equal(fixture.events.filter(e => e.type === 'done' || e.type === 'artifact').length, 1);
+});
+
+test('model cascade helpers classify daily quota, transient overload and unrecoverable errors', () => {
+  const models = modules()('src/lib/assistant/models.ts');
+  const now = Date.parse('2026-10-05T10:00:00Z'); // 03:00 in Los Angeles (PDT)
+  assert.equal(models.nextPacificMidnight(now), Date.parse('2026-10-06T07:00:00Z'));
+  assert.equal(
+    models.blockAfterError(429, 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', now),
+    Date.parse('2026-10-06T07:00:00Z'),
+  );
+  assert.equal(models.blockAfterError(429, 'per minute', now), now + 60_000);
+  assert.equal(models.blockAfterError(503, '', now), now + 120_000);
+  assert.equal(models.blockAfterError(401, '', now), null);
+  assert.equal(JSON.stringify(models.availableModels(['a', 'b'], { a: now + 1 }, now)), JSON.stringify(['b']));
+  assert.throws(() => models.modelChain('gemini-ok, bad model', []), /geçersiz/);
+});
+
+test('authentication and permission failures are not retried on other models', async () => {
+  for (const status of [401, 403]) {
     const fixture = mockRunner([Object.assign(new Error('sensitive test-only-key'), { status })]);
     await assert.rejects(fixture.run(), error => error.status === status && !error.message.includes('test-only-key'));
     assert.equal(fixture.requests.length, 1);
@@ -729,9 +762,10 @@ test('malformed model calls execute nothing and share one bounded retry with pro
   await assert.rejects(repeated.run(), e => e.modelFinishReason === 'MALFORMED_FUNCTION_CALL');
   assert.equal(repeated.requests.length, 2);
   assert.equal(repeated.events.filter(e => e.type === 'artifact').length, 0);
+  // A model hand-over after an outage does not consume the single malformed-call repair.
   const mixed = mockRunner([Object.assign(new Error('temporary'), { status: 503 }), malformed]);
   await assert.rejects(mixed.run(), e => e.modelFinishReason === 'MALFORMED_FUNCTION_CALL');
-  assert.equal(mixed.requests.length, 2);
+  assert.equal(mixed.requests.length, 3);
 });
 
 test('API fails closed without production access and refuses foreign origins before model execution', async () => {

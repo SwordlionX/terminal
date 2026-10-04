@@ -16,6 +16,8 @@ interface Message {
   text: string;
   artifacts: AssistantArtifact[];
   error?: string;
+  /** Gemini model that produced the reply (free-tier cascade). */
+  model?: string;
 }
 interface Availability {
   ready: boolean;
@@ -273,7 +275,10 @@ export function TerminalAssistant({
           failed = true;
           update(m => ({ ...m, error: event.text }));
         } else if (event.type === 'conversation') conversation.current = event.token;
-        else if (event.type === 'done') complete = true;
+        else if (event.type === 'done') {
+          complete = true;
+          if (event.model) update(m => ({ ...m, model: event.model }));
+        }
       };
       while (true) {
         const part = await reader.read();
@@ -448,6 +453,7 @@ export function TerminalAssistant({
                       }}
                     />
                   ))}
+                  {m.model && <p className="text-[11px] text-slate-400">Yanıt modeli: {m.model}</p>}
                   {m.error && (
                     <p
                       role="alert"

@@ -98,7 +98,7 @@ export type AssistantEvent =
   | { type: 'artifact'; artifact: AssistantArtifact }
   | { type: 'text'; text: string }
   | { type: 'error'; text: string }
-  | { type: 'done'; modelCalls: number; durationMs: number };
+  | { type: 'done'; modelCalls: number; durationMs: number; model?: string };
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;

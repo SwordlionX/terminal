@@ -1,4 +1,5 @@
 import { calculatePricing, dateDay } from '../pricing/engine';
+import { addDays } from '../dates';
 import { surfaceVolEstimate } from '../vol/surface';
 import { quoteOption } from './pricing';
 import { premiumValue, searchPremium } from './search';
@@ -295,10 +296,30 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
             }),
           };
         });
+        // Maturity-equivalent USD rate and metal carry from the same factor curves the engine prices with.
+        const termStructure = [30, 90, 180, 270, 365].map(days => {
+          const expiryDate = addDays(today, days);
+          const p = calculatePricing(
+            { ...curve, strike: curve.spot, contractSize: 1, basis: 365, tradeDate: today, expiryDate },
+            m.surface,
+          );
+          const covered = Number.isFinite(p.effectiveRate) && Number.isFinite(p.effectiveLease);
+          return {
+            days,
+            expiryDate,
+            usdRatePctAct365: covered ? p.effectiveRate : null,
+            metalCarryPctAct365: covered ? p.effectiveLease : null,
+            forward: covered && Number.isFinite(p.fwd) ? p.fwd : null,
+            atmIvPct: p.smileIv,
+          };
+        });
         return {
           product,
           spot: curve.spot,
           valuationDate: today,
+          curveMethod: 'CME/SOFR endikatif proxy; banka OIS veya kira kotasyonu değildir',
+          curveVersion: m.surface?.curves?.id.slice(0, 12) ?? null,
+          termStructure,
           spotSource: m.spotSource,
           spotAt: m.spotAt,
           spotStale: m.spotStale ?? false,

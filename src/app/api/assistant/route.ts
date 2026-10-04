@@ -74,7 +74,7 @@ export async function POST(request: Request) {
             emit,
           });
           emit({ type: 'conversation', token: sealConversation(result.contents, scope) });
-          emit({ type: 'done', modelCalls: result.modelCalls, durationMs: Date.now() - started });
+          emit({ type: 'done', modelCalls: result.modelCalls, durationMs: Date.now() - started, model: result.model });
         } catch (e) {
           const error = e as { status?: number; message?: string };
           const text = signal.aborted
