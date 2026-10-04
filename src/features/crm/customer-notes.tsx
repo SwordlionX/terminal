@@ -1,23 +1,9 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 export function CustomerNotes({ initialNotes }: { customerId: string, initialNotes: string }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Notlar ve Belgeler</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-sm space-y-4">
-          <div className="bg-secondary/30 p-3 rounded-md">
-            <p className="text-muted-foreground text-xs mb-1">Müşteri Notu</p>
-            <p>{initialNotes || "Not bulunmuyor."}</p>
-          </div>
-          <div className="bg-secondary/30 p-3 rounded-md border border-dashed">
-            <p className="text-muted-foreground text-xs mb-1">Belgeler</p>
-            <p className="text-muted-foreground italic">Belge yükleme henüz kullanılamıyor.</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <section className="workspace-panel">
+      <h2>Notlar ve belgeler</h2>
+      <div className="workspace-priority"><div><strong>Müşteri notu</strong><small>{initialNotes || 'Not bulunmuyor.'}</small></div></div>
+      <div className="workspace-priority"><div><strong>Belgeler</strong><small>Belge yükleme henüz kullanılamıyor.</small></div></div>
+    </section>
   );
 }

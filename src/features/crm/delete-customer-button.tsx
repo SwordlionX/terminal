@@ -15,9 +15,9 @@ export function DeleteCustomerButton({ id, name }: { id: string; name: string })
           startTransition(() => deleteCustomerAction(id));
         }
       }}
-      className="text-sm font-medium text-rose-500 hover:underline disabled:opacity-50"
+      className="desk-button"
     >
-      {isPending ? "Siliniyor..." : "Sil"}
+      {isPending ? "Siliniyor…" : "Müşteriyi sil"}
     </button>
   );
 }

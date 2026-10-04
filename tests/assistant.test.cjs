@@ -458,9 +458,9 @@ test('assistant market only reads prebuilt curves and never passes screen rates 
   const { terminalMarket } = modules({ '../../services/market.service': {
     getSpot: async () => ({ price: 100, at: Date.parse('2026-01-01'), source: 'Terminal' }),
     getSurface: async (...args) => { calls.push(args); return surface; },
-  }, '../../services/cme.service': { getDataSource: async () => 'cme' } })('src/lib/assistant/market.ts');
+  } })('src/lib/assistant/market.ts');
   const m = await terminalMarket('XAU');
-  assert.equal(JSON.stringify(calls), JSON.stringify([['XAU', 0, true]]));
+  assert.equal(JSON.stringify(calls), JSON.stringify([['XAU']]));
   assert.equal(m.surface, surface);
 });
 

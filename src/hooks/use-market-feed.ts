@@ -26,8 +26,8 @@ export interface MarketFeed {
 /** Sunucudan gelen besleme + hangi ürüne ait olduğu (sıra dışı cevapları elemek için). */
 type FeedData = MarketFeedSnapshot<VolSurface>;
 
-/** Fiyatlama ekranı piyasa beslemesi: güncel spot + de-Amerikanize IV yüzeyi. */
-export function useMarketFeed(product: string, rate: number): MarketFeed {
+/** Fiyatlama ekranı piyasa beslemesi: güncel spot + doğrulanmış CME/SOFR IV yüzeyi. */
+export function useMarketFeed(product: string): MarketFeed {
   // Besleme TEK parça tutulur ve hangi ürüne ait olduğu içinde taşınır. Böylece ürün
   // değişince eski ürünün spot'u/yüzeyi ekranda kalamaz: aşağıda `data.product !== product`
   // ise besleme yokmuş gibi davranılır (state sıfırlamak için ekstra efekt gerekmez).
@@ -46,20 +46,11 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
     requestId.current += 1;
   }, [product]);
 
-  // Faiz gecikmeli izlenir: alandaki her tuş vuruşu ayrı bir istek açmasın. Faiz yüzeyi
-  // artık yeniden kurmuyor (yüzey önceden kurulu gelir), yalnız "hangi faizle kuruldu"
-  // uyarısının karşılaştırmasına giriyor — 400 ms beklemek bedelsiz.
-  const [debouncedRate, setDebouncedRate] = useState(rate);
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedRate(rate), 400);
-    return () => clearTimeout(id);
-  }, [rate]);
-
   const fetchFeed = useCallback(async () => {
     const id = ++requestId.current;
     const requestedProduct = product.toUpperCase();
     try {
-      const res = await fetch(`/api/market?product=${product}&rate=${debouncedRate}`, { cache: 'no-store' });
+      const res = await fetch(`/api/market?product=${product}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
       if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('Geçersiz piyasa yanıtı');
@@ -87,7 +78,7 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
       setData(previous => markMarketFeedUnavailable(previous, requestedProduct, 'Piyasa verisi yenilenemedi; son alınan veri korunuyor.'));
       setError({ product: requestedProduct, message: 'Piyasa verisi yenilenemedi; son alınan veri korunuyor.' });
     }
-  }, [product, debouncedRate]);
+  }, [product]);
 
   useEffect(() => {
     const initial = setTimeout(fetchFeed, 0);
@@ -108,26 +99,11 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
     refreshController.current = controller;
     const task = (async () => {
       try {
-        let source = data?.product === product.toUpperCase() ? data.surfaceSource : null;
-        if (source !== 'cme' && source !== 'yahoo') {
-          const settings = await fetch('/api/settings/datasource', { signal: controller.signal, cache: 'no-store' });
-          const result = await settings.json();
-          if (!settings.ok) throw new Error('Piyasa veri kaynağı belirlenemedi.');
-          source = result.items?.find((item: { product: string; source: string }) => item.product.toUpperCase() === product.toUpperCase())?.source ?? null;
-        }
-        if (source === 'cme') {
-          const status = await refreshCme(product, {
-            signal: controller.signal,
-            onStatus: (value: CmeRefreshStatus) => setRefreshStatus({ product: product.toUpperCase(), text: cmeStatusText[value] }),
-          });
-          if (status !== 'completed') throw new Error(status === 'failed' ? 'CME yenilemesi başarısız oldu.' : 'CME yenileme sonucu doğrulanamadı.');
-        } else if (source === 'yahoo') {
-          const res = await fetch('/api/market/refresh', { method: 'POST', signal: controller.signal });
-          const j = await res.json();
-          if (!res.ok || !j.ok) throw new Error(j.error || 'Yahoo zincir yenilemesi başarısız.');
-        } else {
-          throw new Error('Piyasa veri kaynağı belirlenemedi.');
-        }
+        const status = await refreshCme(product, {
+          signal: controller.signal,
+          onStatus: (value: CmeRefreshStatus) => setRefreshStatus({ product: product.toUpperCase(), text: cmeStatusText[value] }),
+        });
+        if (status !== 'completed') throw new Error(status === 'failed' ? 'CME yenilemesi başarısız oldu.' : 'CME yenileme sonucu doğrulanamadı.');
         await fetchFeed();
       } catch (e) {
         if (controller.signal.aborted) return;
@@ -140,7 +116,7 @@ export function useMarketFeed(product: string, rate: number): MarketFeed {
     })();
     refreshFlight.current = task;
     return task;
-  }, [data, fetchFeed, product]);
+  }, [fetchFeed, product]);
 
   // Ekrana yalnızca AKTİF ürünün verisi verilir; başka ürünün cevabı elde tutulsa bile
   // yok sayılır ve besleme "yükleniyor" olarak görünür.

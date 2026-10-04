@@ -9,19 +9,8 @@ export default function SettingsPage() {
   // Yüzeyin gece kurulduğu risksiz faiz oranı (SOFR)
   const [activeServerInterest, setActiveServerInterest] = useState<number | null>(null);
 
-  // Veri kaynağı (Yahoo/CME) durumu — sunucuda kv tablosunda saklanır.
-  interface DsItem {
-    product: string;
-    source: 'yahoo' | 'cme';
-    cmeSupported: boolean;
-    cmeFetchedISO: string | null;
-    cmeExpiries: number;
-    /** Yüzey kurulurken atlanan günler vb. teşhis notu (yoksa null). */
-    cmeNotes: string | null;
-    yahooSymbol: string | null;
-    yahooFetchedISO: string | null;
-    yahooExpiries: number;
-  }
+  // Etkin CME/SOFR paketinin ürün başına durumu (salt okunur).
+  interface DsItem { product: string; fetchedISO: string | null; expiries: number; bundleId: string | null; notes: string | null }
   const [dsItems, setDsItems] = useState<DsItem[]>([]);
   const [dsBusy, setDsBusy] = useState<string | null>(null); // yenilenen ürün
   const [dsMsg, setDsMsg] = useState<{ text: string; error: boolean } | null>(null);
@@ -40,14 +29,8 @@ export default function SettingsPage() {
     loadDataSources();
   }, []);
 
-  /**
-   * Seçili kaynaktan veriyi ÇEKER ve yüzeyi yeniden kurar.
-   * - Yahoo: ETF opsiyon zincirleri baştan çekilir; tek istek HEM altını (GLD) HEM gümüşü
-   *   (SLV) yeniler — snapshot ortak olduğu için ürün ayrımı yok.
-   * - CME: yalnız o ürünün settlement yüzeyi yeniden kurulur.
-   * İki kaynak veritabanında ayrı yazılır; biri diğerini ezmez.
-   */
-  const refreshSource = async (product: string, source: 'yahoo' | 'cme') => {
+  /** Bağlı GitHub işini başlatır ve aynı işin sonucunu izler; iki metal tek pakette güncellenir. */
+  const refreshSource = async (product: string) => {
     if (dsBusyRef.current) return;
     dsBusyRef.current = true;
     const controller = new AbortController();
@@ -55,7 +38,6 @@ export default function SettingsPage() {
     setDsBusy(product);
     setDsMsg(null);
     try {
-      if (source === 'cme') {
         const status = await refreshCme(product, {
           signal: controller.signal,
           onStatus: (value: CmeRefreshStatus) => setDsMsg({ text: `${product}: CME yenilemesi ${cmeStatusText[value]}.`, error: value === 'failed' || value === 'timeout' }),
@@ -66,16 +48,6 @@ export default function SettingsPage() {
         }
         await loadDataSources();
         setDsMsg({ text: `${product}: CME yenilemesi tamamlandı.`, error: false });
-      } else {
-        const res = await fetch('/api/market/refresh', { method: 'POST', signal: controller.signal });
-        const d = await res.json();
-        if (!res.ok || !d.ok) throw new Error(d?.error || 'Yenileme başarısız');
-        await loadDataSources();
-        setDsMsg({
-          text: `Yahoo zincirleri yenilendi (${d.fetchedISO}) — ${Object.entries(d.expiries || {}).map(([k, v]) => `${k}: ${v} vade`).join(', ')}.`,
-          error: false,
-        });
-      }
     } catch (e) {
       if (controller.signal.aborted) return;
       setDsMsg({ text: e instanceof Error ? e.message : 'Yenileme başarısız', error: true });
@@ -118,11 +90,11 @@ export default function SettingsPage() {
           <div key={item.product} className="workspace-priority">
             <div>
               <strong>{item.product === 'XAU' ? 'XAU · Altın' : item.product === 'XAG' ? 'XAG · Gümüş' : item.product}</strong>
-              <small>CME COMEX: {item.cmeFetchedISO ? `${formatDate(item.cmeFetchedISO)} · ${item.cmeExpiries} vade` : 'veri yok'}{item.source !== 'cme' ? ' · etkin kaynak değil' : ''}</small>
-              {item.cmeNotes && <small style={{ color: 'var(--primary)' }}>{item.cmeNotes}</small>}
+              <small>CME COMEX: {item.fetchedISO ? `${formatDate(item.fetchedISO)} · ${item.expiries} vade` : 'veri yok'}{item.bundleId ? ` · CME/SOFR proxy sürüm ${item.bundleId.slice(0, 12)} · banka kira kotasyonu değildir` : ' · ortak faiz/taşıma/IV sürümü yok'}</small>
+              {item.notes && <small style={{ color: 'var(--primary)' }}>{item.notes}</small>}
             </div>
-            <button className="desk-button" onClick={() => refreshSource(item.product, item.source)} disabled={dsBusy !== null}>
-              {dsBusy === item.product ? (item.source === 'cme' ? 'CME durumu izleniyor…' : 'Çekiliyor…') : item.source === 'cme' ? "CME'den yenile" : "Yahoo'dan yenile"}
+            <button className="desk-button" onClick={() => refreshSource(item.product)} disabled={dsBusy !== null}>
+              {dsBusy === item.product ? 'CME durumu izleniyor…' : "CME'den yenile"}
             </button>
           </div>
         ))}

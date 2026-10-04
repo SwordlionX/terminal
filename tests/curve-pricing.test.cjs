@@ -178,17 +178,13 @@ test('bundle validation rejects a half-update or a mismatched USD session', () =
 });
 test('missing bundle or database failure cannot become a default 5% interest rate', async () => {
   for (const loadPricingBundle of [async () => null, async () => { throw new Error('database unavailable'); }]) {
-    const service = modules({ '@/lib/db': {}, '@/lib/vol/surface': {}, './cme.service': {},
-      './pricing-bundle.service': { loadPricingBundle } })('src/services/market.service.ts');
+    const service = modules({ './pricing-bundle.service': { loadPricingBundle } })('src/services/market.service.ts');
     await assert.rejects(service.getInterestRate());
     await assert.rejects(service.setInterestRate(.05), /Manuel faiz/);
   }
 });
-test('metal pricing cannot switch to an ETF curve or use legacy CME metadata after bundle failure', async () => {
-  for (const source of ['yahoo', 'cme']) {
-    const service = modules({ '@/lib/db': {}, '@/lib/vol/surface': {},
-      './cme.service': { getDataSource: async () => source },
-      './pricing-bundle.service': { loadPricingBundle: async () => null } })('src/services/market.service.ts');
-    await assert.rejects(service.getSurface('XAU', .05, true));
-  }
+test('metal pricing has no fallback when the verified bundle is missing', async () => {
+  const service = modules({ './pricing-bundle.service': { loadPricingBundle: async () => null } })('src/services/market.service.ts');
+  await assert.rejects(service.getSurface('XAU'), /birlikte kurulmalı/);
+  await assert.rejects(service.getSurface('GLD'), /Yalnız XAU ve XAG/);
 });

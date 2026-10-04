@@ -14,7 +14,7 @@ import { calculatePricing } from "@/lib/pricing/engine";
  */
 export function usePricingModel() {
   const md = useMarketData();
-  const feed = useMarketFeed(md.product, md.rate / 100);
+  const feed = useMarketFeed(md.product);
   // İlk ATM ayarı store'da tutulur; hook yeniden bağlanınca seçilmiş strike silinmez.
   const { applyLiveSpot, product, manualSpot, syncToday } = md;
   useEffect(() => {
@@ -51,15 +51,7 @@ export function usePricingModel() {
     return surfaceVolEstimate(feed.surface, level / fwd, daysToExpiry, md.tradeDate).mode;
   };
 
-  /**
-   * Yüzeyin hangi kaynaktan geldiği (ekranda smile başlığında gösterilir). Gözlemlenen
-   * futures forward'ı (`f`) YALNIZ CME yüzeyinde bulunur — ayrı bir alan/istek
-   * gerektirmeden güvenilir ayırt edici budur.
-   */
-  const surfaceIsCme = !!feed.surface?.expiries?.[0]?.f;
-  const surfaceSourceLabel = feed.surface
-    ? (surfaceIsCme ? `CME COMEX ${feed.surface.symbol} settlement` : `Yahoo ${feed.surface.symbol} (ETF) yüzeyi`)
-    : undefined;
+  const surfaceSourceLabel = feed.surface ? `CME COMEX ${feed.surface.symbol} settlement` : undefined;
 
   // Barrier closed form uses maturity-equivalent constants: explicitly an approximation.
   const barrierSpot = md.spot;

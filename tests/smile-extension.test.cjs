@@ -21,8 +21,7 @@ function load(file, imports = {}) {
 
 const ssvi = load('src/lib/vol/ssvi.ts');
 const gkMath = load('src/lib/math/gk.ts');
-const surface = load('src/lib/vol/surface.ts', {
-  '../math/american': { deAmericanizedIV() { return NaN; } }, './ssvi': ssvi,
+const surface = load('src/lib/vol/surface.ts', { './ssvi': ssvi,
 });
 const slice = (days, points) => ({ days, date: '2026-04-01', points });
 const market = (...expiries) => ({ symbol: 'TEST', spot: 100, fetchedISO: '2026-01-01T18:00:00Z', expiries });

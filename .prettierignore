@@ -1,0 +1,7 @@
+.next
+node_modules
+calisma-notlari
+tasarim-demolari
+docs
+package-lock.json
+*.tsbuildinfo

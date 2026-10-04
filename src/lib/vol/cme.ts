@@ -3,10 +3,10 @@ import { factorAt, type PricingCurves } from '../market/factors';
 import { VolSurface, ExpirySmile, SmilePoint } from './surface';
 
 /**
- * CME COMEX settlement → de-Amerikanize IV yüzeyi (Yahoo/ETF yolunun futures muadili).
+ * CME COMEX settlement → de-Amerikanize IV yüzeyi.
  *
  * Kaynak: Databento GLBX.MDP3 `definition` + `statistics` (stat_type=3, settlement).
- * ETF yolundan tek farkı forward'ın GÖZLEMLENEN olması: F = dayanak SI futures'ının
+ * Forward GÖZLEMLENİR: F = dayanak futures'ın
  * settlement fiyatı (carry/lease tahmini yok). Yüzey yine forward-moneyness (m = K/F)
  * ekseninde tutulur; böylece downstream (surfaceVol, fiyatlama) hiç değişmeden çalışır.
  *
@@ -44,7 +44,7 @@ const MONEY_LO = 0.75, MONEY_HI = 1.30;
 const BINOM_STEPS = 72;
 
 /**
- * Yüzeye alınacak EN UZUN vade (gün). Yahoo/ETF yolundaki MAX_DAYS=420 ile aynı çizgi.
+ * Yüzeye alınacak EN UZUN vade (gün).
  *
  * Neden gerekli: uzun vadeli COMEX metal opsiyonları fiilen işlem görmez; settlement
  * fiyatları borsanın hesapladığı teorik marklardır ve kendi içinde tutarsız olabilir.
@@ -200,7 +200,7 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
 
   // DİKKAT: `spot` alanı burada gerçek spot DEĞİL, ön vadenin futures settlement'ıdır
   // (F). Yüzey forward-moneyness ekseninde tutulduğu için downstream bu alanı fiyatlamada
-  // kullanmaz; yalnız payload'da bilgi amaçlıdır. Gerçek spot Yahoo'dan ayrıca gelir.
+  // kullanmaz; yalnız payload'da bilgi amaçlıdır. Gerçek spot Twelve Data/Tiingo'dan ayrıca gelir.
   // Lease is derived from independent factor curves for each requested maturity.
   // Never infer it from option expiries or deduplicate futures by their price.
   return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries: kept,

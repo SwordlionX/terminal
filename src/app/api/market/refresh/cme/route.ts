@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getDataSource } from '@/services/cme.service';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -57,7 +56,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Önizleme ortamından canlı CME yenilemesi başlatılamaz.' }, { status: 409 });
   }
   const product = validProduct(explicitProduct) ?? 'XAG';
-  if ((await getDataSource(product)) !== 'cme') return NextResponse.json({ ok: true, skipped: true, product, reason: 'kaynak cme değil' });
   const token = process.env.GITHUB_PAT;
   if (!token) return NextResponse.json({ ok: false, error: 'CME yenilemesi şu anda kullanılamıyor.' }, { status: 503 });
   try {

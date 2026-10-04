@@ -31,8 +31,7 @@ test('spot cache marks fallback stale and preserves its original receipt time', 
   };
   const service = load('src/services/market.service.ts', {
     '@/lib/db': { dbc: async () => { throw new Error('unused'); } },
-    '@/lib/vol/surface': {}, './cme.service': {},
-    './pricing-bundle.service': {}, '../lib/market/factors': load('src/lib/market/factors.ts'), '../lib/margin/config': load('src/lib/margin/config.ts'),
+        './pricing-bundle.service': {}, '../lib/market/factors': load('src/lib/market/factors.ts'), '../lib/margin/config': load('src/lib/margin/config.ts'),
   }, { Date: TestDate, fetch, AbortSignal, console: { warn() {} }, process: { env: {} } });
 
   const first = await service.getSpot('XAU');
@@ -57,8 +56,7 @@ test('Tiingo quote time is kept separately from server receipt time', async () =
     : { price: '31.5' } });
   const service = load('src/services/market.service.ts', {
     '@/lib/db': { dbc: async () => { throw new Error('unused'); } },
-    '@/lib/vol/surface': {}, './cme.service': {},
-    './pricing-bundle.service': {}, '../lib/market/factors': load('src/lib/market/factors.ts'), '../lib/margin/config': load('src/lib/margin/config.ts'),
+        './pricing-bundle.service': {}, '../lib/market/factors': load('src/lib/market/factors.ts'), '../lib/margin/config': load('src/lib/margin/config.ts'),
   }, { Date: TestDate, fetch, AbortSignal, console: { warn() {} }, process: { env: {} } });
   const quote = await service.getSpot('XAG');
   assert.equal(quote.source, 'XAG/USD (Tiingo)');
@@ -66,18 +64,16 @@ test('Tiingo quote time is kept separately from server receipt time', async () =
   assert.equal(quote.quoteAt, Date.parse('2026-10-02T08:30:00Z'));
 });
 
-test('market API keeps a valid CME surface when Yahoo snapshot storage fails', async () => {
-  const surface = { fetchedISO: '2026-10-01 16:00 UTC', builtWithR: 0.05, expiries: [] };
+test('market API returns the verified surface independently of a stale spot', async () => {
+  const surface = { fetchedISO: '2026-10-01T17:30:00.000Z', curves: { id: 'bundle-123456789' }, expiries: [] };
   const route = load('src/app/api/market/route.ts', {
     'next/server': { NextResponse: { json: body => ({ body }) } },
-    '@/services/cme.service': { getDataSource: async () => 'cme' },
     '@/services/market.service': {
       getSpot: async () => ({ price: 2000, at: 42, source: 'Tiingo', stale: true }),
       getSurface: async () => surface,
-      loadSnapshot: async () => { throw new Error('Yahoo storage unavailable'); },
     },
   }, { URL });
-  const result = await route.GET({ url: 'http://local/api/market?product=XAU&rate=0.05' });
+  const result = await route.GET({ url: 'http://local/api/market?product=XAU' });
   assert.equal(result.body.surface, surface);
   assert.equal(result.body.surfaceSource, 'cme');
   assert.equal(result.body.snapshotISO, surface.fetchedISO);

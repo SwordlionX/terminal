@@ -21,7 +21,6 @@ function load(file, imports = {}) {
 
 const ssvi = load('src/lib/vol/ssvi.ts');
 const surface = load('src/lib/vol/surface.ts', {
-  '../math/american': { deAmericanizedIV() { return NaN; } },
   './ssvi': ssvi,
 });
 const smile = (days, points) => ({ days, date: `day-${days}`, points });

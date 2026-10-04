@@ -93,13 +93,6 @@ test('Both solvers round-trip model prices and report repricing residuals', () =
   }
 });
 
-test('Negative-rate calls take the American IV route', () => {
-  const S = 100, K = 70, T = 1, r = -0.05, q = 0, vol = 0.3;
-  const price = american.americanPrice(S, K, T, r, q, vol, 'call');
-  assert.ok(price > european.gk(S, K, T, r, q, vol).call);
-  near(american.deAmericanizedIV(S, K, T, r, q, price, 'call'), vol, 1e-4);
-});
-
 test('Invalid inputs and impossible prices never report a successful IV', () => {
   for (const bad of [NaN, Infinity]) {
     assert.equal(solver.impliedVol(100, 100, 1, 0.05, 0, bad, 'call').ok, false);

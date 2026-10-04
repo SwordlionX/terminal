@@ -1,10 +1,9 @@
 import { gk } from './gk';
-import { impliedVol } from './solver';
 
 /**
  * Amerikan tipi opsiyon fiyatı — CRR Binom Ağacı.
- * GLD/SLV gibi ABD ETF opsiyonları Amerikan tipidir; Avrupa (GK) formülüyle
- * doğrudan IV çözmek özellikle put tarafında IV'yi olduğundan yüksek gösterir.
+ * CME metal futures opsiyonları Amerikan tipidir; Avrupa formülüyle doğrudan IV çözmek
+ * erken kullanım primini IV'ye katar.
  */
 export function americanPrice(
   S: number, K: number, T: number, r: number, q: number, v: number,
@@ -108,28 +107,6 @@ export function impliedVolAmerican(
   const vol = (lo + hi) / 2;
   return Math.abs(americanPrice(S, K, T, r, q, vol, type, steps) - price) <= tol
     ? { vol, ok: true } : { vol: NaN, ok: false };
-}
-
-/**
- * De-Amerikanizasyon (sektör standardı — Carr & Wu 2010, OptionMetrics):
- * Amerikan piyasa fiyatı -> Amerikan model (binom) ile IV geriye çözülür ->
- * bu IV doğrudan Avrupa (GK) formülünde kullanılır.
- *
- * Not: q<=0 (temettüsüz ETF) VE r>=0 iken Amerikan CALL = Avrupa CALL (Merton:
- * temettü yokken call'u erken kullanmak asla optimal değildir), bu yüzden
- * call'larda hızlı Avrupa çözücü kullanılır; fark sadece PUT'ta. r<0 senaryosunda
- * bu eşitlik bozulur.
- */
-export function deAmericanizedIV(
-  S: number, K: number, T: number, r: number, q: number,
-  price: number, type: 'call' | 'put'
-): number {
-  if (type === 'call' && q <= 0 && r >= 0) {
-    const res = impliedVol(S, K, T, r, q, price, 'call');
-    return res.ok ? res.vol : NaN;
-  }
-  const res = impliedVolAmerican(S, K, T, r, q, price, type);
-  return res.ok ? res.vol : NaN;
 }
 
 /** American futures option, martingale futures tree with term-dependent USD discount. */

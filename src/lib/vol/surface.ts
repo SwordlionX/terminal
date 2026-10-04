@@ -1,35 +1,10 @@
-import { deAmericanizedIV } from '../math/american';
 import { fitSsvi, ssviSafeAtDays, ssviVol, type SsviFit } from './ssvi';
 import type { PricingCurves } from '../market/factors';
 
 /**
- * Yahoo snapshot formatı (fetch_yahoo.py / api/market/refresh üretir):
- * row = [K, cBid, cAsk, cLast, cYahooIV, pBid, pAsk, pLast, pYahooIV, cOI, pOI]
- * Smile, forward-moneyness (K/F) ekseninde tutulur; böylece GLD eğrisi XAU'ya,
- * SLV eğrisi XAG'a taşınırken lease/carry farkı ATM çapasını kaydırmadan hizalanır.
+ * CME COMEX settlement'larından kurulan IV yüzeyi. Smile forward-moneyness (m = K/F) ekseninde
+ * tutulur; fiyatlama hedef vadenin forward'ıyla m'i hesaplar ve iki komşu vadeyi aynı m'de okur.
  */
-
-export type SnapshotRow = (number | null)[];
-
-export interface SnapshotExpiry {
-  exp: number;
-  days: number;
-  date: string;
-  rows: SnapshotRow[];
-}
-
-export interface SnapshotProduct {
-  symbol: string;
-  label: string;
-  spot: number;
-  expiries: SnapshotExpiry[];
-}
-
-export interface YahooSnapshot {
-  fetched: number;
-  fetchedISO: string;
-  products: Record<string, SnapshotProduct>;
-}
 
 export interface SmilePoint { m: number; iv: number }
 
@@ -39,11 +14,7 @@ export interface ExpirySmile {
   days: number;
   date: string;
   points: SmilePoint[];
-  /**
-   * Vade-başına GÖZLEMLENEN forward. CME yüzeyinde dayanak futures'ın settlement fiyatı
-   * (yüzeyin moneyness çapası: m = K/f). Yahoo/ETF yüzeyinde tanımsız — o yolda forward
-   * spottan türetilmeye devam eder.
-   */
+  /** Vade-başına gözlemlenen forward: dayanak futures'ın settlement fiyatı (m = K/f çapası). */
   f?: number;
   underlyingId?: string;
   underlyingLastTradeTime?: string;
@@ -55,12 +26,7 @@ export interface VolSurface {
   spot: number;
   fetchedISO: string;
   expiries: ExpirySmile[];
-  /**
-   * Yüzeyin KURULDUĞU risksiz faiz. CME yüzeyi refresh anında bir kez kurulup saklandığı
-   * için buradaki IV'ler bu r ile ters çözülmüştür; sonradan ekranda faiz değiştirilse bile
-   * yüzey yeniden kurulmaz (yeniden kurmak günlük Databento çekimi gerektirir). Ekran bu
-   * değeri gösterir ki hangi faizle çalışıldığı belli olsun. Yahoo yüzeyinde istekteki r'dir.
-   */
+  /** Eğri paketi olmadan sabit faizle kurulmuş yüzeyin faizi (paketli metal yüzeyinde yok). */
   builtWithR?: number;
   /**
    * Yüzey kurulurken oluşan İŞLEYİŞ NOTLARI (ör. "2026-08-07 atlandı: yetersiz futures
@@ -75,83 +41,6 @@ export interface VolSurface {
    * Yıllık oran olarak tutulur (örn: 0.015 = %1.5).
    */
   impliedLeaseRate?: number;
-}
-
-/**
- * (ask-bid)/mid bu eşiği aşarsa çift taraflı kota "çarpık-geniş" sayılır
- * (ör. 0.05/2.00 illikit kota): mid güvenilmez, smile'a gürültü basar — reddedilir.
- */
-const MAX_REL_SPREAD = 1.5;
-
-/**
- * Katmanlı fiyat: önce çift taraflı kotasyon ortası (bid & ask > 0 ve makul spread),
- * yoksa yalnızca açık pozisyonu (OI > 0) olan lastPrice kabul edilir.
- * OI'siz bayat lastPrice ("ölü" strike) reddedilir — smile gürültüsünü keser.
- */
-function mid(bid: number | null, ask: number | null, last: number | null, oi: number | null): number | null {
-  if (bid != null && ask != null && bid > 0 && ask > 0 && ask >= bid) {
-    const m = (bid + ask) / 2;
-    if ((ask - bid) / m <= MAX_REL_SPREAD) return m;
-    // çarpık-geniş kota: mid'i atla, OI'li last'a düş
-  }
-  if (last != null && last > 0 && oi != null && oi > 0) return last;
-  return null;
-}
-
-/**
- * Snapshot ürününden de-Amerikanize IV smile yüzeyi kurar.
- *
- * Smile forward-moneyness (m = K/F) ekseninde tutulur; F = S·e^{(r−q)T}.
- * q burada YÜZEYİN kaynağı olan ETF'in taşıma maliyetidir (GLD/SLV temettüsüz,
- * gider oranı ~%0.4 → q≈0), metalin lease oranı DEĞİL. Böylece ATM-forward her
- * vadede m=1'e denk gelir; yüzey XAU/XAG'a taşınırken lease farkı yalnızca
- * sorgu tarafındaki forward çapasına girer (bkz. usePricingModel).
- *
- * Her strike için OTM taraf kullanılır (piyasa standardı):
- * K >= F -> call IV, K < F -> put IV; o taraf yoksa diğerine düşülür.
- */
-export function buildSurface(prod: SnapshotProduct, r: number, fetchedISO: string, q: number = 0): VolSurface {
-  const expiries: ExpirySmile[] = [];
-  const S = prod.spot;
-
-  for (const e of prod.expiries) {
-    const T = Math.max(e.days, 0.5) / 365;
-    const F = S * Math.exp((r - q) * T); // ETF forward'ı (q≈0)
-    const points: SmilePoint[] = [];
-
-    for (const row of e.rows) {
-      const K = row[0] as number;
-      const cMid = mid(row[1], row[2], row[3], row[9]); // row[9] = call OI
-      const pMid = mid(row[5], row[6], row[7], row[10]); // row[10] = put OI
-      const m = K / F;
-
-      let iv = NaN;
-      if (m >= 1) {
-        if (cMid != null) iv = deAmericanizedIV(S, K, T, r, q, cMid, 'call');
-        if (!isFinite(iv) && pMid != null) iv = deAmericanizedIV(S, K, T, r, q, pMid, 'put');
-      } else {
-        if (pMid != null) iv = deAmericanizedIV(S, K, T, r, q, pMid, 'put');
-        if (!isFinite(iv) && cMid != null) iv = deAmericanizedIV(S, K, T, r, q, cMid, 'call');
-      }
-
-      if (isFinite(iv) && iv > 0.005 && iv < 4) {
-        points.push({ m, iv });
-      }
-    }
-
-    points.sort((a, b) => a.m - b.m);
-    // Smile ATM'i SARMALI (m=1 kote aralığın içinde) — değilse o vade güvenilmez ve
-    // ATM civarındaki her sorgu zaten ekstrapolasyona düşerdi. Aynı kural CME yolunda
-    // (bkz. cme.ts) baştan beri vardı, Yahoo/ETF yolunda eksikti; iki kaynak artık aynı
-    // eşiği uyguluyor. Ölçüldü (2026-08-08, canlı GLD ve SLV zincirleri): 19 vadenin
-    // 19'u da kuralı geçiyor — bugünkü veride hiçbir vade elenmiyor, kural emniyet ağı.
-    if (points.length >= 3 && points[0].m <= 1 && points[points.length - 1].m >= 1) {
-      expiries.push({ days: e.days, date: e.date, points });
-    }
-  }
-
-  expiries.sort((a, b) => a.days - b.days);
-  return { symbol: prod.symbol, spot: S, fetchedISO, expiries, builtWithR: r };
 }
 
 /**
@@ -289,79 +178,3 @@ export function surfaceVolEstimate(surface: VolSurface, m: number, days: number,
 export function surfaceVol(surface: VolSurface, m: number, days: number, valuationDate?: string): number | null {
   return surfaceVolEstimate(surface, m, days, valuationDate).vol;
 }
-
-/**
- * Yüzeyin vade-başına gözlemlenen forward'ı (gün için interpole edilir).
- * Yalnız CME yüzeyinde tanımlı (expiries[].f); Yahoo/ETF yüzeyinde `null` döner —
- * çağıran taraf o durumda forward'ı spottan türetmeye devam eder.
- * Kote vade aralığının dışında en yakın uca sabitlenir (vol zaten aralık dışında
- * null döndüğünden fiyat üretilmez; burada yalnız güvenli bir sayı sağlanır).
- */
-export function surfaceForward(surface: VolSurface, days: number): number | null {
-  const exps = surface.expiries;
-  if (exps.length === 0 || exps[0].f == null) return null; // Yahoo yüzeyi
-  if (days <= exps[0].days) return exps[0].f ?? null;
-  const lastE = exps[exps.length - 1];
-  if (days >= lastE.days) return lastE.f ?? null;
-  for (let i = 0; i < exps.length - 1; i++) {
-    const a = exps[i], b = exps[i + 1];
-    if (days >= a.days && days <= b.days) {
-      if (a.f == null || b.f == null) return null;
-      const w = (days - a.days) / (b.days - a.days || 1);
-      return a.f + w * (b.f - a.f);
-    }
-  }
-  return null;
-}
-
-/**
- * Forward eğrisinin ima ettiği yıllık (log) carry: ln(F_uzak/F_yakın) / ΔT. Yalnız CME
- * yüzeyinde tanımlı (f gerekir), ekranda "piyasa carry'si ≈ %X" bilgisi için.
- *
- * `days` verilirse carry, O VADEYİ SARAN iki farklı forward gözleminden ölçülür.
- *
- * SINIR: zaman ekseni olarak OPSİYON vade günleri kullanılır, oysa forward farkı iki
- * FUTURES kontratı arasındadır ve futures'lar opsiyonlardan sonra vadelidir. Bu yüzden ΔT
- * olduğundan kısa, sonuç da SİSTEMATİK OLARAK YÜKSEK çıkar (gümüşte ~1.5 kat). Doğru
- * hesap için futures'ın kendi vade tarihi saklanmalı — bkz. buildCmeSurface. Bu değer
- * kaba bir gösterge olarak kullanılabilir, ekranda sayı olarak gösterilmemelidir.
- */
-export function surfaceForwardCarry(surface: VolSurface, days?: number): number | null {
-  // DİKKAT: Metallerde birden çok opsiyon vadesi AYNI dayanak futures'a yazılır (seri
-  // aylıklar ve haftalıklar aynı GC/SI kontratına exercise olur). Bu yüzden ardışık
-  // vadelerin f'i çoğu zaman BİREBİR AYNIDIR; onları çift olarak kullanmak carry'yi
-  // sıfır gösterir (gözlendi: XAG 90 günde %0.00). Yalnız FARKLI forward'lar kullanılır.
-  const withF: ExpirySmile[] = [];
-  for (const e of surface.expiries) {
-    if (e.f == null || !(e.f > 0)) continue;
-    const prev = withF[withF.length - 1];
-    if (prev && prev.f === e.f) continue;
-    withF.push(e);
-  }
-  if (withF.length < 2) return null;
-
-  let a = withF[0], b = withF[withF.length - 1];
-  if (days != null && isFinite(days)) {
-    if (days <= withF[0].days) {
-      a = withF[0]; b = withF[1];
-    } else if (days >= withF[withF.length - 1].days) {
-      a = withF[withF.length - 2]; b = withF[withF.length - 1];
-    } else {
-      for (let i = 0; i < withF.length - 1; i++) {
-        if (days >= withF[i].days && days <= withF[i + 1].days) { a = withF[i]; b = withF[i + 1]; break; }
-      }
-    }
-  }
-
-  const dt = (b.days - a.days) / 365;
-  if (dt <= 0) return null;
-  return Math.log((b.f as number) / (a.f as number)) / dt;
-}
-
-/** Ürün sembolü -> snapshot yüzey sembolü eşlemesi (XAU fiyatlaması GLD smile'ını kullanır). */
-export const PRODUCT_SURFACE_MAP: Record<string, string> = {
-  XAU: 'GLD',
-  XAG: 'SLV',
-  GLD: 'GLD',
-  SLV: 'SLV',
-};

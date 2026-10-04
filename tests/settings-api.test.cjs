@@ -61,40 +61,14 @@ test('even a valid manual interest rate cannot replace the curve', async () => {
   assert.equal(f.writes.length, 0);
 });
 
-test('datasource rejects invalid bodies, fields, and source values without writes', async () => {
-  const writes = [];
-  const imports = { 'next/server': mockNext(), '@/services/cme.service': {
-    getDataSource: async () => 'yahoo', setDataSource: async (...args) => writes.push(args),
-    cmeSupported: () => true, loadCmeSurface: async () => null,
-  }, '@/services/market.service': { loadSnapshot: async () => null },
-  '@/lib/vol/surface': { PRODUCT_SURFACE_MAP: { XAU: 'GLD', XAG: 'SLV' } },
-  '@/services/pricing-bundle.service': {},
-  '@/lib/settings-validation': load('src/lib/settings-validation.ts') };
-  const route = load('src/app/api/settings/datasource/route.ts', imports);
-  for (const bad of [null, [], 'x', 3, {}, { product: 'XAU' }, { source: 'yahoo' },
-    { product: null, source: 'yahoo' }, { product: true, source: 'yahoo' },
-    { product: 'XAU', source: null }, { product: 'XAU', source: true },
-    { product: 'XAU', source: 'other' }, { product: 'OTHER', source: 'yahoo' }]) {
-    const result = await route.POST(request(bad));
-    assert.equal(result.status, 400, `${String(bad)}`);
-    assert.equal(writes.length, 0);
-  }
-  assert.equal((await route.POST(request(undefined, true))).status, 400);
-  assert.equal(writes.length, 0);
-});
-
-test('datasource preserves supported source values and uppercases product', async () => {
-  const writes = [];
+test('datasource status reports only the active CME/SOFR bundle', async () => {
+  const surface = { fetchedISO: '2026-10-01T17:30:00.000Z', expiries: [1, 2], curves: { id: 'bundle-1' }, notes: 'filtered' };
   const route = load('src/app/api/settings/datasource/route.ts', {
-    'next/server': mockNext(), '@/services/cme.service': {
-      getDataSource: async () => 'yahoo', setDataSource: async (...args) => writes.push(args),
-      cmeSupported: () => true, loadCmeSurface: async () => null,
-    }, '@/services/market.service': { loadSnapshot: async () => null },
-    '@/lib/vol/surface': { PRODUCT_SURFACE_MAP: { XAU: 'GLD', XAG: 'SLV' } },
-    '@/services/pricing-bundle.service': {},
-    '@/lib/settings-validation': load('src/lib/settings-validation.ts'),
+    'next/server': mockNext(),
+    '@/services/pricing-bundle.service': { loadPricingBundle: async () => ({ surfaces: { XAU: surface, XAG: surface } }) },
   });
-  const result = await route.POST(request({ product: 'xau', source: 'cme' }));
-  assert.equal(JSON.stringify(result.body), JSON.stringify({ ok: true, product: 'XAU', source: 'cme' }));
-  assert.equal(JSON.stringify(writes), JSON.stringify([['XAU', 'cme']]));
+  const result = await route.GET();
+  assert.equal(JSON.stringify(result.body.items.map(i => [i.product, i.expiries, i.bundleId, i.notes])),
+    JSON.stringify([['XAU', 2, 'bundle-1', 'filtered'], ['XAG', 2, 'bundle-1', 'filtered']]));
+  assert.equal(route.POST, undefined);
 });

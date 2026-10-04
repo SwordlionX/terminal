@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { formatDate, formatDateTime, formatNumber } from "@/lib/format";
 import { checkBarrierHistoryAction } from "@/app/customers/[id]/barrier-history-actions";
 import type { BarrierHistoryReport } from "@/lib/barrier-history";
 
@@ -18,17 +18,17 @@ export function BarrierHistoryCheck({ customerId, tradeId }: { customerId: strin
     catch { setError("Bariyer geçmişi alınamadı. Kayıt değiştirilmedi."); }
     finally { setBusy(false); }
   }
-  return <div className="mt-2 whitespace-normal max-w-sm font-normal">
-    <Button size="sm" variant="outline" disabled={busy} onClick={check} title="Tiingo spot geçmişini tarar; kayıt ve hesapları değiştirmez">
+  return <div className="barrier-history-check">
+    <button className="desk-button" disabled={busy} onClick={check} title="Tiingo spot geçmişini tarar; kayıt ve hesapları değiştirmez">
       {busy ? "Spot geçmişi taranıyor…" : "Bariyer geçmişini kontrol et"}
-    </Button>
-    {error && <p role="alert" className="mt-2 text-xs text-amber-400">{error}</p>}
-    {report && <div role="status" className="mt-2 space-y-1 text-xs text-amber-400">
-      <p className="font-semibold">{report.status === "touch_observed" ? "Spot verisinde değme gözlendi" : report.status === "no_touch_observed" ? "Alınan veride değme görülmedi — kesinleşmedi" : "Doğrulanamadı"}</p>
-      <p>{report.source} · {report.startDate} – {report.endDate} · {report.bars} bar</p>
-      {report.firstDate && <p>Alınan barlar: {report.firstDate} – {report.lastDate}</p>}
-      {report.touchDate && <p>İlk gözlenen gün: {report.touchDate}; fiyat: {report.observedExtreme}</p>}
-      <p>Kontrol: {report.checkedAt}</p>
+    </button>
+    {error && <p role="alert" className="desk-policy">{error}</p>}
+    {report && <div role="status" className="desk-policy">
+      <strong>{report.status === "touch_observed" ? "Spot verisinde değme gözlendi" : report.status === "no_touch_observed" ? "Alınan veride değme görülmedi — kesinleşmedi" : "Doğrulanamadı"}</strong>
+      <p>{report.source} · {formatDate(report.startDate)} – {formatDate(report.endDate)} · {report.bars} bar</p>
+      {report.firstDate && <p>Alınan barlar: {formatDate(report.firstDate)} – {formatDate(report.lastDate)}</p>}
+      {report.touchDate && <p>İlk gözlenen gün: {formatDate(report.touchDate)}; fiyat: {report.observedExtreme == null ? '—' : formatNumber(report.observedExtreme)}</p>}
+      <p>Kontrol: {formatDateTime(report.checkedAt)}</p>
       <p>{report.note}</p>
     </div>}
   </div>;

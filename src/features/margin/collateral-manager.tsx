@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import { CollateralItem } from "@/types/collateral";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus } from "lucide-react";
+import { parseNumberInput } from "@/lib/number-input-parser";
 import { addCustomerCollateral, removeCustomerCollateral } from "@/app/customers/[id]/margin/collateral-actions";
 import { formatMoney, formatNumber, formatPercent as formatPct } from '@/lib/format';
 
@@ -44,7 +38,7 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
     e.preventDefault();
     if (isSubmitting) return;
     setAddError(null);
-    const nominal = Number(amount);
+    const nominal = parseNumberInput(amount) ?? NaN;
     if (!Number.isFinite(nominal) || nominal <= 0) {
       setAddError("Pozitif ve geçerli bir teminat miktarı girin.");
       return;
@@ -75,105 +69,36 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mevcut Teminat Varlıkları</CardTitle>
-        {addError && <p role="alert" className="text-sm text-rose-400">{addError}</p>}
-        <CardDescription>USD nakit · XAU/XAG ons</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="rounded-md border border-zinc-800">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead>Varlık Türü</TableHead>
-                <TableHead>Döviz</TableHead>
-                <TableHead className="text-right">Miktar / Tutar</TableHead>
-                <TableHead className="text-right">Kesinti (%)</TableHead>
-                <TableHead className="text-right">Canlı Teminat Değeri (USD)</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {collaterals.length === 0 ? (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6} className="text-center py-8 text-zinc-500">
-                    Henüz teminat eklenmemiş. Aşağıdaki formu kullanarak ekleyebilirsiniz.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                collaterals.map(c => {
-                  const hc = c.haircut ?? 0;
-                  return (
-                    <TableRow key={c.id} className="border-zinc-800">
-                      <TableCell className="font-medium text-zinc-200">{c.assetCode}</TableCell>
-                      <TableCell className="text-zinc-400">{c.currency}</TableCell>
-                      <TableCell className="text-right font-mono text-zinc-300">{formatQty(c)}</TableCell>
-                      <TableCell className="text-right font-mono text-rose-400">{formatPercent(hc)}</TableCell>
-                      <TableCell className="text-right font-mono text-emerald-400 font-bold">{formatCurrency(c.marketValueUsd * (1 - hc))}</TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" className="text-zinc-500 hover:text-rose-400 hover:bg-rose-400/10" onClick={() => handleDelete(c.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        <div className="pt-4 border-t border-zinc-800">
-          <h3 className="text-sm font-medium mb-3 flex items-center text-zinc-300"><Plus className="h-4 w-4 mr-1"/> Yeni Teminat Ekle</h3>
-          <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1.5 flex-1">
-              <Label htmlFor="assetCode" className="text-xs text-zinc-400">Varlık Türü</Label>
-              {/* items: kutuda ham kod ("Nakit-USD") değil okunur etiket görünsün diye. */}
-              <Select
-                value={assetCode}
-                items={Object.fromEntries(COLLATERAL_TYPES.map(t => [t.code, t.label]))}
-                onValueChange={(val) => setAssetCode(val || "Nakit-USD")}
-              >
-                <SelectTrigger id="assetCode" className="bg-zinc-950 border-zinc-800 text-sm">
-                  <SelectValue placeholder="Varlık seçin" />
-                </SelectTrigger>
-                <SelectContent className="border-zinc-800 bg-zinc-950">
-                  {COLLATERAL_TYPES.map(t => (
-                    <SelectItem key={t.code} value={t.code}>
-                      <span className="flex justify-between w-full pr-4">
-                        <span>{t.label}</span>
-                        <span className="text-zinc-500 ml-4">{t.unit === 'ons' ? 'ons · canlı' : 'USD 1:1'}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5 flex-1">
-              <Label htmlFor="amount" className="text-xs text-zinc-400">
-                {selectedType.unit === 'ons' ? 'Miktar (ons)' : 'Tutar (USD)'}
-              </Label>
-              <Input
-                id="amount"
-                type="number"
-                step="any"
-                min="0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder={selectedType.unit === 'ons' ? 'Örn: 100' : 'Örn: 10000'}
-                className="bg-zinc-950 border-zinc-800 font-mono text-sm"
-                required
-              />
-            </div>
-
-            <Button type="submit" disabled={isSubmitting} className="bg-emerald-600/20 text-emerald-400 border border-emerald-600/50 hover:bg-emerald-600/30 w-full sm:w-auto transition-colors">
-              {isSubmitting ? "Ekleniyor..." : "Teminat Ekle"}
-            </Button>
-          </form>
-        </div>
-      </CardContent>
-    </Card>
+    <section className="workspace-panel">
+      <div className="workspace-heading" style={{ marginBottom: 8 }}><h2>Mevcut teminat varlıkları</h2><span className="desk-muted">USD nakit · XAU/XAG ons</span></div>
+      <div className="workspace-table-scroll"><table className="workspace-table">
+        <thead><tr><th>Varlık</th><th>Döviz</th><th className="number">Miktar / tutar</th><th className="number">Kesinti</th><th className="number">Teminat değeri · USD</th><th /></tr></thead>
+        <tbody>{collaterals.length === 0
+          ? <tr><td colSpan={6} className="workspace-empty">Henüz teminat eklenmemiş. Aşağıdaki formla ekleyebilirsiniz.</td></tr>
+          : collaterals.map(c => {
+            const hc = c.haircut ?? 0;
+            return <tr key={c.id}>
+              <td>{COLLATERAL_TYPES.find(t => t.code === c.assetCode)?.label ?? c.assetCode}</td>
+              <td>{c.currency}</td>
+              <td className="number">{formatQty(c)}</td>
+              <td className="number">{formatPercent(hc)}</td>
+              <td className="number">{formatCurrency(c.marketValueUsd * (1 - hc))}</td>
+              <td><button className="desk-button" onClick={() => handleDelete(c.id)}>Sil</button></td>
+            </tr>;
+          })}</tbody>
+      </table></div>
+      <form onSubmit={handleAdd} className="workspace-toolbar" style={{ alignItems: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+        <label className="desk-field">Varlık türü
+          <select value={assetCode} onChange={e => setAssetCode(e.target.value || 'Nakit-USD')}>
+            {COLLATERAL_TYPES.map(t => <option key={t.code} value={t.code}>{t.label} · {t.unit === 'ons' ? 'ons, canlı fiyat' : 'USD 1:1'}</option>)}
+          </select>
+        </label>
+        <label className="desk-field">{selectedType.unit === 'ons' ? 'Miktar · ons' : 'Tutar · USD'}
+          <input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder={selectedType.unit === 'ons' ? 'Örn: 100' : 'Örn: 10000'} required />
+        </label>
+        <button type="submit" className="desk-button desk-button-primary" disabled={isSubmitting}>{isSubmitting ? 'Ekleniyor…' : 'Teminat ekle'}</button>
+      </form>
+      {addError && <p role="alert" className="desk-policy">{addError}</p>}
+    </section>
   );
 }
