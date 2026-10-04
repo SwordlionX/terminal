@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import Link from 'next/link';
 
 export interface ExpiryItem {
   id: string;
@@ -31,6 +32,7 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
     const d = new Date(date);
     d.setHours(0,0,0,0);
     const time = d.getTime();
+    if (time < today.getTime()) return 'Vadesi Geçti';
     if (time === today.getTime()) return "Bugün";
     if (time === tomorrow.getTime()) return "Yarın";
     if (time <= nextWeek.getTime()) return "Bu Hafta";
@@ -56,7 +58,7 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
           {catItems.length === 0 ? (
             <div className="text-xs text-zinc-600 italic py-4 text-center border border-dashed border-zinc-800 rounded">İşlem Yok</div>
           ) : catItems.sort((a,b)=>a.date.getTime()-b.date.getTime()).map((it, i) => (
-            <div key={i} className="p-2 bg-zinc-900/40 border border-zinc-800 rounded flex justify-between items-center hover:bg-zinc-800 transition-colors cursor-pointer">
+            <Link key={i} href={`/trades?trade=${encodeURIComponent(it.id)}`} className="p-2 bg-zinc-900/40 border border-zinc-800 rounded flex justify-between items-center hover:bg-zinc-800 transition-colors">
               <div>
                 <div className="text-[11px] font-bold text-zinc-300 truncate w-24 sm:w-32" title={it.customerName}>{it.customerName}</div>
                 <div className="text-[10px] text-zinc-500 uppercase">{it.product} {it.position}</div>
@@ -65,7 +67,7 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
                 <div className="font-mono text-xs text-zinc-300">{formatCurrency(it.notional)}</div>
                 <div className="text-[10px] text-zinc-500 font-mono">{it.date.toLocaleDateString('tr-TR')}</div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -78,12 +80,15 @@ export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
         <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Vade Takvimi (Yaklaşan Vadeler)</CardTitle>
       </CardHeader>
       <CardContent className="pt-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {renderGroup('Vadesi Geçti', grouped['Vadesi Geçti'], 'text-rose-400 border-rose-500/50')}
           {renderGroup("Bugün", grouped["Bugün"], "text-rose-400 border-rose-500/50")}
           {renderGroup("Yarın", grouped["Yarın"], "text-orange-400 border-orange-500/50")}
           {renderGroup("Bu Hafta", grouped["Bu Hafta"], "text-yellow-400 border-yellow-500/50")}
           {renderGroup("Bu Ay", grouped["Bu Ay"], "text-emerald-400 border-emerald-500/50")}
+          {renderGroup('Daha Sonra', grouped['Daha Sonra'], 'text-muted-foreground border-border')}
         </div>
+        <p className="text-xs text-muted-foreground mt-4">Gösterilen nominal giriş spotu × miktardır. Vadesi geçen kayıtlar sonucu bekleyen işlemlerdir.</p>
       </CardContent>
     </Card>
   );

@@ -427,3 +427,13 @@ test('target search remains available when the active strike is outside the curv
   const result = await execute('find_options', { option: { type: 'Put', position: 'Short', contractSize: 10 }, target, unit: 'pct_spot', minStrike: 80, maxStrike: 120 });
   assert.equal(result.reached, true); assert.equal(artifacts.length, 1);
 });
+
+
+test('sealed conversations cannot carry a previous customer or pricing scope into a new selection', () => {
+  const security = modules({}, { ASSISTANT_SESSION_SECRET: 'fixture-only' })('src/lib/assistant/security.ts');
+  const history = [{ role: 'user', parts: [{ text: 'Customer A details' }] }];
+  const token = security.sealConversation(history, 'customer-a/trade-1');
+  assert.equal(security.openConversation(token, 'customer-a/trade-1').length, 1);
+  assert.equal(security.openConversation(token, 'customer-b/trade-2').length, 0);
+  assert.equal(security.openConversation(security.sealConversation(history), 'customer-a/trade-1').length, 0);
+});

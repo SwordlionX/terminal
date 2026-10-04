@@ -33,6 +33,8 @@ export function validateContext(value: unknown): ScreenContext {
     contractSize: number(o.contractSize, 'Miktar', 0.000001, 1e9), basis: number(o.basis, 'Gün bazı', 360, 365),
     tradeDate: date(o.tradeDate, 'Değerleme tarihi'), expiryDate: date(o.expiryDate, 'Vade'),
     manualVol: o.manualVol, manualSpot: o.manualSpot,
+    ...(o.type === undefined ? {} : { type: choice(o.type, ['Call', 'Put'] as const, 'Opsiyon tipi') }),
+    ...(o.position === undefined ? {} : { position: choice(o.position, ['Long', 'Short'] as const, 'Müşteri yönü') }),
   };
 }
 

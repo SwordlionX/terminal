@@ -1,4 +1,5 @@
 "use client";
+import { TradeConditions } from '@/features/pricing/trade-conditions';
 import { FeedStatus } from "@/features/pricing/feed-status";
 
 import { usePricingModel } from "@/features/pricing/use-pricing-model";
@@ -15,6 +16,7 @@ export default function BarrierPricingPage() {
         <p className="text-sm text-muted-foreground mt-1">Knock-In / Knock-Out bariyer opsiyon fiyatlama ve Greeks</p>
       </div>
 
+      <TradeConditions />
       <PricingContextBar
         product={md.product}
         spot={md.spot}

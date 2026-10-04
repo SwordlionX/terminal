@@ -9,17 +9,18 @@ import { PositionAnalysisView, PositionCurve, analysisMoney, analysisNumber } fr
 import { useAnalysisDraft } from '@/store/analysis-draft';
 import type { MarketSnapshot, Product, ScreenContext } from '@/lib/assistant/types';
 import { MANUAL_PRICING_BLOCKED } from '@/lib/assistant/policy';
+import { AskAssistant } from '@/components/workspace-context';
 import { TERMINAL_DESIGN } from '@/lib/terminal-design';
 
-export function AnalysisWorkspace() {
+export function AnalysisWorkspace({ initialLegs, title = 'Pozisyon analizi' }: { initialLegs?: AnalysisLeg[]; title?: string }) {
   const { md, feed } = usePricingModel();
   const seed = useAnalysisDraft.getState();
   const [draft, setDraft] = useState<{ product: string; legs: AnalysisLeg[] }>(() => ({ product: md.product,
-    legs: seed.product === md.product && seed.legs ? seed.legs : [{ option: { type: 'Put', position: 'Short', strike: md.strike, expiryDate: md.expiryDate, contractSize: md.contractSize } }] }));
+    legs: initialLegs ?? (seed.product === md.product && seed.legs ? seed.legs : [{ option: { type: 'Put', position: 'Short', strike: md.strike, expiryDate: md.expiryDate, contractSize: md.contractSize } }]) }));
   const [comparison, setComparison] = useState(false);
-  const [hedgeStrike, setHedgeStrike] = useState(Number((md.strike * .95).toFixed(2)));
+  const [hedgeStrike, setHedgeStrike] = useState(Number(((initialLegs?.[0]?.option.strike ?? md.strike) * .95).toFixed(2)));
   const [hedgeType, setHedgeType] = useState<'Call' | 'Put'>('Put');
-  const [hedgeQuantity, setHedgeQuantity] = useState(md.contractSize);
+  const [hedgeQuantity, setHedgeQuantity] = useState(initialLegs?.[0]?.option.contractSize ?? md.contractSize);
   const [newExpiry, setNewExpiry] = useState('');
   const [curveDate, setCurveDate] = useState('');
   const legs = draft.legs;
@@ -62,9 +63,10 @@ export function AnalysisWorkspace() {
   const dateIndex = base ? Math.max(0, base.dates.indexOf(curveDate)) : 0;
   const updateLeg = (index: number, patch: Partial<AnalysisLeg>) => setDraft(d => ({ ...d, legs: d.legs.map((l, i) => i === index ? { ...l, ...patch } : l) }));
   const updateOption = (index: number, patch: Partial<AnalysisLeg['option']>) => updateLeg(index, { option: { ...legs[index].option, ...patch } });
-  return <div className="desk-workspace analysis-workspace">
-    <div className="desk-hero"><div><p className="desk-eyebrow">{TERMINAL_DESIGN === 'meridian' ? 'MERIDIAN / POZİSYON MASASI' : 'TERMINAL X / SCENARIO DESK'}</p><h1>Pozisyonu bütün olarak gör.</h1><p>Avrupa tipi vanilya opsiyonlar · müşteri perspektifi · {md.product}</p></div><Link className="desk-link" href="/">Fiyatlamaya dön ↗</Link></div>
+  return <div className="desk-workspace analysis-workspace" data-saved={Boolean(initialLegs)}>
+    <div className="desk-hero"><div><p className="desk-eyebrow">{TERMINAL_DESIGN === 'meridian' ? 'MERIDIAN / POZİSYON MASASI' : 'TERMINAL X / SCENARIO DESK'}</p><h1>{title}</h1><p>Avrupa tipi vanilya opsiyonlar · müşteri perspektifi · {md.product}</p></div><Link className="desk-link" href="/">Fiyatlamaya dön ↗</Link></div>
     <div className="desk-policy">Vade öncesi kullanım veya otomatik kapatma yok. Hedge ve ters işlem yeni bacaklar ekler; mevcut sözleşmenin yükümlülükleri devam eder.</div>
+    <details className="analysis-editor" open={!initialLegs}><summary>Senaryo koşulları · kayıtlı işlem değişmez</summary>
     <section className="analysis-panel"><div className="analysis-panel-head"><div><p className="desk-eyebrow">İŞLEM KOŞULLARI</p><h2>Müşterinin pozisyonu</h2></div><button className="desk-button" onClick={() => setDraft({ product: md.product, legs: [{ option: { type: 'Put', position: 'Short', strike: md.strike, expiryDate: md.expiryDate, contractSize: md.contractSize } }] })}>Ekrandan yeni pozisyon</button></div>
       <div className="analysis-legs">{legs.map((leg, i) => <div className="analysis-leg" key={i}>
         <label className="desk-field">Tip<select aria-label={`Bacak ${i + 1} tipi`} value={leg.option.type} onChange={e => updateOption(i, { type: e.target.value as 'Call' | 'Put' })}><option>Call</option><option>Put</option></select></label>
@@ -75,8 +77,10 @@ export function AnalysisWorkspace() {
         <div className="desk-field"><label className="desk-check"><input type="checkbox" checked={leg.entryPremiumPerUnit !== undefined} onChange={e => updateLeg(i, { entryPremiumPerUnit: e.target.checked ? 0 : undefined })} />Gerçekleşen prim</label>{leg.entryPremiumPerUnit !== undefined ? <NumberInput aria-label={`Bacak ${i + 1} geçmiş birim prim`} value={leg.entryPremiumPerUnit} onValueChange={entryPremiumPerUnit => updateLeg(i, { entryPremiumPerUnit })} /> : <small>Bugünkü model primi referans</small>}</div>
         <button className="desk-icon-button" aria-label={`Bacak ${i + 1} sil`} disabled={legs.length === 1} onClick={() => setDraft(d => ({ ...d, legs: d.legs.filter((_, j) => j !== i) }))}>×</button>
       </div>)}</div>
-      <div className="analysis-panel-head"><button className="desk-button" disabled={legs.length >= 8} onClick={() => setDraft(d => ({ ...d, legs: [...d.legs, { option: { type: 'Put', position: 'Long', strike: Number((md.strike * .95).toFixed(2)), expiryDate: d.legs[0].option.expiryDate ?? md.expiryDate, contractSize: md.contractSize } }] }))}>+ Bacak ekle</button><span className="desk-muted">Geçmiş prim USD / {unit}; piyasa IV/faiz/kira girdisi değildir.</span></div>
+      <div className="analysis-panel-head"><button className="desk-button" disabled={legs.length >= 8} onClick={() => setDraft(d => ({ ...d, legs: [...d.legs, { option: { type: 'Put', position: 'Long', strike: Number(((initialLegs?.[0]?.option.strike ?? md.strike) * .95).toFixed(2)), expiryDate: d.legs[0].option.expiryDate ?? md.expiryDate, contractSize: md.contractSize } }] }))}>+ Bacak ekle</button><span className="desk-muted">Geçmiş prim USD / {unit}; piyasa IV/faiz/kira girdisi değildir.</span></div>
     </section>
+    </details>
+    <AskAssistant text={`Bu analiz senaryosudur; kayıtlı işlemi değiştirmez. Şu koşullarla analyze_position kullanarak birleşik fiyat×tarih K/Z ve delta/gamma haritasını değerlendir: ${JSON.stringify({ product: md.product, legs })}. Piyasa girdileri sadece terminal eğrisinden gelir.`}>Ekrandaki senaryoyu asistanla incele ↗</AskAssistant>
     <section className="analysis-panel"><div className="analysis-panel-head"><div><p className="desk-eyebrow">ALTERNATİFLER</p><h2>Hedge ve yeni vade</h2></div><label className="desk-check"><input type="checkbox" checked={comparison} onChange={e => setComparison(e.target.checked)} />Karşılaştırmayı aç</label></div>
       {comparison && <><div className="analysis-compare-controls"><label className="desk-field">Koruma opsiyonu<select value={hedgeType} onChange={e => setHedgeType(e.target.value as 'Call' | 'Put')}><option>Put</option><option>Call</option></select></label><label className="desk-field">Koruma strike<NumberInput value={hedgeStrike} onValueChange={setHedgeStrike} /></label><label className="desk-field">Koruma miktarı · {unit}<NumberInput value={hedgeQuantity} onValueChange={setHedgeQuantity} /></label><label className="desk-field">İsteğe bağlı yeni vade<input type="date" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} /></label></div><p className="analysis-footnote">Koruma bacağı alış yönündedir. Yeni vade karşılaştırması, mevcut bacaklara eşleşen ters işlemler ve yeni vadeli bacaklar ekler. İşlem/fesih gerçekleştirmez.</p></>}
     </section>
@@ -87,6 +91,6 @@ export function AnalysisWorkspace() {
       <PositionAnalysisView result={base} />
     </>}
     {view.failed.filter(x => x.label !== 'Mevcut pozisyon').map(x => <p className="desk-policy" key={x.label}>{x.label}: {x.error}</p>)}
-    <div className="desk-policy">Kaynak eğriyle endikatif model analizi. USD faiz ve metal taşıma eğrisinin kaynak/konvansiyon düzeltmesi henüz tamamlanmadı; bu ekran banka tarafından onaylanmış kotasyon üretmez.</div>
+    <div className="desk-policy">CME/SOFR proxy eğrisiyle endikatif model analizi. Faiz, metal taşıması ve IV aynı veri sürümünden gelir; banka kira veya uygulanabilir banka kotasyonu değildir.</div>
   </div>;
 }

@@ -27,7 +27,8 @@ const STATUS_CONFIG: Record<
 };
 
 /** Teminat durumu rozeti. `withThresholds` ile eşik ipuçlarını (>%39 vb.) ekler. */
-export function MarginStatusBadge({ status, withThresholds = false }: { status: Status; withThresholds?: boolean }) {
+export function MarginStatusBadge({ status, withThresholds = false, dataWarning }: { status: Status; withThresholds?: boolean; dataWarning?: string }) {
+  if (dataWarning && status === 'SAFE') return <Badge variant="outline" className="text-primary border-primary" title={dataWarning}>VERİ KONTROLÜ GEREKLİ</Badge>;
   const c = STATUS_CONFIG[status];
   return (
     <Badge variant={c.variant} className={c.className} title={c.title}>

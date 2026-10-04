@@ -25,6 +25,7 @@ export interface CollateralAsset {
 }
 
 export interface MarginResult {
+  dataWarning?: string;
   totalCollateralValue: number;   // Haircut sonrası, canlı teminat değeri (USD)
   totalMtmLoss: number;           // Brüt intrinsic zarar (prim HARİÇ), müşteri aleyhine — Short pozisyonlar
   marginCallRatio: number;        // Zarar / Teminat — TEK headline metrik; risk eşikleri bunun üzerinden
