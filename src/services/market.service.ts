@@ -1,6 +1,8 @@
 import { dbc } from '@/lib/db';
 import { YahooSnapshot, SnapshotProduct, VolSurface, buildSurface, PRODUCT_SURFACE_MAP } from '@/lib/vol/surface';
-import { getDataSource, loadCmeSurface } from './cme.service';
+import { getDataSource } from './cme.service';
+import { loadPricingBundle } from './pricing-bundle.service';
+import { factorAt } from '../lib/market/factors';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 // Dakikada bir tazeleme. 30 sn'deydi; süreç-içi önbellek her sunucu örneğinde ayrı
@@ -37,7 +39,6 @@ const surfaceMem: Record<string, { at: number; val: VolSurface }> = {};
 const SURFACE_TTL_MS = 60 * 1000;
 
 /** Yüzeyin kurulduğu referans faiz. Değiştirilirse yeni yenilemede geçerli olur. */
-const REF_RATE = 0.05;
 
 const ySurfKey = (sym: string) => `yahoo_surface_${sym.toUpperCase()}`;
 
@@ -201,25 +202,19 @@ export async function setUsdTryRate(rate: number): Promise<void> {
   });
 }
 
-/** Global risksiz faiz oranı — gece yüzey kurulurken bu kullanılır. */
+/** Read-only 90-day ACT/365 equivalent; pricing itself uses dated factors. */
 export async function getInterestRate(): Promise<number> {
-  try {
-    const c = await dbc();
-    const r = await c.execute("SELECT v FROM kv WHERE k = 'interest_rate'");
-    if (r.rows.length) {
-      const v = Number(r.rows[0].v);
-      if (Number.isFinite(v) && v >= 0) return v;
-    }
-  } catch { /* db yoksa varsayılan 5% */ }
-  return 0.05;
+  const bundle = await loadPricingBundle();
+  if (!bundle) throw new Error('USD vade eğrisi yok; varsayılan faiz kullanılmaz.');
+  const from = Date.parse(bundle.sessionDate + 'T00:00:00Z'), days = 90;
+  const discount = factorAt(bundle.usd.nodes, from + days * 86400000);
+  if (discount == null) throw new Error('USD faiz eğrisinin kapsamı eksik.');
+  return -Math.log(discount) / (days / 365);
 }
 
 export async function setInterestRate(rate: number): Promise<void> {
-  const c = await dbc();
-  await c.execute({
-    sql: "INSERT INTO kv (k, v) VALUES ('interest_rate', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-    args: [rate.toString()],
-  });
+  void rate;
+  throw new Error('Manuel faiz girişi eğri–fiyat tutarlılığını bozar; USD eğrisini yeniden kurun.');
 }
 
 /**
@@ -285,8 +280,11 @@ async function loadYahooSurface(sym: string): Promise<VolSurface | null> {
  */
 export async function getSurface(product: string, r: number, existingOnly = false): Promise<VolSurface | null> {
   const key = product.toUpperCase();
-  if ((await getDataSource(key)) === 'cme') {
-    return loadCmeSurface(key);
+  if (key === 'XAU' || key === 'XAG') {
+    if ((await getDataSource(key)) !== 'cme') throw new Error('Metal fiyatlaması için ortak CME/SOFR eğri sürümü gerekli; ETF yüzeyi kullanılamaz.');
+    const bundle = await loadPricingBundle();
+    if (!bundle) throw new Error('Faiz, taşıma ve IV yeni sürümde birlikte kurulmalı; eski kira hesabıyla fiyatlama yapılmaz.');
+    return bundle.surfaces[key];
   }
 
   const sym = PRODUCT_SURFACE_MAP[key];
@@ -405,7 +403,7 @@ export async function refreshSnapshot(): Promise<YahooSnapshot> {
   // kurulamazsa diğeri yine de yazılır — yenilemenin tamamı çöpe gitmez.
   for (const [sym, prod] of Object.entries(out.products)) {
     try {
-      await saveYahooSurface(sym, buildSurface(prod, REF_RATE, out.fetchedISO));
+      await saveYahooSurface(sym, buildSurface(prod, await getInterestRate(), out.fetchedISO));
     } catch { /* bu sembolde yüzey kurulamadı; getSurface gerekirse tekrar dener */ }
   }
 

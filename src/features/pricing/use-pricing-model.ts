@@ -24,41 +24,14 @@ export function usePricingModel() {
     }
   }, [feed.spot?.at, feed.spot?.price, manualSpot, product, applyLiveSpot]);
 
-  // CME Yüzeyinden Zımni Kira (Implied Lease Rate) geldiğinde bunu otomatik olarak
-  // ekrandaki Kira kutusuna yansıt. Böylece kullanıcı güncel piyasa kirasını doğrudan görür
-  // ve dilerse üzerine yazabilir (manuel değiştirebilir).
-  useEffect(() => {
-    if (feed.surface?.impliedLeaseRate != null) {
-      const impliedPct = Number((feed.surface.impliedLeaseRate * 100).toFixed(4));
-      // Gereksiz re-render'ı önlemek için sadece farklıysa set et
-      if (Math.abs(md.lease - impliedPct) > 0.0001) {
-        md.setField("lease", impliedPct);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feed.surface?.fetchedISO]);
-
-  // Yüzeyin faiz oranıyla (builtWithR) ekranı senkronize et
-  useEffect(() => {
-    if (feed.surface?.builtWithR != null) {
-      const surfaceR = Number((feed.surface.builtWithR * 100).toFixed(4));
-      if (Math.abs(md.rate - surfaceR) > 0.0001) {
-        md.setField("rate", surfaceR);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feed.surface?.fetchedISO]);
-
+  // Rates are derived per maturity from factor curves, never written back as editable assumptions.
+  const resolved = useMemo(() => calculatePricing(md, feed.surface), [md, feed.surface]);
   const { dateValid, daysToExpiry, tYears, fwd, pricingSpot, smileEstimate, smileIv,
     numericInputsValid, effVol, result, gr, autoAvailable, priceable, unpriceableReason } =
-    useMemo(() => calculatePricing(md, feed.surface), [md, feed.surface]);
+    resolved;
   const usingCmeFwd = false;
 
-  // CME forward aktifken forward futures'tan gelir → kira prime girmez; piyasa carry'si
-  // (forward eğrisinden) ekranda bilgi olarak gösterilir.
-  // NOT: "piyasa carry'si" gösterimi kaldırıldı — metallerde birden çok opsiyon vadesi aynı
-  // futures'a yazıldığı için opsiyon vadelerinden ölçülen carry sistematik olarak şişiyor
-  // (bkz. surfaceForwardCarry). Forward zaten futures'tan geldiğinden fiyata etkisi yok.
+  // The requested maturity uses USD and metal factor ratios from one market bundle.
 
   /**
    * Herhangi bir FİYAT SEVİYESİ için smile vol'ü (%). Bariyer paneli bunu bariyer
@@ -86,21 +59,13 @@ export function usePricingModel() {
     ? (surfaceIsCme ? `CME COMEX ${feed.surface.symbol} settlement` : `Yahoo ${feed.surface.symbol} (ETF) yüzeyi`)
     : undefined;
 
-  /**
-   * BARİYER için spot/carry. Vanilyada forward'ı sentetik spotla (pricingSpot) kurmak
-   * zararsızdır — fiyat yalnız forward'a bakar. Bariyer ise GERÇEK spot yolunu izler:
-   * hem "bariyere değdi mi" eşiği hem de bariyere olan mesafe gerçek seviyeyle ölçülür.
-   * Sentetik spot gerçek spottan ~%0.3 sapıyordu ve bu sapma bariyere yaklaştıkça
-   * primde %1–9'a kadar büyüyordu.
-   *
-   * Çözüm: spot GERÇEK kalır, carry forward'dan ima edilir — q = r − ln(F/S)/T. Bu, aynı
-   * forward'ı (dolayısıyla aynı vanilya fiyatını) verirken bariyer mesafesini bozmaz.
-   * CME forward'ı yoksa ima edilen q zaten kullanıcının girdiği kiraya eşit çıkar.
-   */
+  // Barrier closed form uses maturity-equivalent constants: explicitly an approximation.
   const barrierSpot = md.spot;
-  const barrierLease = md.lease; // Artık doğrudan yüzeyden gelen veya kullanıcının girdiği kira geçerli
+  const barrierLease = resolved.effectiveLease;
+  const effectiveMd = feed.surface?.curves ? { ...md, rate: resolved.effectiveRate, lease: resolved.effectiveLease } : md;
 
-  return { md, feed, dateValid, daysToExpiry, tYears, smileIv, smileEstimate, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, volModeAtLevel, barrierSpot, barrierLease, surfaceSourceLabel };
+  return { md: effectiveMd, feed, dateValid, daysToExpiry, tYears, smileIv, smileEstimate, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, volModeAtLevel, barrierSpot, barrierLease, surfaceSourceLabel,
+    displayRate: resolved.displayRate, displayLease: resolved.displayLease };
 }
 
 export const formatCurrency = (val: number) =>

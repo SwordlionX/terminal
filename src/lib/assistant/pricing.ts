@@ -20,12 +20,15 @@ export function quoteOption(request: OptionRequest, screen: ScreenContext, marke
   };
   const p = calculatePricing(inputs, market.surface);
   if (!p.priceable) throw new Error(p.unpriceableReason ?? 'Terminal motoru bu girdiyi fiyatlayamıyor.');
+  inputs.rate = p.effectiveRate; inputs.lease = p.effectiveLease;
   const sign = request.position === 'Long' ? 1 : -1;
   let premiumPerUnit = request.type === 'Call' ? p.result.call : p.result.put;
   let gr = request.type === 'Call' ? p.gr?.call : p.gr?.put;
   const warnings: string[] = [];
+  if (market.surface?.curves) warnings.push(...market.surface.curves.warnings);
   let model = 'Terminal X · Avrupa / GK';
   if (request.barrier) {
+    if (market.surface?.curves) warnings.push('Bariyer yolunda eğrinin vade-eşdeğer sabit faiz/taşıma yaklaşımı kullanılır; dönemsel yol modeli değildir.');
     const { variant, level, rebate = 0 } = request.barrier;
     if (!(level > 0) || !Number.isFinite(level) || rebate < 0 || !Number.isFinite(rebate)) throw new Error('Bariyer veya rebate geçersiz.');
     const estimate = (k: number) => surfaceVolEstimate(market.surface!, k / p.fwd, p.daysToExpiry, inputs.tradeDate);
@@ -58,7 +61,7 @@ export function quoteOption(request: OptionRequest, screen: ScreenContext, marke
   const delta = sign * gr.delta * inputs.contractSize;
   return {
     id: [product, request.type, request.position, inputs.strike, inputs.expiryDate, request.barrier?.variant ?? 'vanilla', request.barrier?.level ?? ''].join('-'),
-    product, type: request.type, position: request.position, inputs, barrier: request.barrier,
+    product, type: request.type, position: request.position, inputs, barrier: request.barrier, forward: p.fwd,
     premiumPerUnit, premiumTotal, premiumPctSpot: premiumPerUnit / spot * 100,
     premiumPctStrike: premiumPerUnit / inputs.strike * 100, cashflow: -sign * premiumTotal,
     delta, gamma: sign * gr.gamma * inputs.contractSize, vega: sign * gr.vega * inputs.contractSize,

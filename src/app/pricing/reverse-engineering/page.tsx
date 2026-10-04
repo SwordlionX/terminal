@@ -6,7 +6,7 @@ import { ReverseEngineering } from "@/features/pricing/reverse-engineering";
 import { FeedStatus } from "@/features/pricing/feed-status";
 
 export default function ReverseEngineeringPricingPage() {
-  const { md, feed, daysToExpiry, tYears, effVol } = usePricingModel();
+  const { md, feed, daysToExpiry, tYears, effVol, priceable, unpriceableReason } = usePricingModel();
 
   return (
     <div className="space-y-6">
@@ -26,14 +26,15 @@ export default function ReverseEngineeringPricingPage() {
         livePrice={feed.spot?.price}
       />
 
-      <ReverseEngineering
+      <p className="text-sm text-amber-400">Tanısal IV çözümü; bulunan değer piyasa eğrisine veya fiyatlama girdilerine yazılmaz. Manuel volatilite eğri–fiyat tutarlılığını bozar.</p>
+      {priceable ? <ReverseEngineering
         spot={md.spot}
         strike={md.strike}
         tYears={tYears}
         rate={md.rate}
         lease={md.lease}
         contractSize={md.contractSize}
-      />
+      /> : <p role="status" className="text-sm text-amber-400">{unpriceableReason}</p>}
       <FeedStatus feed={feed} />
     </div>
   );

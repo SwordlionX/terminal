@@ -28,6 +28,7 @@ export interface OptionRequest {
   barrier?: { variant: 'uo' | 'do' | 'ui' | 'di'; level: number; rebate?: number };
 }
 export interface Quote {
+  forward?: number;
   id: string;
   product: Product;
   type: OptionType;

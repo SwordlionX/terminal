@@ -1,4 +1,5 @@
-import { impliedVolAmerican } from '../math/american';
+import { impliedVolAmerican, impliedVolAmericanFutureCurve } from '../math/american';
+import { factorAt, type PricingCurves } from '../market/factors';
 import { VolSurface, ExpirySmile, SmilePoint } from './surface';
 
 /**
@@ -23,6 +24,8 @@ export interface CmeOptionDef {
 }
 
 export interface CmeInputs {
+  curves?: PricingCurves;
+  futureExpirations?: Map<string, string>;
   /** instrument_id -> opsiyon tanımı (yalnız C/P) */
   options: Map<string, CmeOptionDef>;
   /** instrument_id -> opsiyon settlement fiyatı */
@@ -126,6 +129,7 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     // 3) OTM adayları topla (K>=F -> call, K<F -> put), moneyness penceresinde
     const cands: { m: number; K: number; px: number; type: 'call' | 'put' }[] = [];
     for (const { def, px } of list) {
+      if (def.und !== und) continue;
       const K = def.strike;
       if (K < MONEY_LO * F || K > MONEY_HI * F) continue;
       const useCall = K >= F;
@@ -137,8 +141,20 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
 
     // 4) Seyreltilmiş adayları -> Amerikan futures-opsiyon IV inversiyonu (ağır adım burada)
     const points: SmilePoint[] = [];
+    let discounts: number[] | null = null;
+    if (inp.curves) {
+      const anchor = factorAt(inp.curves.usd, inp.evalSec * 1000);
+      if (anchor == null) continue;
+      discounts = Array.from({ length: BINOM_STEPS + 1 }, (_, i) => {
+        const value = factorAt(inp.curves!.usd, (inp.evalSec + (expSec - inp.evalSec) * i / BINOM_STEPS) * 1000);
+        return value == null ? NaN : value / anchor;
+      });
+      if (discounts.some(d => !Number.isFinite(d))) continue;
+    }
     for (const c of subsampleStrikes(cands)) {
-      const res = impliedVolAmerican(F, c.K, T, r, r, c.px, c.type, BINOM_STEPS);
+      const res = discounts
+        ? impliedVolAmericanFutureCurve(F, c.K, (expSec - inp.evalSec) / (365 * 86400), discounts, c.px, c.type)
+        : impliedVolAmerican(F, c.K, T, r, r, c.px, c.type, BINOM_STEPS);
       if (res.ok && res.vol > 0.005 && res.vol < 4) points.push({ m: c.m, iv: res.vol });
     }
 
@@ -146,58 +162,18 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     // Yüzey ATM'i sarmalı (m=1 kote aralık içinde) — değilse o vade güvenilmez.
     if (points.length >= 3 && points[0].m <= 1 && points[points.length - 1].m >= 1) {
       const date = new Date(expSec * 1000).toISOString().slice(0, 10);
-      expiries.push({ days, date, points, f: F });
+      expiries.push({ days, date, expiryAt: new Date(expSec * 1000).toISOString(), points, f: F, underlyingId: und, underlyingLastTradeTime: inp.futureExpirations?.get(und) });
       if (frontF === 0) frontF = F;
     }
   }
 
   expiries.sort((a, b) => a.days - b.days);
 
-  // Kira Oranı (Implied Lease Rate) Hesaplama: Tüm vadelerdeki zımni kira oranlarının (q) ortalaması alınır.
-  // GÜNCELLEME: Aritmetik ortalama, yakın vadeli (dt'si çok küçük) kontratlardaki kuruşluk fiyat
-  // farklarında "sıfıra bölme" etkisine girip (örn: -%10, +%15 gibi) ortalamayı -%6'lara saptırıyordu.
-  // Bunun yerine tüm vade noktaları (T, ln(F)) üzerinden Lineer Regresyon (En Küçük Kareler) 
-  // ile eğim (slope) bulunur. slope = r - q olduğundan, q = r - slope ile en sağlıklı q elde edilir.
-  let impliedLeaseRate: number | undefined;
-  if (expiries.length >= 2) {
-    const uniqueFuts = new Map<number, typeof expiries[0]>();
-    for (const e of expiries) {
-      if (e.f != null && !uniqueFuts.has(e.f)) {
-        uniqueFuts.set(e.f, e);
-      }
-    }
-
-    const pts = Array.from(uniqueFuts.values());
-    if (pts.length >= 2) {
-      const n = pts.length;
-      let sumX = 0, sumY = 0;
-      for (const p of pts) {
-        const t = p.days / 365;
-        const lnF = Math.log(p.f!);
-        sumX += t;
-        sumY += lnF;
-      }
-      
-      const meanX = sumX / n;
-      const meanY = sumY / n;
-      
-      let num = 0, den = 0;
-      for (const p of pts) {
-        const t = p.days / 365;
-        const lnF = Math.log(p.f!);
-        num += (t - meanX) * (lnF - meanY);
-        den += (t - meanX) ** 2;
-      }
-      
-      if (den > 0) {
-        const slope = num / den; // slope = r - q
-        impliedLeaseRate = r - slope;
-      }
-    }
-  }
-
   // DİKKAT: `spot` alanı burada gerçek spot DEĞİL, ön vadenin futures settlement'ıdır
   // (F). Yüzey forward-moneyness ekseninde tutulduğu için downstream bu alanı fiyatlamada
   // kullanmaz; yalnız payload'da bilgi amaçlıdır. Gerçek spot Yahoo'dan ayrıca gelir.
-  return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries, builtWithR: r, impliedLeaseRate };
+  // Lease is derived from independent factor curves for each requested maturity.
+  // Never infer it from option expiries or deduplicate futures by their price.
+  return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries,
+    ...(inp.curves ? { curves: inp.curves } : { builtWithR: r }) };
 }

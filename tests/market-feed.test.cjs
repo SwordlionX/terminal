@@ -32,6 +32,7 @@ test('spot cache marks fallback stale and preserves its original receipt time', 
   const service = load('src/services/market.service.ts', {
     '@/lib/db': { dbc: async () => { throw new Error('unused'); } },
     '@/lib/vol/surface': {}, './cme.service': {},
+    './pricing-bundle.service': {}, '../lib/market/factors': load('src/lib/market/factors.ts'),
   }, { Date: TestDate, fetch, AbortSignal, console: { warn() {} }, process: { env: {} } });
 
   const first = await service.getSpot('XAU');
@@ -57,6 +58,7 @@ test('Tiingo quote time is kept separately from server receipt time', async () =
   const service = load('src/services/market.service.ts', {
     '@/lib/db': { dbc: async () => { throw new Error('unused'); } },
     '@/lib/vol/surface': {}, './cme.service': {},
+    './pricing-bundle.service': {}, '../lib/market/factors': load('src/lib/market/factors.ts'),
   }, { Date: TestDate, fetch, AbortSignal, console: { warn() {} }, process: { env: {} } });
   const quote = await service.getSpot('XAG');
   assert.equal(quote.source, 'XAG/USD (Tiingo)');

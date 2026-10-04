@@ -42,20 +42,21 @@ export function nanosISO(value: string): string | null {
   return ms > 0 && ms < 8640000000000000 ? new Date(ms).toISOString() : null;
 }
 
-function rows(text: string, required: string[]): Record<string, string>[] {
+export function* csvRows(text: string, required: string[]): Generator<Record<string, string>> {
   const lines = text.trim().split(/\r?\n/);
   const header = csvFields(lines[0]);
   if (required.some(key => !header.includes(key))) throw new Error('Databento CSV alanları eksik');
-  return lines.slice(1).filter(Boolean).map(line => {
+  for (const line of lines.slice(1)) {
+    if (!line) continue;
     const values = csvFields(line);
     if (values.length !== header.length) throw new Error('Databento CSV satırı eksik');
-    return Object.fromEntries(header.map((key, i) => [key, values[i]]));
-  });
+    yield Object.fromEntries(header.map((key, i) => [key, values[i]]));
+  }
 }
 
 export function parseFutureDefinitions(text: string): Map<string, FutureDefinition> {
   const result = new Map<string, FutureDefinition>();
-  for (const row of rows(text, ['instrument_id', 'raw_symbol', 'asset', 'instrument_class', 'expiration', 'security_update_action'])) {
+  for (const row of csvRows(text, ['instrument_id', 'raw_symbol', 'asset', 'instrument_class', 'expiration', 'security_update_action'])) {
     if (row.security_update_action === 'D') { result.delete(row.instrument_id); continue; }
     const expiry = nanosISO(row.expiration);
     if (!expiry) throw new Error(`Kontratın gerçek vadesi eksik: ${row.instrument_id}`);
@@ -69,7 +70,7 @@ export function parseFutureDefinitions(text: string): Map<string, FutureDefiniti
 export function parseSessionSettlements(text: string, sessionDate: string): Map<string, Settlement> {
   assertSessionDate(sessionDate);
   const versions = new Map<string, Settlement>();
-  for (const row of rows(text, ['instrument_id', 'stat_type', 'price', 'ts_ref', 'ts_recv', 'ts_event', 'stat_flags', 'update_action'])) {
+  for (const row of csvRows(text, ['instrument_id', 'stat_type', 'price', 'ts_ref', 'ts_recv', 'ts_event', 'stat_flags', 'update_action'])) {
     if (row.stat_type !== '3') continue;
     const ref = nanosISO(row.ts_ref), recv = nanosISO(row.ts_recv), event = nanosISO(row.ts_event);
     if (!ref || !recv || !event) throw new Error('Settlement zaman damgası eksik');

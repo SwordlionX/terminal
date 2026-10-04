@@ -22,7 +22,9 @@ export class DatabentoCache {
   newEstimateUsd = 0;
   newReserveUsd = 0;
   downloads = 0;
-  constructor(private cacheOnly: boolean) {}
+  constructor(private cacheOnly: boolean, private runLimitUsd = 0.25) {
+    if (!(runLimitUsd > 0 && runLimitUsd <= 10)) throw new Error('Çalışma bütçesi $10 sınırını aşamaz.');
+  }
 
   private headers() {
     const key = process.env.DATABENTO_API_KEY;
@@ -64,8 +66,8 @@ export class DatabentoCache {
       const estimateUsd: unknown = await cost.json();
       if (typeof estimateUsd !== 'number' || !Number.isFinite(estimateUsd) || estimateUsd < 0) throw new Error('Maliyet tahmini geçersiz');
       const reserveUsd = 2 * estimateUsd + 0.01;
-      if (this.newReserveUsd + reserveUsd > 0.25 || ledger.requests.reduce((s, x) => s + x.reserveUsd, 0) + reserveUsd > 10)
-        throw new Error('İndirme bütçeyi aşacak (çalışma $0.25 / yerel toplam $10)');
+      if (this.newReserveUsd + reserveUsd > this.runLimitUsd || ledger.requests.reduce((s, x) => s + x.reserveUsd, 0) + reserveUsd > 10)
+        throw new Error(`İndirme bütçeyi aşacak (çalışma $${this.runLimitUsd} / yerel toplam $10)`);
       const entry: Entry = { id, ...args, estimateUsd, reserveUsd, status: 'reserved', requestedAt: new Date().toISOString() };
       ledger.requests.push(entry); this.newReserveUsd += reserveUsd;
       const save = async () => {

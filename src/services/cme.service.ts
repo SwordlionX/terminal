@@ -259,7 +259,8 @@ export async function refreshCmeSurface(
   const key = product.toUpperCase();
   const cfg = CME_PRODUCTS[key];
   if (!cfg) throw new Error(`CME kaynağı desteklenmiyor: ${key}`);
-  const r = opts.r ?? 0.05;
+  const r = opts.r;
+  if (r == null || !Number.isFinite(r)) throw new Error('Faiz kaynağı yok; varsayılan %5 kullanılmaz. Yeni bundle yenilemesini çalıştırın.');
 
   const availableEnd = await getAvailableEnd();
 

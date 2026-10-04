@@ -4,20 +4,18 @@ concurrency:
   group: cme-refresh-engine
   cancel-in-progress: false
 
-# Eski IV yenileme yolu: 17:00–19:00 UTC'deki metal settlement'larını kullanır;
-# bu erken kayıtlar preliminary olabilir. 12:00 UTC (TR 15:00) kesin final garantisi değildir.
-# Final faiz/taşıma girdileri, bayrak ve seans kontrolüyle cme-curves.yml'de ayrı toplanır.
-# İki yol henüz aynı fiyatlama sürümüne bağlanmadı; eski yüzey banka kira eğrisi değildir.
+# Only final publication flags and complete provider coverage can activate a bundle.
+# Scheduling becomes active only when this workflow reaches the repository default branch.
 on:
   schedule:
-    - cron: '0 12 * * 1-6'
+    - cron: '0 12 * * 1-5'
   workflow_dispatch:        # panelden elle de tetiklenebilir
     inputs:
       date:
         description: 'Belirli bir settlement günü (YYYY-MM-DD) — boş bırakılırsa otomatik'
         required: false
       product:
-        description: 'Ürün (boş = XAU ve XAG birlikte)'
+        description: 'İstek ürünü; eğri sürümü daima XAU ve XAG birlikte yenilenir'
         required: false
       request_id:
         description: 'Uygulamanın takip numarası'
@@ -37,20 +35,25 @@ jobs:
 
       - run: npm ci
 
-      # Ürün belirtilmezse ALTIN VE GÜMÜŞ ayrı ayrı yenilenir. Biri hata verse bile diğeri
-      # denenir; en az bir ürün hata verirse iş başarısız olur.
-      - name: Yüzeyi yenile
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/terminal-x/databento-audit
+          key: cme-curve-budget-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: cme-curve-budget-
+      - name: Final futures, USD ve iki IV yüzeyini birlikte kur
         env:
           DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          PRODUCTS: ${{ github.event.inputs.product || 'XAU XAG' }}
-          DATE_ARG: ${{ github.event.inputs.date && format('--date={0}', github.event.inputs.date) || '' }}
+          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
+          SESSION_DATE: ${{ inputs.date }}
         run: |
-          failed=0
-          for p in $PRODUCTS; do
-            echo "::group::$p"
-            if ! npm run refresh:cme -- --product=$p $DATE_ARG; then failed=1; echo "::warning::$p yenilenemedi"; fi
-            echo "::endgroup::"
-          done
-          [ "$failed" = "0" ] || { echo "::error::en az bir ürün yenilenemedi"; exit 1; }
+          args=(--write)
+          if [ -n "$SESSION_DATE" ]; then args+=("--date=$SESSION_DATE"); fi
+          npm run collect:cme:curves -- "${args[@]}"
+          npm run refresh:cme -- "${args[@]}"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/.cache/terminal-x/databento-audit
+          key: cme-curve-budget-${{ github.run_id }}-${{ github.run_attempt }}

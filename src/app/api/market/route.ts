@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const product = (searchParams.get('product') || 'XAU').toUpperCase();
-  const rate = parseFloat(searchParams.get('rate') || '0.05');
+  const rate = parseFloat(searchParams.get('rate') || '0');
 
   // Spot (Yahoo) ile yüzey (veritabanı) BİRBİRİNDEN BAĞIMSIZ çekilir: veritabanı geçici
   // erişilemez olduğunda spot'u da kaybetmemek için yüzey hatası ayrıca yakalanır.
@@ -22,9 +22,9 @@ export async function GET(request: Request) {
     (async () => {
       let surfaceSource: string | null = null;
       try {
-        const r = isFinite(rate) ? rate : 0.05;
+        const r = isFinite(rate) ? rate : 0;
         surfaceSource = await getDataSource(product);
-        const surface = await getSurface(product, r);
+        const surface = await getSurface(product, r, true);
         // A valid CME surface is self-contained. A separate Yahoo snapshot lookup must
         // not invalidate it when the unrelated Yahoo store is unavailable.
         let snap = null;
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
         // bekletiyordu. Girili faiz farklıysa bu YUTULMAZ, ekrana taşınır: hem IV'ler hem
         // moneyness ekseninin forward'ı yüzeyin kendi faiziyle hesaplanmıştır.
         const builtR = surface?.builtWithR;
-        const rateNote = builtR != null && Math.abs(builtR - r) > 0.0025
+        const rateNote = surface?.curves ? `Vade bazlı CME/SOFR endikatif proxy · ${surface.curves.id.slice(0, 12)} · Manuel faiz kullanılmaz.` : builtR != null && Math.abs(builtR - r) > 0.0025
           ? `Bu vol yüzeyi %${(builtR * 100).toFixed(2)} faizle kuruldu; ekranda %${(r * 100).toFixed(2)} girili. IV'ler ve moneyness ekseni yüzeyin faiziyle hesaplandı — yüzey istek anında yeniden kurulmuyor (ekran açılışını 11 sn bekletiyordu).`
           : null;
         return { surface, surfaceSource, snapshotISO: surface?.fetchedISO || snap?.fetchedISO || null, dataError: null as string | null, rateNote };

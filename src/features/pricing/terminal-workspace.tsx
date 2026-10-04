@@ -57,7 +57,7 @@ export function TerminalWorkspace() {
   }, [md, feed, type, position]);
   const q = pricing.quote, unit = ['XAU', 'XAG'].includes(md.product) ? 'ons' : 'adet';
   const days = q ? (Date.parse(q.inputs.expiryDate) - Date.parse(q.inputs.tradeDate)) / 86400000 : 0;
-  const fwd = q ? q.inputs.spot * Math.exp((q.inputs.rate - q.inputs.lease) / 100 * days / q.inputs.basis) : 0;
+  const fwd = q?.forward ?? (q ? q.inputs.spot * Math.exp((q.inputs.rate - q.inputs.lease) / 100 * days / q.inputs.basis) : 0);
   const limits = q ? expiryPayoffLimits([q], [q.premiumPerUnit]) : null;
   const analyze = () => {
     useAnalysisDraft.getState().seed(md.product, [{ option: { type, position, strike: md.strike, expiryDate: md.expiryDate, contractSize: md.contractSize } }]);
@@ -73,6 +73,7 @@ export function TerminalWorkspace() {
     <div className="desk-quote-values"><div><p>Müşterinin {position === 'Short' ? 'alacağı' : 'ödeyeceği'} toplam prim</p><strong>{q ? analysisNumber(q.premiumTotal) : '—'}<small> USD</small></strong><span>{q ? analysisNumber(q.premiumPerUnit, 4) : '—'} USD / {unit}</span></div><div><p>Spot nominalinin yüzdesi</p><strong>{q ? analysisNumber(q.premiumPctSpot) : '—'}<small> %</small></strong><span>Toplam prim / (spot × miktar)</span></div></div>
     {pricing.error && <p role="status" className="desk-policy">{pricing.error}</p>}
     <div className="desk-market-facts"><div><span>Terminal spotu</span><strong>{feed.spot ? analysisNumber(feed.spot.price) : '—'}</strong></div><div><span>Model forward</span><strong>{q ? analysisNumber(fwd) : '—'}</strong></div><div><span>Smile IV</span><strong>{q ? '%' + analysisNumber(q.effectiveVol) : '—'}</strong></div><div><span>Yüzey tarihi</span><strong>{feed.surface?.fetchedISO ?? 'Veri yok'}</strong></div></div>
+    {q && feed.surface?.curves && <p className="desk-muted">Seçili vade · USD faiz %{analysisNumber(q.inputs.rate * q.inputs.basis / 365, 4)} · Metal taşıması (proxy) %{analysisNumber(q.inputs.lease * q.inputs.basis / 365, 4)} · Sürekli yıllık oran / ACT {q.inputs.basis}</p>}
     <div className="desk-actions"><button className="desk-button desk-button-primary" disabled={!q} onClick={analyze}>Pozisyonu analiz et ↗</button><BookQuote quote={q} /><button className="desk-button" disabled={feed.loading} onClick={feed.refetch}>Kayıtlı veriyi oku</button></div>
     <p className="analysis-footnote">{feed.spot?.source ?? 'Spot kaynağı bekleniyor'} · {q?.volMode ?? 'IV bekleniyor'} · Model fiyatı işlem yapılabilir banka kotasyonu değildir.</p>
   </section>;
@@ -84,7 +85,7 @@ export function TerminalWorkspace() {
       {curveTab === 'smile' ? <SmileChart surface={feed.surface} fwd={fwd} strike={md.strike} daysToExpiry={days} valuationDate={md.tradeDate} sourceLabel={feed.surfaceSource ?? undefined} /> : <VolatilityTermChart surface={feed.surface} valuationDate={md.tradeDate} onSelect={date => md.setField('expiryDate', date)} />}
     </section>
     <div className="desk-tool-grid"><Link href="/pricing/position-analysis"><span>01 / POZİSYON</span><h2>Tek bir fiyatla kalma.</h2><p>Fiyat × tarih haritası, birleşik K/Z, delta/gamma ve hedge alternatifleri.</p></Link><Link href="/pricing/reverse-engineering"><span>02 / HEDEF</span><h2>Hedef primi değerlendir.</h2><p>Mevcut terminal araçlarıyla işlem koşullarını ve prim hedefini incele.</p></Link><Link href="/pricing/barrier"><span>03 / GELİŞMİŞ</span><h2>Bariyer ve delta hedge.</h2><p>Bariyer gözlemi, yardımcı smile ve mevcut motorun gelişmiş araçları.</p></Link></div>
-    <div className="desk-policy">USD faiz ve metal taşıma kaynaklarının düzeltmesi henüz tamamlanmadı. Bu sürüm mevcut tarihli terminal yüzeyini kullanır; doğrulanmış banka kira eğrisi veya onaylı kotasyon iddiası taşımaz.</div>
+    <div className="desk-policy">{feed.surface?.curves ? 'Vade bazlı USD iskonto ve metal taşıma faktörleri kullanılıyor. CME/SOFR endikatif proxy; banka kira kotasyonu değildir. Eğri ve IV aynı sürümde.' : 'Yeni faiz/taşıma eğrisi henüz yüklenmedi. Eksik veri manuel oranla tamamlanmaz.'}</div>
     {(feed.error || feed.quoteError) && <p role="status" className="desk-policy">{feed.error ?? feed.quoteError}</p>}
     {q?.warnings.map((warning, i) => <p className="analysis-footnote" key={i}>{warning}</p>)}
     <footer className="desk-footer"><strong>TERMINAL X / {TERMINAL_DESIGN === 'meridian' ? 'MERIDIAN' : 'DESK 01'}</strong><span>Avrupa tipi · müşteri perspektifi · ortak fiyatlama motoru</span><Link href="/pricing/delta-hedge">Delta hedge ↗</Link></footer>

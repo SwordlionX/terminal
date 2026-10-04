@@ -57,11 +57,11 @@ test('rate endpoints reject malformed bodies and invalid numeric values without 
   }
 });
 
-test('rate endpoints keep accepted numeric strings and zero interest', async () => {
+test('USD/TRY accepts numeric strings; even valid manual interest cannot replace the curve', async () => {
   const f = marketFixture();
-  assert.equal(JSON.stringify((await f.rate.POST(request({ rate: '0' }))).body), JSON.stringify({ ok: true, rate: 0 }));
+  assert.equal((await f.rate.POST(request({ rate: '0' }))).status, 409);
   assert.equal(JSON.stringify((await f.usdtry.POST(request({ usdtry: '32.5' }))).body), JSON.stringify({ ok: true, usdtry: 32.5 }));
-  assert.equal(JSON.stringify(f.writes), JSON.stringify([['rate', 0], ['usdtry', 32.5]]));
+  assert.equal(JSON.stringify(f.writes), JSON.stringify([['usdtry', 32.5]]));
 });
 
 test('datasource rejects invalid bodies, fields, and source values without writes', async () => {
@@ -71,6 +71,7 @@ test('datasource rejects invalid bodies, fields, and source values without write
     cmeSupported: () => true, loadCmeSurface: async () => null,
   }, '@/services/market.service': { loadSnapshot: async () => null },
   '@/lib/vol/surface': { PRODUCT_SURFACE_MAP: { XAU: 'GLD', XAG: 'SLV' } },
+  '@/services/pricing-bundle.service': {},
   '@/lib/settings-validation': load('src/lib/settings-validation.ts') };
   const route = load('src/app/api/settings/datasource/route.ts', imports);
   for (const bad of [null, [], 'x', 3, {}, { product: 'XAU' }, { source: 'yahoo' },
@@ -93,6 +94,7 @@ test('datasource preserves supported source values and uppercases product', asyn
       cmeSupported: () => true, loadCmeSurface: async () => null,
     }, '@/services/market.service': { loadSnapshot: async () => null },
     '@/lib/vol/surface': { PRODUCT_SURFACE_MAP: { XAU: 'GLD', XAG: 'SLV' } },
+    '@/services/pricing-bundle.service': {},
     '@/lib/settings-validation': load('src/lib/settings-validation.ts'),
   });
   const result = await route.POST(request({ product: 'xau', source: 'cme' }));
