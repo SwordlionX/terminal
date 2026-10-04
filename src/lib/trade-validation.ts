@@ -102,8 +102,12 @@ export function validateManualTrade(data: ManualTradeInput) {
     if (barrierStartDate < tradeDate || barrierEndDate > expiryDate || barrierEndDate < barrierStartDate) {
       throw new Error("Bariyer gözlem aralığı işlem ve vade tarihleri arasında olmalı.");
     }
-    barrier = { barrierType: data.barrierType, barrierLevel: finiteNumber(data.barrierLevel, "Bariyer seviyesi"),
-      barrierStyle: data.barrierStyle, barrierStartDate, barrierEndDate };
+    const barrierLevel = finiteNumber(data.barrierLevel, "Bariyer seviyesi");
+    // Yeni sözleşme bariyerin henüz değilmemiş tarafında başlar ve prim taşır.
+    const up = data.barrierType!.endsWith("Up");
+    if (up ? spot >= barrierLevel : spot <= barrierLevel) throw new Error("Spot bariyerin ötesinde; bariyerli işlem bu seviyeyle kaydedilemez.");
+    if (!(premium > 0)) throw new Error("Bariyerli işlemde prim sıfır olamaz.");
+    barrier = { barrierType: data.barrierType, barrierLevel, barrierStyle: data.barrierStyle, barrierStartDate, barrierEndDate };
   }
   return { underlying, type: data.type as "Call" | "Put", position: data.position as "Long" | "Short", tradeDate, expiryDate,
     spot, strike, contractSize, premium, volatility, manualMarginRate, collateral, ...barrier };

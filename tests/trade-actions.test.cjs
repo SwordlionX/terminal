@@ -61,7 +61,11 @@ test('malformed trade values are rejected before any write', async () => {
     { isBarrier: true, barrierType: 'bad', barrierLevel: 4500, barrierStyle: 'Amerikan' },
     { isBarrier: true, barrierType: 'Knock Out Up', barrierLevel: 0, barrierStyle: 'Amerikan' },
     { isBarrier: true, barrierType: 'Knock Out Up', barrierLevel: 4500, barrierStyle: 'bad' },
-    { isBarrier: true, barrierType: 'Knock Out Up', barrierLevel: 4500, barrierStyle: 'Amerikan', barrierEndDate: '2027-01-01' }];
+    { isBarrier: true, barrierType: 'Knock Out Up', barrierLevel: 4500, barrierStyle: 'Amerikan', barrierEndDate: '2027-01-01' },
+    // A new barrier contract must start untouched and carry a premium.
+    { isBarrier: true, barrierType: 'Knock Out Up', barrierLevel: 3000, barrierStyle: 'Amerikan' },
+    { isBarrier: true, barrierType: 'Knock In Down', barrierLevel: 5000, barrierStyle: 'Amerikan' },
+    { isBarrier: true, barrierType: 'Knock Out Up', barrierLevel: 4500, barrierStyle: 'Amerikan', premium: 0 }];
   for (const change of invalid) {
     const f = fixture();
     const input = change === null ? null : Object.keys(change).length === 0 ? {} : { ...valid, ...change };

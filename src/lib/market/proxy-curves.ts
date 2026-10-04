@@ -2,6 +2,19 @@ import type { CarrySnapshot, CurveRoot } from './cme-carry';
 import { factorAt, type PricingCurves, type FactorNode } from './factors';
 import type { SofrProjection } from './sofr';
 
+/**
+ * COMEX metal futures enter their delivery period on first notice day, the last business day
+ * before the contract month. From then on the short may deliver on any day of the month, so
+ * the settlement trades at (near) spot and is no forward to the last trade date. Using it as
+ * a carry node at that date manufactured a short-end lease equal to the USD rate.
+ */
+export function inDeliveryPeriod(lastTradeTime: string, sessionDate: string): boolean {
+  const last = new Date(lastTradeTime);
+  let notice = Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1) - 86400000;
+  while ([0, 6].includes(new Date(notice).getUTCDay())) notice -= 86400000;
+  return Date.parse(sessionDate + 'T00:00:00Z') >= notice;
+}
+
 export function buildProxyCurves(snapshot: CarrySnapshot, root: Extract<CurveRoot, 'GC' | 'SI'>,
   usd: SofrProjection, referenceSpot: PricingCurves['referenceSpot'], id: string): PricingCurves {
   const asOf = Date.parse(referenceSpot.at);
@@ -13,6 +26,7 @@ export function buildProxyCurves(snapshot: CarrySnapshot, root: Extract<CurveRoo
   const funding = [{ at: referenceSpot.at, value: 1 }, ...usd.nodes.filter(n => Date.parse(n.at) > asOf).map(n => ({ at: n.at, value: n.value / anchor }))];
   const metal: FactorNode[] = [{ at: referenceSpot.at, value: 1 }];
   for (const node of snapshot.products[root].nodes) {
+    if (inDeliveryPeriod(node.lastTradeTime, snapshot.sessionDate)) continue;
     const t = Date.parse(node.lastTradeTime), discount = factorAt(funding, t);
     if (t <= asOf || discount == null) continue;
     if (!(node.flags & 1) || (node.flags & 12)) throw new Error('Metal futures final/clearing settlement değil.');
@@ -30,5 +44,6 @@ export function buildProxyCurves(snapshot: CarrySnapshot, root: Extract<CurveRoo
     referenceSpot, warnings: [...usd.warnings,
       'Metal taşıması final CME futures + aynı settlement saatine yakın Tiingo spotundan türetilir; banka metal kira kotasyonu değildir.',
       'Futures son işlem tarihi vade proxy olarak kullanılır; OTC teslim valörü ve futures/forward baz farkı modellenmez.',
+      'Teslim dönemine girmiş (ilk ihbar günü geçmiş) kontrat spot gibi işlem gördüğü için taşıma düğümü olarak kullanılmaz.',
       'Gösterilen faiz/taşıma vade-eşdeğer oranlardır; manuel oran girilmez.'] };
 }

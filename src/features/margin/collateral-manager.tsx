@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Plus } from "lucide-react";
 import { addCustomerCollateral, removeCustomerCollateral } from "@/app/customers/[id]/margin/collateral-actions";
+import { formatMoney, formatNumber, formatPercent as formatPct } from '@/lib/format';
 
 // Teminat yalnızca USD nakit veya fiziki metal (XAU/XAG). Metaller ONS cinsinden girilir ve
 // canlı ons fiyatıyla değerlenir; USD 1:1. Hepsi nakit-eşdeğeri → haircut 0.
@@ -32,12 +33,12 @@ export function CollateralManager({ customerId, collaterals }: CollateralManager
 
   const selectedType = COLLATERAL_TYPES.find(t => t.code === assetCode) ?? COLLATERAL_TYPES[0];
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
-  const formatPercent = (val: number) => new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 }).format(val);
+  const formatCurrency = (val: number) => formatMoney(val);
+  const formatPercent = (val: number) => formatPct(val * 100, 1);
   const formatQty = (c: CollateralItem) =>
     c.currency === 'USD'
       ? formatCurrency(c.nominalQuantity)
-      : `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(c.nominalQuantity)} ons`;
+      : `${formatNumber(c.nominalQuantity)} ons`;
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();

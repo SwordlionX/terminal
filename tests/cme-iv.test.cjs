@@ -22,7 +22,7 @@ function load(file, imports = {}) {
 const european = load('src/lib/math/gk.ts');
 const solver = load('src/lib/math/solver.ts', { './gk': european });
 const american = load('src/lib/math/american.ts', { './gk': european, './solver': solver });
-const { buildCmeSurface } = load('src/lib/vol/cme.ts', { '../math/american': american, '../market/factors': load('src/lib/market/factors.ts') });
+const { buildCmeSurface, filterForwardVolOutliers } = load('src/lib/vol/cme.ts', { '../math/american': american, '../market/factors': load('src/lib/market/factors.ts') });
 
 test('CME surface inverts American futures settlements before producing Black-76 IVs', () => {
   const F = 70, r = 0.05, vol = 0.25, days = 90, T = days / 365;
@@ -84,4 +84,15 @@ test('CME surface inverts American futures settlements before producing Black-76
     `European inversion would overstate IV; observed bias ${largestBlindEuropeanIvBias}`);
   assert.ok(largestAmericanVsEuropeanIvGap > 0.0003,
     `CME IV must differ from blind European inversion; observed gap ${largestAmericanVsEuropeanIvGap}`);
+});
+
+test('term-structure jumps from illiquid settlement marks are dropped, ordinary slices are kept', () => {
+  const slice = (date, days, atm) => ({ date, days, points: [{ m: 0.9, iv: atm + 0.02 }, { m: 1, iv: atm }, { m: 1.1, iv: atm + 0.01 }] });
+  // Shape of the 1 October 2026 silver surface: 329d at 37.6%, then 42.7% at 361d (≈78% forward vol).
+  const { kept, dropped } = filterForwardVolOutliers([slice('2027-07-27', 299, 0.372), slice('2027-08-26', 329, 0.376),
+    slice('2027-09-27', 361, 0.427), slice('2027-10-26', 390, 0.428)]);
+  assert.equal(JSON.stringify(kept.map(e => e.date)), JSON.stringify(['2027-07-27', '2027-08-26']));
+  assert.equal(JSON.stringify(dropped), JSON.stringify(['2027-09-27', '2027-10-26']));
+  const ordinary = filterForwardVolOutliers([slice('a', 26, 0.198), slice('b', 54, 0.2145), slice('c', 88, 0.2125)]);
+  assert.equal(ordinary.dropped.length, 0);
 });

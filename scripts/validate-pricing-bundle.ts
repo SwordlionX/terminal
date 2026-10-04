@@ -8,6 +8,7 @@ import { validatePricingBundle, type PricingBundle } from '../src/services/prici
 import { calculatePricing } from '../src/lib/pricing/engine';
 import { curveFactors } from '../src/lib/market/factors';
 import type { CarrySnapshot } from '../src/lib/market/cme-carry';
+import { inDeliveryPeriod } from '../src/lib/market/proxy-curves';
 import type { VolSurface } from '../src/lib/vol/surface';
 loadEnvConfig(process.cwd());
 async function main() {
@@ -27,6 +28,7 @@ async function main() {
       let maxFutureError = 0, testedNodes = 0, priced = 0, blocked = 0, maxParityError = 0, maxBasisError = 0;
       const root = product === 'XAU' ? 'GC' : 'SI';
       for (const n of snapshot.products[root].nodes) {
+        if (inDeliveryPeriod(n.lastTradeTime, snapshot.sessionDate)) continue;
         try {
           const f = curveFactors(c, Date.parse(c.asOf), Date.parse(n.lastTradeTime));
           maxFutureError = Math.max(maxFutureError, Math.abs(spot * f.forwardRatio - n.settlement)); testedNodes++;

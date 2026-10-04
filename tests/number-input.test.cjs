@@ -114,7 +114,7 @@ test("NumberInput emits parsed comma decimals and rejects junk until blur", () =
   assert.equal(input["aria-invalid"], true);
   input.onBlur({});
   input = harness.render(base);
-  assert.equal(input.value, "72.5");
+  assert.equal(input.value, "72,5");
   assert.notEqual(input["aria-invalid"], true);
 });
 

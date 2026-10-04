@@ -26,7 +26,7 @@ function modules(overrides = {}) {
 const load = modules();
 const { factorAt, curveFactors } = load('src/lib/market/factors.ts');
 const { projectSofr, sofrBusinessDay } = load('src/lib/market/sofr.ts');
-const { buildProxyCurves } = load('src/lib/market/proxy-curves.ts');
+const { buildProxyCurves, inDeliveryPeriod } = load('src/lib/market/proxy-curves.ts');
 const { calculatePricing } = load('src/lib/pricing/engine.ts');
 const math = load('src/lib/math/american.ts');
 const { rebasedExpiryDays } = load('src/lib/vol/surface.ts');
@@ -37,7 +37,8 @@ const month = (m, rate) => ({ instrumentId: `sr1-${m}`, lastTradeTime: `${m}-28T
 const fixings = [{ date: '2026-09-30', rate: .04 }];
 function fixture() {
   const usd = projectSofr('2026-10-01', [month('2026-10', .04), month('2026-11', .05), month('2026-12', .06)], fixings, 90);
-  const nodes = [20, 45, 75].map((days, i) => ({ instrumentId: `gc-${i}`, lastTradeTime: iso(start + days * DAY), settlement: 100 + i, flags: 3 }));
+  // Contracts outside their delivery period (first notice for November is 30 October).
+  const nodes = [35, 50, 75].map((days, i) => ({ instrumentId: `gc-${i}`, lastTradeTime: iso(start + days * DAY), settlement: 100 + i, flags: 3 }));
   const snapshot = { sessionDate: '2026-10-01', products: { GC: { nodes } } };
   const curves = buildProxyCurves(snapshot, 'GC', usd, { price: 100, at: iso(start + 17.5 / 24 * DAY), source: 'Tiingo matched settlement proxy' }, 'test');
   const expiries = [20, 45, 75].map(days => ({ days: days - 17.5 / 24, date: iso(start + days * DAY).slice(0, 10), expiryAt: iso(start + days * DAY),
@@ -96,6 +97,18 @@ test('metal nodes reproduce each futures price on its own real last-trade timest
   assert.equal(JSON.stringify(buildProxyCurves(f.snapshot, 'GC', f.usd, f.curves.referenceSpot, 'test').metal), before);
   f.snapshot.products.GC.nodes[1].flags = 2;
   assert.throws(() => buildProxyCurves(f.snapshot, 'GC', f.usd, f.curves.referenceSpot, 'test'), /final/);
+});
+test('a contract in its delivery period trades at spot and is not used as a carry node', () => {
+  const f = fixture();
+  // October contract on 1 October: first notice (30 September) has passed.
+  assert.equal(inDeliveryPeriod('2026-10-28T17:30:00Z', '2026-10-01'), true);
+  assert.equal(inDeliveryPeriod('2026-11-25T17:30:00Z', '2026-10-01'), false);
+  // First notice is the last business day before the contract month (Friday 30 October 2026).
+  assert.equal(inDeliveryPeriod('2026-11-25T17:30:00Z', '2026-10-30'), true);
+  const spotLike = { instrumentId: 'gc-oct', lastTradeTime: '2026-10-28T17:30:00Z', settlement: 100, flags: 3 };
+  f.snapshot.products.GC.nodes.unshift(spotLike);
+  const c = buildProxyCurves(f.snapshot, 'GC', f.usd, f.curves.referenceSpot, 'test');
+  assert.equal(JSON.stringify(c.metal), JSON.stringify(f.curves.metal));
 });
 test('curve prices obey put-call parity; basis and manual rate/lease fields cannot change premiums', () => {
   const { input, surface } = fixture(), p = calculatePricing(input, surface);

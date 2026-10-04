@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { addDays, istanbulToday } from '@/lib/dates';
 
 export interface MarketDataState {
   product: string;
@@ -13,18 +14,21 @@ export interface MarketDataState {
   contractSize: number;
   basis: number;
   tradeDate: string;
+  /** true: değerleme tarihi İstanbul takvimindeki bugünü izler; kullanıcı tarihi değiştirince false. */
+  tradeDateAuto: boolean;
   expiryDate: string;
-  usdtry: number;
   strikeInitialized: boolean; // oturum boyunca korunur; sayfa geçişinde sıfırlanmaz
 
-  setField: <K extends keyof Omit<MarketDataState, 'setField' | 'setProduct' | 'applyLiveSpot'>>(field: K, value: MarketDataState[K]) => void;
+  setField: <K extends keyof Omit<MarketDataState, 'setField' | 'setProduct' | 'applyLiveSpot' | 'syncToday'>>(field: K, value: MarketDataState[K]) => void;
   setProduct: (prod: string, spot: number, lease: number, vol: number) => void;
   applyLiveSpot: (product: string, price: number) => void;
+  /** Gün değiştiyse (gece açık kalan sekme) otomatik değerleme tarihini bugüne taşır. */
+  syncToday: () => void;
 }
 
 export const useMarketData = create<MarketDataState>()(persist((set) => {
-  const today = new Date();
-  const exp = new Date(today.getTime() + 90 * 24 * 3600 * 1000);
+  // Değerleme günü İstanbul takvimidir; asistan ve pozisyon değerlemesiyle aynı gün kullanılır.
+  const today = istanbulToday();
 
   return {
     product: 'XAU',
@@ -37,16 +41,21 @@ export const useMarketData = create<MarketDataState>()(persist((set) => {
     manualSpot: false, // varsayılan: canlı yayına bağlı
     contractSize: 100,
     basis: 365,
-    tradeDate: today.toISOString().slice(0, 10),
-    expiryDate: exp.toISOString().slice(0, 10),
-    usdtry: 35.0, // Varsayılan kur
+    tradeDate: today,
+    tradeDateAuto: true,
+    expiryDate: addDays(today, 90),
     strikeInitialized: false,
 
     setField: (field, value) => set((state) => ({ ...state, [field]: value,
-      ...(field === 'strike' ? { strikeInitialized: true } : {}) })),
+      ...(field === 'strike' ? { strikeInitialized: true } : {}),
+      ...(field === 'tradeDate' ? { tradeDateAuto: value === istanbulToday() } : {}) })),
     applyLiveSpot: (product, price) => set((state) => {
       if (state.product !== product || state.manualSpot || !Number.isFinite(price) || price <= 0) return state;
       return { spot: price, strike: state.strikeInitialized ? state.strike : price, strikeInitialized: true };
+    }),
+    syncToday: () => set((state) => {
+      const current = istanbulToday();
+      return state.tradeDateAuto && state.tradeDate !== current ? { tradeDate: current } : state;
     }),
     setProduct: (prod, spot, lease, vol) => set((state) => ({
       ...state,
@@ -66,27 +75,3 @@ export const useMarketData = create<MarketDataState>()(persist((set) => {
   // görünürken eski veriyle fiyat üretir — canlı besleme her açılışta taze doldurur.
   partialize: (s) => ({ product: s.product }),
 }));
-
-/* Ayarlar — tarayıcıda kalıcı (localStorage) */
-export interface SettingsState {
-  rate: number;      // risksiz faiz %
-  leaseXAU: number;  // altın kira oranı %
-  leaseXAG: number;  // gümüş kira oranı %
-  usdtry: number;    // USD/TRY kuru
-  basis: 360 | 365;  // gün bazı
-  setSetting: <K extends keyof Omit<SettingsState, 'setSetting'>>(field: K, value: SettingsState[K]) => void;
-}
-
-export const useSettings = create<SettingsState>()(
-  persist(
-    (set) => ({
-      rate: 5.0,
-      leaseXAU: 1.5,
-      leaseXAG: 1.0,
-      usdtry: 35.0,
-      basis: 365,
-      setSetting: (field, value) => set((state) => ({ ...state, [field]: value })),
-    }),
-    { name: 'ucan-finans-settings' }
-  )
-);

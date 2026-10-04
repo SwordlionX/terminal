@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { formatMoney, formatPercent } from '@/lib/format';
 
 const CURE_TARGET = 0.35; // config.RISK_THRESHOLDS.CURE_TARGET ile aynı — oranın indirileceği hedef
 
@@ -17,7 +18,7 @@ export function MarginSimulation({ initialLoss, initialCollateral }: MarginSimul
   const [addedCollateral, setAddedCollateral] = useState<number>(0);
   const [addedLoss, setAddedLoss] = useState<number>(0);
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+  const formatCurrency = (val: number) => formatMoney(val);
 
   // Teminat artık yalnızca USD/XAU/XAG nakit-eşdeğeri (haircut 0) → eklenen teminat 1:1 sayılır.
   const totalCollateral = initialCollateral + addedCollateral;
@@ -60,7 +61,7 @@ export function MarginSimulation({ initialLoss, initialCollateral }: MarginSimul
           </div>
           <div className="flex justify-between border-t border-zinc-800 pt-3 mt-3">
             <span className="text-muted-foreground">Zarar / Teminat:</span>
-            <span className={`font-bold text-lg ${ratioColor}`}>%{(newRatio * 100).toFixed(1)}</span>
+            <span className={`font-bold text-lg ${ratioColor}`}>{formatPercent(newRatio * 100, 1)}</span>
           </div>
         </div>
 

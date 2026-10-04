@@ -3,6 +3,7 @@ import { YahooSnapshot, SnapshotProduct, VolSurface, buildSurface, PRODUCT_SURFA
 import { getDataSource } from './cme.service';
 import { loadPricingBundle } from './pricing-bundle.service';
 import { factorAt } from '../lib/market/factors';
+import { USD_TRY_RATE } from '../lib/margin/config';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
 // Dakikada bir tazeleme. 30 sn'deydi; süreç-içi önbellek her sunucu örneğinde ayrı
@@ -10,15 +11,11 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 // zorluyordu. 60 sn hem ekran için yeterince canlı hem kota açısından rahat.
 const SPOT_TTL_MS = 60 * 1000;
 
-// Ürün -> Yahoo spot sembolleri (sırayla denenir, ilk başarılı kullanılır).
-// Öncelik: fiilen ÇALIŞAN, ons-bazlı token (-USD) başta -> olmazsa vadeli (=F).
-// Not: gerçek-spot sembolleri (XAUUSD=X / XAGUSD=X) Yahoo'da neredeyse her zaman 404
-// döndüğü için baştan çıkarıldı — her açılışta boşa bir ağ turu harcıyorlardı. Token
-// (PAXG = PAX Gold, XAGX = Silver Token) spota en yakın vekildir; futures carry yüzünden
-// sapar (=F kaynağı ekranda "vadeli" uyarısıyla etiketlenir).
+// Ürün -> Yahoo sembolleri (yalnız ETF ürünleri). Metal spotunun Yahoo vekili BİLİNÇLİ
+// olarak yok: kripto token (PAXG/XAGX) spot değildir; vadeli (GC=F / SI=F) fiyatı spot
+// yerine konursa fiyatlama taşımayı iki kez sayar. Metal spotu yalnız Twelve Data/Tiingo'dan
+// gelir; ikisi de düşerse son alınan fiyat eski olarak işaretlenir.
 const SPOT_SYMBOLS: Record<string, string[]> = {
-  XAU: ['PAXG-USD', 'GC=F'],
-  XAG: ['XAGX-USD', 'SI=F'],
   GLD: ['GLD'],
   SLV: ['SLV'],
 };
@@ -122,7 +119,7 @@ async function fetchTiingoPrice(symbol: string): Promise<ProviderQuote | null> {
 /**
  * GERÇEK SPOT sağlayıcı zinciri — ürün başına sırayla denenir, ilk geçerli fiyat kazanır.
  * Bir sağlayıcı düşerse (kota, kesinti, geçici hata) diğeri devreye girer; ikisi de düşerse
- * aşağıdaki token/vadeli VEKİL sembollere inilir.
+ * vekil fiyat kullanılmaz, son alınan fiyat eski olarak işaretlenir.
  *
  * Sıra 2026-08-08'de ölçülerek belirlendi:
  *  - Twelve Data ücretsiz planda XAU/USD var, XAG/USD YOK (HTTP 404) → altın onunla başlar.
@@ -143,7 +140,7 @@ const SPOT_PROVIDERS: Record<string, { source: string; get: () => Promise<Provid
 };
 
 /**
- * Güncel spot (60 sn önbellekli). Sıra: gerçek-spot sağlayıcılar → token/vadeli vekiller →
+ * Güncel spot (60 sn önbellekli). Sıra: gerçek-spot sağlayıcılar → (yalnız ETF için) Yahoo →
  * süresi geçmiş önbellek. Süresi geçmiş fiyat, ilk alındığı zaman korunarak stale işaretlenir.
  * Dönen `source` hangi basamağa inildiğini söyler; ekran rozeti bunu etiketler.
  */
@@ -163,12 +160,10 @@ export async function getSpot(product: string): Promise<{ price: number; at: num
     if (quote != null) return remember(quote, p.source);
   }
 
-  // Vekil: token (PAXG/XAGX) ya da vadeli (=F). Gerçek spot DEĞİL — ekranda etiketiyle belli.
-  for (const sym of SPOT_SYMBOLS[key] || [key]) {
+  for (const sym of SPOT_SYMBOLS[key] ?? []) {
     const quote = await fetchChartPrice(sym);
     if (quote != null) {
-      console.warn(`[spot] ${key}: gerçek-spot sağlayıcıları düştü, vekile inildi (${sym})`);
-      return remember(quote, sym);
+            return remember(quote, sym);
     }
   }
 
@@ -176,30 +171,9 @@ export async function getSpot(product: string): Promise<{ price: number; at: num
   return cached ? { ...cached, stale: true } : null;
 }
 
-/**
- * USD/TRY kuru — teminat motorunun 1.000.000 TL onay eşiği (Şube Müdürü vs Genel Müdür) bu kuru
- * kullanır. `kv` tablosunda saklanır ki Ayarlar sayfasından (server-side) güncellenebilsin;
- * store/marketData.ts'teki `usdtry` yalnızca tarayıcıda tutulur ve sunucu tarafı hesaplara hiç
- * ulaşmaz — o yüzden eşik hesabı için ayrı bir kalıcı değer gerekiyor.
- */
+/** USD/TRY sabit kurdur (50); veritabanından okunmaz veya ekrandan değiştirilmez. */
 export async function getUsdTryRate(): Promise<number> {
-  try {
-    const c = await dbc();
-    const r = await c.execute("SELECT v FROM kv WHERE k = 'usdtry_rate'");
-    if (r.rows.length) {
-      const v = Number(r.rows[0].v);
-      if (Number.isFinite(v) && v > 0) return v;
-    }
-  } catch { /* db yoksa varsayılana düş */ }
-  return 35.0;
-}
-
-export async function setUsdTryRate(rate: number): Promise<void> {
-  const c = await dbc();
-  await c.execute({
-    sql: "INSERT INTO kv (k, v) VALUES ('usdtry_rate', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-    args: [rate.toString()],
-  });
+  return USD_TRY_RATE;
 }
 
 /** Read-only 90-day ACT/365 equivalent; pricing itself uses dated factors. */

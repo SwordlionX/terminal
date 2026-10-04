@@ -11,14 +11,23 @@ import type { MarketSnapshot, Product, ScreenContext } from '@/lib/assistant/typ
 import { MANUAL_PRICING_BLOCKED } from '@/lib/assistant/policy';
 import { AskAssistant } from '@/components/workspace-context';
 import { TERMINAL_DESIGN } from '@/lib/terminal-design';
+import { formatDate } from '@/lib/format';
 
 export function AnalysisWorkspace({ initialLegs, title = 'Pozisyon analizi' }: { initialLegs?: AnalysisLeg[]; title?: string }) {
   const { md, feed } = usePricingModel();
   const seed = useAnalysisDraft.getState();
   const [draft, setDraft] = useState<{ product: string; legs: AnalysisLeg[] }>(() => ({ product: md.product,
     legs: initialLegs ?? (seed.product === md.product && seed.legs ? seed.legs : [{ option: { type: 'Put', position: 'Short', strike: md.strike, expiryDate: md.expiryDate, contractSize: md.contractSize } }]) }));
+  // Direct visits start before the live spot arrives; the store's placeholder strike must not become the leg.
+  const [awaitingSpot, setAwaitingSpot] = useState(() => !initialLegs && !(seed.product === md.product && seed.legs) && !md.strikeInitialized);
   const [comparison, setComparison] = useState(false);
   const [hedgeStrike, setHedgeStrike] = useState(Number(((initialLegs?.[0]?.option.strike ?? md.strike) * .95).toFixed(2)));
+  if (awaitingSpot && md.strikeInitialized && draft.product === md.product) {
+    // Adjust once while rendering when the first live spot arrives (no effect round-trip).
+    setAwaitingSpot(false);
+    setDraft(d => ({ ...d, legs: d.legs.map((l, i) => i === 0 ? { ...l, option: { ...l.option, strike: md.strike } } : l) }));
+    setHedgeStrike(Number((md.strike * .95).toFixed(2)));
+  }
   const [hedgeType, setHedgeType] = useState<'Call' | 'Put'>('Put');
   const [hedgeQuantity, setHedgeQuantity] = useState(initialLegs?.[0]?.option.contractSize ?? md.contractSize);
   const [newExpiry, setNewExpiry] = useState('');
@@ -27,7 +36,7 @@ export function AnalysisWorkspace({ initialLegs, title = 'Pozisyon analizi' }: {
   const unit = ['XAU', 'XAG'].includes(md.product) ? 'ons' : 'adet';
   const view = useMemo(() => {
     if (draft.product !== md.product) return { error: 'Ürün değişti. Bu pozisyonu yeni ürüne taşımak için ekrandan yeni pozisyon oluşturun.', results: [], failed: [] };
-    if (feed.loading) return { error: 'Terminal eğrisi yükleniyor…', results: [], failed: [] };
+    if (feed.loading || awaitingSpot) return { error: 'Terminal eğrisi yükleniyor…', results: [], failed: [] };
     if (md.manualSpot || md.manualVol) return { error: MANUAL_PRICING_BLOCKED, results: [], failed: [] };
     const screen = { ...md, product: md.product as Product } as ScreenContext;
     const market: MarketSnapshot = { product: md.product as Product, spot: feed.spot?.price ?? null,
@@ -58,7 +67,7 @@ export function AnalysisWorkspace({ initialLegs, title = 'Pozisyon analizi' }: {
       }
       return { error: results[0]?.result.label === 'Mevcut pozisyon' ? null : failed[0]?.error ?? 'Pozisyon hesaplanamadı.', results, failed };
     } catch (error) { return { error: error instanceof Error ? error.message : 'Analiz hesaplanamadı.', results: [], failed: [] }; }
-  }, [md, feed, draft, legs, comparison, hedgeStrike, hedgeType, hedgeQuantity, newExpiry]);
+  }, [md, feed, draft, legs, comparison, hedgeStrike, hedgeType, hedgeQuantity, newExpiry, awaitingSpot]);
   const base = view.results[0]?.result;
   const dateIndex = base ? Math.max(0, base.dates.indexOf(curveDate)) : 0;
   const updateLeg = (index: number, patch: Partial<AnalysisLeg>) => setDraft(d => ({ ...d, legs: d.legs.map((l, i) => i === index ? { ...l, ...patch } : l) }));
@@ -85,7 +94,7 @@ export function AnalysisWorkspace({ initialLegs, title = 'Pozisyon analizi' }: {
       {comparison && <><div className="analysis-compare-controls"><label className="desk-field">Koruma opsiyonu<select value={hedgeType} onChange={e => setHedgeType(e.target.value as 'Call' | 'Put')}><option>Put</option><option>Call</option></select></label><label className="desk-field">Koruma strike<NumberInput value={hedgeStrike} onValueChange={setHedgeStrike} /></label><label className="desk-field">Koruma miktarı · {unit}<NumberInput value={hedgeQuantity} onValueChange={setHedgeQuantity} /></label><label className="desk-field">İsteğe bağlı yeni vade<input type="date" value={newExpiry} onChange={e => setNewExpiry(e.target.value)} /></label></div><p className="analysis-footnote">Koruma alış yönündedir. Yeni vade, ters işlem ve yeni bacaklarla karşılaştırılır; mevcut sözleşme devam eder.</p></>}
     </section>
     {view.error ? <div role="status" className="desk-policy">{view.error}{(md.manualSpot || md.manualVol) && <button className="desk-button" onClick={() => { md.setField('manualSpot', false); md.setField('manualVol', false); }}>Otomatik kaynağa dön</button>}</div> : base && <>
-      {comparison && <section className="analysis-panel"><div className="analysis-panel-head"><h2>Ortak tarihte karşılaştırma</h2><label className="desk-field">Senaryo tarihi<select aria-label="Karşılaştırma tarihi" value={base.dates[dateIndex]} onChange={e => setCurveDate(e.target.value)}>{base.dates.map(d => <option key={d}>{d}</option>)}</select></label></div><PositionCurve results={view.results.map(x => x.result)} dateIndex={dateIndex} />
+      {comparison && <section className="analysis-panel"><div className="analysis-panel-head"><h2>Ortak tarihte karşılaştırma</h2><label className="desk-field">Senaryo tarihi<select aria-label="Karşılaştırma tarihi" value={base.dates[dateIndex]} onChange={e => setCurveDate(e.target.value)}>{base.dates.map(d => <option key={d} value={d}>{formatDate(d)}</option>)}</select></label></div><PositionCurve results={view.results.map(x => x.result)} dateIndex={dateIndex} />
         <div className="analysis-table-scroll"><table><thead><tr><th>Alternatif</th><th>Yeni prim akışı · USD / %</th><th>Delta · {unit}</th><th>Azami kayıp · ortak vade</th><th>Başabaş · ortak vade</th></tr></thead><tbody>{view.results.map(({ result, extra }) => <tr key={result.label}><th scope="row">{result.label}</th><td>{analysisMoney(extra)} / %{analysisNumber(extra / base.nominal * 100)}</td><td>{analysisNumber(result.delta, 3)}</td><td>{!result.limits ? 'Ortak vade yok' : result.limits.maxLoss === null ? 'Teorik olarak sınırsız' : analysisMoney(result.limits.maxLoss)}</td><td>{!result.limits ? 'Ortak vade yok' : result.limits.breakevens.length ? result.limits.breakevens.map(x => analysisNumber(x)).join(' / ') : result.limits.flatZeroRanges.length ? 'Sıfır K/Z aralığı' : 'Yok'}</td></tr>)}</tbody></table></div><p className="analysis-footnote">+ tahsilat / − ödeme · Yalnız yeni bacakların prim akışı.</p><details className="workspace-notes"><summary>Karşılaştırma sınırları</summary><p>Geçmiş prim yeniden tahsil edilmez. Hedge ve ters işlem mevcut sözleşmeyi sona erdirmez; spread, teminat ve karşı taraf riskini kaldırmaz. Yeni vadeli bacaklar aynı senaryo tarihinde değerlenir.</p></details>
       </section>}
       <PositionAnalysisView result={base} />

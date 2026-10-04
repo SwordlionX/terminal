@@ -1,4 +1,5 @@
 import type { MarketSnapshot, PremiumUnit, ScreenContext } from './types';
+import { istanbulToday } from '../dates';
 
 export class PremiumBasisClarification extends Error {}
 export class TradeQuantityClarification extends Error {}
@@ -12,7 +13,7 @@ export function requestsScreenContext(message: string): boolean {
 }
 
 export function valuationToday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return istanbulToday();
 }
 
 export const ASSISTANT_CONVERSATION_SCOPE = 'request-led-v2';

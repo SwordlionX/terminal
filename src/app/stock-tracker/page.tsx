@@ -1,15 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDownIcon, ArrowUpIcon, RefreshCcw, Activity, Plus, Pencil, Trash2, AlertTriangle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { InfoHint } from '@/components/ui/info-hint';
 import { BREAKEVEN_INFO } from '@/lib/greeks-info';
 import {
   BIST_TICKERS, SYMBOL_RE, bistName, toBistCode, toYahooSymbol,
@@ -106,95 +98,33 @@ function TradeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{editing ? 'İşlemi Düzenle' : 'Yeni İşlem Ekle'}</DialogTitle>
-          <DialogDescription>
-            Hisse, maliyet ve prim girin — anlık fiyat çekilip kar/zarar hesaplanır.
-          </DialogDescription>
+          <DialogTitle>{editing ? 'İşlemi düzenle' : 'Yeni işlem ekle'}</DialogTitle>
+          <DialogDescription>Hisse, maliyet ve prim girin; anlık fiyatla kâr/zarar hesaplanır.</DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-zinc-400">Hisse</Label>
-            {/* Yazarak arama için native datalist: 57 kodda ayrı bir arama bileşenine
-                gerek yok ve listede OLMAYAN bir kod da elle yazılabiliyor. */}
-            <Input
-              list="bist-tickers"
-              value={draft.code}
-              disabled={editing}
-              placeholder="THYAO"
-              onChange={e => set('code', e.target.value.toUpperCase())}
-              className="font-mono uppercase"
-            />
-            <datalist id="bist-tickers">
-              {BIST_TICKERS.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
-            </datalist>
-            {!editing && (
-              <p className="text-[11px] text-zinc-500">
-                Listeden seçebilir ya da BIST kodunu yazabilirsiniz. Kod Yahoo&apos;da bulunamazsa işlem eklenmez.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-zinc-400">İşlem Tipi</Label>
-            {/* items: Base UI'ın Select.Value'su bu eşleme olmadan ham değeri ("put_sell") basar. */}
-            <Select
-              value={draft.tradeType}
-              items={STOCK_TRADE_LABELS}
-              onValueChange={(v: string | null) => set('tradeType', normalizeStockTradeType(v) ?? 'put_sell')}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {STOCK_TRADE_TYPES.map(t => (
-                  <SelectItem key={t} value={t}>{STOCK_TRADE_LABELS[t]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-wider text-zinc-400">
-                {isOpt ? 'Kullanım Fiyatı (Strike)' : 'Maliyet Fiyatı'}
-              </Label>
-              <Input
-                type="number" step="0.01" placeholder="0.00"
-                value={draft.basePrice}
-                onChange={e => set('basePrice', e.target.value)}
-                className="font-mono"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-wider text-zinc-400">Miktar (Lot)</Label>
-              <Input
-                type="number" step="1" placeholder="0"
-                value={draft.quantity}
-                onChange={e => set('quantity', e.target.value)}
-                className="font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-zinc-400">
-              {!isOpt ? 'Ek Gelir / Prim (TL, toplam)'
-                : draft.tradeType.endsWith('_sell') ? 'Alınan Prim (TL, toplam)'
-                : 'Ödenen Prim (TL, toplam)'}
-            </Label>
-            <Input
-              type="number" step="0.01" placeholder="0.00"
-              value={draft.premium}
-              onChange={e => set('premium', e.target.value)}
-              className="font-mono"
-            />
-          </div>
-
-          {error && <p className="text-xs text-rose-500">{error}</p>}
-
-          <Button className="w-full" onClick={onSave} disabled={saving}>
-            {saving ? 'Kaydediliyor…' : editing ? 'Güncelle' : 'İşlemi Ekle'}
-          </Button>
+        <div className="stock-dialog-fields">
+          {/* Native datalist: listede olmayan bir BIST kodu da elle yazılabilir. */}
+          <label className="desk-field stock-dialog-wide">Hisse
+            <input list="bist-tickers" value={draft.code} disabled={editing} placeholder="THYAO" onChange={e => set('code', e.target.value.toUpperCase())} />
+          </label>
+          <datalist id="bist-tickers">{BIST_TICKERS.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}</datalist>
+          <label className="desk-field stock-dialog-wide">İşlem tipi
+            <select value={draft.tradeType} onChange={e => set('tradeType', normalizeStockTradeType(e.target.value) ?? 'put_sell')}>
+              {STOCK_TRADE_TYPES.map(t => <option key={t} value={t}>{STOCK_TRADE_LABELS[t]}</option>)}
+            </select>
+          </label>
+          <label className="desk-field">{isOpt ? 'Kullanım fiyatı · TL' : 'Maliyet fiyatı · TL'}
+            <input type="number" step="0.01" placeholder="0,00" value={draft.basePrice} onChange={e => set('basePrice', e.target.value)} />
+          </label>
+          <label className="desk-field">Miktar · lot
+            <input type="number" step="1" placeholder="0" value={draft.quantity} onChange={e => set('quantity', e.target.value)} />
+          </label>
+          <label className="desk-field stock-dialog-wide">{!isOpt ? 'Ek gelir / prim · TL toplam' : draft.tradeType.endsWith('_sell') ? 'Alınan prim · TL toplam' : 'Ödenen prim · TL toplam'}
+            <input type="number" step="0.01" placeholder="0,00" value={draft.premium} onChange={e => set('premium', e.target.value)} />
+          </label>
         </div>
+        {!editing && <p className="desk-muted">Kod Yahoo&apos;da bulunamazsa işlem eklenmez.</p>}
+        {error && <p className="desk-policy" role="status">{error}</p>}
+        <button className="desk-button desk-button-primary" onClick={onSave} disabled={saving}>{saving ? 'Kaydediliyor…' : editing ? 'Güncelle' : 'İşlemi ekle'}</button>
       </DialogContent>
     </Dialog>
   );
@@ -328,212 +258,56 @@ export default function StockTrackerPage() {
     return q ? sum + calculatePnL(positions[s], q.price) : sum;
   }, 0);
 
+  const signed = (v: number) => `${v >= 0 ? '+' : ''}${fmtTl(v)} TL`;
+  const tone = (v: number) => (v >= 0 ? 'trade-value-profit' : 'trade-value-loss');
+  const unpriced = symbols.filter(s => !quotes[s]).length;
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-50 p-6 font-sans selection:bg-indigo-500/30">
-      <div className="max-w-6xl mx-auto space-y-8">
-
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-neutral-900/50 p-6 rounded-3xl border border-neutral-800/50 backdrop-blur-xl">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent flex items-center gap-3">
-              <Activity className="w-8 h-8 text-indigo-400" />
-              Anlık Portföy Takibi
-            </h1>
-            <p className="text-neutral-400 mt-2">
-              BIST · prim ve kâr/zarar takibi
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-sm text-neutral-400 text-right hidden sm:block">
-              <div>Son Güncelleme</div>
-              <div className="font-mono text-neutral-200">
-                {lastUpdated ? lastUpdated.toLocaleTimeString('tr-TR') : '--:--:--'}
-              </div>
-            </div>
-            <Button
-              onClick={() => void refreshQuotes(symbols)}
-              disabled={loading}
-              variant="outline"
-              className="rounded-xl border-neutral-700"
-            >
-              <RefreshCcw className={`w-4 h-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Yenile</span>
-            </Button>
-            <Button
-              onClick={openAdd}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all duration-300 hover:shadow-[0_0_20px_rgba(79,70,229,0.4)]"
-            >
-              <Plus className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Yeni İşlem Ekle</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Toplam */}
-        {symbols.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 rounded-2xl bg-neutral-900/40 border border-neutral-800/50">
-            <span className="text-sm text-neutral-400 uppercase tracking-wider font-semibold">
-              Toplam Net Kar / Zarar ({symbols.length} pozisyon)
-            </span>
-            <span className={`text-2xl font-black font-mono tracking-tighter ${totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {totalPnl >= 0 ? '+' : ''}{fmtTl(totalPnl)} <span className="text-base">₺</span>
-            </span>
-          </div>
-        )}
-
-        {/* Boş durum */}
-        {symbols.length === 0 && !loading && (
-          <Card className="bg-neutral-900/60 border-neutral-800/60 rounded-3xl">
-            <CardContent className="py-16 text-center space-y-4">
-              <Activity className="w-10 h-10 mx-auto text-neutral-700" />
-              <div className="text-neutral-300 font-medium">Henüz takip edilen işlem yok</div>
-              <p className="text-sm text-neutral-500 max-w-md mx-auto">
-                Takibe başlamak için işlem ekle.
-              </p>
-              <Button onClick={openAdd} className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl">
-                <Plus className="w-4 h-4 mr-2" /> Yeni İşlem Ekle
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Pozisyon kartları */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {symbols.map((symbol) => {
-            const input = positions[symbol];
-            const data = quotes[symbol];
-            const code = toBistCode(symbol);
-            const pnl = data ? calculatePnL(input, data.price) : 0;
-            const isProfit = pnl >= 0;
-
-            // previousClose gelmediğinde yüzde değişim HESAPLANMAZ (eskiden 0'a bölünüp
-            // ekrana "NaN%" yazıyordu); rozet yerine "—" gösterilir.
-            const pct = data && data.previousClose
-              ? ((data.price - data.previousClose) / data.previousClose) * 100
-              : null;
-            const isPriceUp = (pct ?? 0) >= 0;
-
-            return (
-              <Card key={symbol} className="bg-neutral-900/60 border-neutral-800/60 backdrop-blur-md rounded-3xl overflow-hidden shadow-2xl transition-all duration-500 hover:border-neutral-700/80 hover:bg-neutral-900/80">
-                <div className={`h-2 w-full bg-gradient-to-r ${
-                  input.tradeType === 'long' ? 'from-indigo-500 to-cyan-500'
-                    : input.tradeType.endsWith('_sell') ? 'from-amber-500 to-orange-600'
-                    : 'from-sky-500 to-blue-600'
-                }`} />
-
-                <CardHeader className="pb-4">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="min-w-0">
-                      <CardTitle className="text-2xl font-bold text-white tracking-tight font-mono">{code}</CardTitle>
-                      <CardDescription className="text-neutral-400 mt-1 truncate">{bistName(symbol)}</CardDescription>
-                      <Badge variant="outline" className="mt-2 border-neutral-700 text-neutral-300 text-[11px]">
-                        {STOCK_TRADE_SHORT[input.tradeType]}
-                      </Badge>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      {data ? (
-                        <>
-                          <div className="text-3xl font-mono font-bold text-white tracking-tighter">
-                            ₺{fmtTl(data.price)}
-                          </div>
-                          {pct != null ? (
-                            <Badge variant="outline" className={`mt-2 font-mono ${isPriceUp ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
-                              {isPriceUp ? <ArrowUpIcon className="w-3 h-3 mr-1" /> : <ArrowDownIcon className="w-3 h-3 mr-1" />}
-                              {Math.abs(pct).toFixed(2)}%
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="mt-2 font-mono border-neutral-700 text-neutral-500">
-                              — değişim yok
-                            </Badge>
-                          )}
-                        </>
-                      ) : loading ? (
-                        <div className="animate-pulse bg-neutral-800 h-10 w-24 rounded-lg" />
-                      ) : (
-                        <div className="flex items-center gap-1.5 text-amber-500 text-xs">
-                          <AlertTriangle className="w-4 h-4" /> fiyat alınamadı
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-5">
-                  <div className="grid grid-cols-4 gap-3 p-4 bg-neutral-950/50 rounded-2xl border border-neutral-800/50 text-sm">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500">
-                        {isOptionTrade(input.tradeType) ? 'Kullanım' : 'Maliyet'}
-                      </div>
-                      <div className="font-mono text-neutral-200 mt-0.5">₺{fmtTl(input.basePrice)}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500">Miktar</div>
-                      <div className="font-mono text-neutral-200 mt-0.5">{input.quantity} lot</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500">Prim</div>
-                      <div className="font-mono text-neutral-200 mt-0.5">₺{fmtTl(input.premium)}</div>
-                    </div>
-                    {/* Başabaş — net K/Z'nin sıfırlandığı hisse fiyatı, ok yönü kâr tarafını gösterir. */}
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500 flex items-center gap-1">
-                        Başabaş
-                        <InfoHint label="Başabaş nedir" text={BREAKEVEN_INFO} />
-                      </div>
-                      {(() => {
-                        const be = stockBreakEven(input.tradeType, input.basePrice, input.quantity, input.premium);
-                        if (be == null) return <div className="font-mono text-neutral-600 mt-0.5">—</div>;
-                        const above = stockProfitSide(input.tradeType) === 'above';
-                        const reached = data ? (above ? data.price >= be : data.price <= be) : null;
-                        return (
-                          <div
-                            className={`font-mono mt-0.5 ${reached == null ? 'text-neutral-200' : reached ? 'text-emerald-400' : 'text-red-400'}`}
-                            title={`${fmtTl(be)} ₺ seviyesinin ${above ? 'ÜSTÜ' : 'ALTI'} kâr`}
-                          >
-                            ₺{fmtTl(be)}
-                            <span className="ml-1 text-[10px]">{above ? '↑' : '↓'}</span>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  <div className={`p-6 rounded-2xl border transition-all duration-300 relative overflow-hidden ${
-                    isProfit
-                      ? 'bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.1)]'
-                      : 'bg-red-500/10 border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.1)]'
-                  }`}>
-                    <div className={`absolute -right-20 -top-20 w-40 h-40 blur-3xl opacity-20 rounded-full ${isProfit ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                    <div className="flex justify-between items-center relative z-10">
-                      <div>
-                        <div className={`text-sm font-semibold uppercase tracking-wider ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
-                          Net {isProfit ? 'Kar' : 'Zarar'} Durumu
-                        </div>
-                        <div className="text-neutral-400 text-xs mt-1">
-                          {data ? 'Anlık fiyata göre hesaplanmıştır' : 'Fiyat bekleniyor'}
-                        </div>
-                      </div>
-                      <div className={`text-4xl font-black font-mono tracking-tighter ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {isProfit ? '+' : ''}{fmtTl(pnl)} <span className="text-xl">₺</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" className="border-neutral-700 rounded-xl" onClick={() => openEdit(symbol)}>
-                      <Pencil className="w-3.5 h-3.5 mr-1.5" /> Düzenle
-                    </Button>
-                    <Button variant="outline" size="sm" className="border-neutral-700 text-rose-400 hover:text-rose-300 rounded-xl" onClick={() => void handleDelete(symbol)}>
-                      <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Sil
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+    <div className="desk-workspace">
+      <div className="workspace-heading">
+        <div><h1>Portföy takip</h1><p>BIST · prim ve kâr/zarar takibi</p></div>
+        <div className="workspace-toolbar" style={{ margin: 0 }}>
+          <span className="desk-muted">Son güncelleme {lastUpdated ? lastUpdated.toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul' }) : '—'}</span>
+          <button className="desk-button" onClick={() => void refreshQuotes(symbols)} disabled={loading}>{loading ? 'Yenileniyor…' : 'Yenile'}</button>
+          <button className="desk-button desk-button-primary" onClick={openAdd}>Yeni işlem ekle</button>
         </div>
       </div>
+
+      <div className="workspace-metrics">
+        <div><span>Toplam net K/Z · prim dahil</span><strong className={symbols.length ? tone(totalPnl) : undefined}>{symbols.length ? signed(totalPnl) : '—'}</strong><small>{unpriced ? `${unpriced} pozisyonun fiyatı alınamadı; toplam eksik` : 'Anlık fiyatla'}</small></div>
+        <div><span>Takip edilen pozisyon</span><strong>{symbols.length}</strong></div>
+        <div><span>Fiyat kaynağı</span><strong>Yahoo</strong><small>Dakikada bir yenilenir · tutarlar TL</small></div>
+      </div>
+
+      {symbols.length === 0 && !loading ? (
+        <section className="workspace-panel"><p className="workspace-empty">Henüz takip edilen işlem yok. Takibe başlamak için işlem ekle.</p></section>
+      ) : (
+        <section className="position-register">
+          <div className="workspace-table-scroll"><table className="workspace-table">
+            <thead><tr><th>Hisse</th><th>İşlem</th><th className="number">Strike / maliyet</th><th className="number">Lot</th><th className="number">Prim</th><th className="number">Başabaş</th><th className="number">Fiyat</th><th className="number">Günlük</th><th className="number">Net K/Z</th><th /></tr></thead>
+            <tbody>{symbols.map(symbol => {
+              const input = positions[symbol], data = quotes[symbol];
+              const pnl = data ? calculatePnL(input, data.price) : null;
+              // previousClose gelmediğinde yüzde değişim hesaplanmaz.
+              const pct = data && data.previousClose ? ((data.price - data.previousClose) / data.previousClose) * 100 : null;
+              const be = stockBreakEven(input.tradeType, input.basePrice, input.quantity, input.premium);
+              const above = stockProfitSide(input.tradeType) === 'above';
+              return <tr key={symbol}>
+                <td><strong>{toBistCode(symbol)}</strong><small>{bistName(symbol)}</small></td>
+                <td>{STOCK_TRADE_SHORT[input.tradeType]}</td>
+                <td className="number">{fmtTl(input.basePrice)}</td>
+                <td className="number">{input.quantity.toLocaleString('tr-TR')}</td>
+                <td className="number">{fmtTl(input.premium)}</td>
+                <td className="number" title={be == null ? undefined : `${fmtTl(be)} TL seviyesinin ${above ? 'üstü' : 'altı'} kâr`}>{be == null ? '—' : `${fmtTl(be)} ${above ? '↑' : '↓'}`}</td>
+                <td className="number">{data ? fmtTl(data.price) : loading ? '…' : 'Alınamadı'}</td>
+                <td className={`number ${pct == null ? '' : tone(pct)}`}>{pct == null ? '—' : `${pct >= 0 ? '+' : '−'}%${fmtTl(Math.abs(pct))}`}</td>
+                <td className={`number ${pnl == null ? '' : tone(pnl)}`}>{pnl == null ? '—' : signed(pnl)}</td>
+                <td><div className="workspace-toolbar" style={{ margin: 0, flexWrap: 'nowrap' }}><button className="desk-button" onClick={() => openEdit(symbol)}>Düzenle</button><button className="desk-button" onClick={() => void handleDelete(symbol)}>Sil</button></div></td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+        </section>
+      )}
+      <details className="workspace-notes"><summary>Başabaş</summary><p>{BREAKEVEN_INFO}</p></details>
 
       <TradeDialog
         open={dialogOpen}

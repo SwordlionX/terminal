@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Transaction } from "@libsql/client";
 import { dbc } from "@/lib/db";
+
+/** Settlement gate uses the terminal business day (Istanbul), matching the UI expiry badge. */
+const istanbulDay = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 import { rowToTrade } from "@/services/mockDb";
 import type { Trade } from "@/types";
 import type { CollateralItem } from "@/types/collateral";
@@ -96,7 +99,7 @@ export async function settleTradeOwned(customerId: string, id: string, expirySpo
     const trade = rowToTrade(result.rows[0]);
     if (trade.status === "Closed") throw new Error("İşlem zaten kapatılmış ve arşivlenmiş.");
     const expiryDay = trade.expiryDate.slice(0, 10);
-    if (!Number.isFinite(Date.parse(expiryDay)) || expiryDay > new Date().toISOString().slice(0, 10)) throw new Error('Avrupa tipi işlem vade öncesi sonuçlandırılamaz. Ters işlem veya hedge, mevcut sözleşmeyi sona erdirmez.');
+    if (!Number.isFinite(Date.parse(expiryDay)) || expiryDay > istanbulDay()) throw new Error('Avrupa tipi işlem vade öncesi sonuçlandırılamaz. Ters işlem veya hedge, mevcut sözleşmeyi sona erdirmez.');
     const intrinsic = Math.max(0, trade.type === "Call" ? expirySpot - trade.strike : trade.strike - expirySpot) * trade.contractSize;
     const pnl = (trade.position === "Long" ? 1 : -1) * (intrinsic - trade.premium);
     if (!Number.isFinite(pnl)) throw new Error("Kapanış tutarı hesaplanamıyor.");

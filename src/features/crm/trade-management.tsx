@@ -15,7 +15,8 @@ import { breakEvenSpot, profitSideOf, breakEvenLabel } from "@/lib/math/breakeve
 import Link from "next/link";
 import { valuationTotal, type TradeValuations } from '@/lib/pricing/trade-valuation';
 import { TradeValue, ValuationDetails } from './trade-value';
-import { formatNumber } from '@/lib/format';
+import { formatDate, formatNumber } from '@/lib/format';
+import { istanbulToday } from '@/lib/dates';
 
 export function TradeManagement({ customerId, trades, valuations = {} }: { customerId: string, trades: Trade[], valuations?: TradeValuations }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -30,7 +31,7 @@ export function TradeManagement({ customerId, trades, valuations = {} }: { custo
     spot: "",
     contractSize: "",
     premium: "",
-    tradeDate: new Date().toISOString().split('T')[0],
+    tradeDate: istanbulToday(),
     expiryDate: "",
     useManualMargin: false,
     manualMarginRate: "",
@@ -145,8 +146,8 @@ export function TradeManagement({ customerId, trades, valuations = {} }: { custo
           <tbody>
             {activeTrades.map(t => (
               <tr key={t.id}>
-                <td>{new Date(t.tradeDate).toLocaleDateString()}</td>
-                <td>{new Date(t.expiryDate).toLocaleDateString()}</td>
+                <td>{formatDate(t.tradeDate)}</td>
+                <td>{formatDate(t.expiryDate)}</td>
                 <td className="font-bold">
                   {t.underlying}
                   {t.barrierType && (
@@ -167,7 +168,7 @@ export function TradeManagement({ customerId, trades, valuations = {} }: { custo
                     const above = profitSideOf(t.type, t.position) === 'above';
                     return (
                       <span title={breakEvenLabel(t.type, t.position, be)}>
-                        {be.toFixed(2)}
+                        {formatNumber(be)}
                         <span className={`ml-1 text-[10px] ${above ? 'text-emerald-500' : 'text-rose-500'}`}>{above ? '↑' : '↓'}</span>
                         {t.barrierType && <span className="text-amber-600" title="Bariyerli — bariyere değilmediği varsayımıyla">*</span>}
                       </span>
@@ -179,14 +180,14 @@ export function TradeManagement({ customerId, trades, valuations = {} }: { custo
                 <td className="number"><TradeValue value={valuations[t.id]} field="positionValue" /></td>
                 <td className="number"><TradeValue value={valuations[t.id]} field="pnl" /></td>
                 <td>
-                  <Badge variant={t.status === 'Closed' ? 'secondary' : 'default'}>{t.status === 'Closed' ? 'Sonuçlandı' : t.expiryDate.slice(0,10)<=new Date().toISOString().slice(0,10) ? 'Vade sonucu bekleniyor' : 'Açık'}</Badge>
+                  <Badge variant={t.status === 'Closed' ? 'secondary' : 'default'}>{t.status === 'Closed' ? 'Sonuçlandı' : t.expiryDate.slice(0,10)<=istanbulToday() ? 'Vade sonucu bekleniyor' : 'Açık'}</Badge>
                 </td>
                 <td className={t.pnl && t.pnl >= 0 ? "text-emerald-500" : t.pnl && t.pnl < 0 ? "text-rose-500" : ""}>
                   {t.status === 'Closed' && t.pnl !== null ? formatCurrency(t.pnl) : '—'}
                 </td>
                 <td className="text-right">
                   <div className="flex justify-end gap-2"><Link className="desk-link" href={`/trades?trade=${encodeURIComponent(t.id)}`} title="Pozisyon masasında incele">İncele ↗</Link>
-                    {t.status !== 'Closed' && t.expiryDate.slice(0, 10) <= new Date().toISOString().slice(0, 10) && (
+                    {t.status !== 'Closed' && t.expiryDate.slice(0, 10) <= istanbulToday() && (
                       <Button size="icon" variant="outline" className="h-8 w-8 text-zinc-300" onClick={() => { setSettleError(null); setSettleSpot(""); setSettleTrade(t); }} title="Vade sonucunu kaydet">
                         <CheckCircle className="h-4 w-4" />
                       </Button>

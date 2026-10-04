@@ -36,6 +36,7 @@ function loadMarketStore() {
   const store = load('src/store/marketData.ts', {
     zustand: { create },
     'zustand/middleware': { persist: initializer => initializer },
+    '@/lib/dates': load('src/lib/dates.ts'),
   }).useMarketData;
   return store.getState;
 }

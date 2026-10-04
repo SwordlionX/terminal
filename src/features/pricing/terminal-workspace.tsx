@@ -15,6 +15,20 @@ import { usePricingModel } from './use-pricing-model';
 import { SmileChart } from './smile-chart';
 import { VolatilityTermChart } from './volatility-term-chart';
 import { analysisMoney, analysisNumber } from './position-analysis-view';
+import { formatDate } from '@/lib/format';
+
+/** A new contract must carry a premium and start on the untouched side of its barrier. */
+function bookingBlock(quote: Quote | null): string | null {
+  if (!quote) return null;
+  if (quote.barrier?.rebate) return 'Rebate içeren sözleşmenin kayıt şeması henüz desteklenmiyor.';
+  if (quote.barrier) {
+    const up = quote.barrier.variant[0] === 'u';
+    if (up ? quote.inputs.spot >= quote.barrier.level : quote.inputs.spot <= quote.barrier.level)
+      return 'Spot bariyerin ötesinde; yeni bariyerli işlem bu seviyeyle kaydedilemez.';
+  }
+  if (!(quote.premiumTotal >= 0.01)) return 'Prim sıfır; değersiz yapı müşteriye kaydedilmez.';
+  return null;
+}
 
 function BookQuote({ quote }: { quote: Quote | null }) {
   const [open, setOpen] = useState(false), [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
@@ -36,7 +50,8 @@ function BookQuote({ quote }: { quote: Quote | null }) {
     } catch (e) { setMessage(e instanceof Error ? e.message : 'Kayıt oluşturulamadı.'); }
     finally { setBusy(false); }
   };
-  return <><button className="desk-button" disabled={!quote || Boolean(quote.barrier?.rebate)} title={quote?.barrier?.rebate ? 'Rebate içeren sözleşmenin kayıt şeması henüz desteklenmiyor.' : undefined} onClick={show}>Müşteriye kaydet ↗</button><Dialog open={open} onOpenChange={setOpen}><DialogContent><DialogHeader><DialogTitle>İşlemi müşteriye kaydet</DialogTitle><DialogDescription>Terminalin hesapladığı koşullarla kayıt oluşturur; emir göndermez.</DialogDescription></DialogHeader><label className="desk-field">Müşteri<select value={customer} onChange={e => setCustomer(e.target.value)}><option value="">Müşteri seçin</option>{customers.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select></label>{quote && <p className="desk-muted">{quote.position} {quote.type} · {quote.product} · {quote.inputs.contractSize} birim · {quote.inputs.expiryDate} · {analysisMoney(quote.premiumTotal)}</p>}<button className="desk-button desk-button-primary" disabled={!customer || !quote || busy || message === 'İşlem kaydı oluşturuldu.'} onClick={save}>{busy ? 'Kaydediliyor…' : 'Kaydı oluştur'}</button><p role="status">{message}</p></DialogContent></Dialog></>;
+  const blocked = bookingBlock(quote);
+  return <><button className="desk-button" disabled={!quote || Boolean(blocked)} title={blocked ?? undefined} onClick={show}>Müşteriye kaydet ↗</button><Dialog open={open} onOpenChange={setOpen}><DialogContent><DialogHeader><DialogTitle>İşlemi müşteriye kaydet</DialogTitle><DialogDescription>Terminalin hesapladığı koşullarla kayıt oluşturur; emir göndermez.</DialogDescription></DialogHeader><label className="desk-field">Müşteri<select value={customer} onChange={e => setCustomer(e.target.value)}><option value="">Müşteri seçin</option>{customers.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select></label>{quote && <p className="desk-muted">{quote.position} {quote.type} · {quote.product} · {quote.inputs.contractSize} birim · {formatDate(quote.inputs.expiryDate)} · {analysisMoney(quote.premiumTotal)}</p>}<button className="desk-button desk-button-primary" disabled={!customer || !quote || busy || message === 'İşlem kaydı oluşturuldu.'} onClick={save}>{busy ? 'Kaydediliyor…' : 'Kaydı oluştur'}</button><p role="status">{message}</p></DialogContent></Dialog></>;
 }
 
 export function TerminalWorkspace() {
@@ -94,7 +109,7 @@ export function TerminalWorkspace() {
     })}</div>
     <p className="desk-muted">Risk ve kayıt: seçili {type} işlemi</p>
     {pricing.error && <p role="status" className="desk-policy">{pricing.error}</p>}
-    <div className="desk-market-facts"><div><span>Terminal spotu</span><strong>{feed.spot ? analysisNumber(feed.spot.price) : '—'}</strong></div><div><span>Model forward</span><strong>{q ? analysisNumber(fwd) : '—'}</strong></div><div><span>Smile IV</span><strong>{q ? '%' + analysisNumber(q.effectiveVol) : '—'}</strong></div><div><span>Yüzey tarihi</span><strong>{feed.surface?.fetchedISO.slice(0, 10) ?? 'Veri yok'}</strong></div></div>
+    <div className="desk-market-facts"><div><span>Terminal spotu</span><strong>{feed.spot ? analysisNumber(feed.spot.price) : '—'}</strong></div><div><span>Model forward</span><strong>{q ? analysisNumber(fwd) : '—'}</strong></div><div><span>Smile IV</span><strong>{q ? '%' + analysisNumber(q.effectiveVol) : '—'}</strong></div><div><span>Yüzey tarihi</span><strong>{feed.surface ? formatDate(feed.surface.fetchedISO) : 'Veri yok'}</strong></div></div>
     {q && feed.surface?.curves && <p className="desk-muted">Seçili vade · USD faiz %{analysisNumber(q.inputs.rate * q.inputs.basis / 365, 4)} · Metal taşıması (proxy) %{analysisNumber(q.inputs.lease * q.inputs.basis / 365, 4)} · Sürekli yıllık oran / ACT {q.inputs.basis}</p>}
     <div className="desk-actions"><button className="desk-button desk-button-primary" disabled={!q || Boolean(barrier)} title={barrier ? 'Fiyat × tarih analizi şu an vanilya işlemleri destekler.' : undefined} onClick={analyze}>Pozisyonu analiz et ↗</button><BookQuote quote={q} /><button className="desk-button" disabled={feed.loading} onClick={feed.refetch}>Kayıtlı veriyi oku</button></div>
     <p className="analysis-footnote">{feed.spot?.source ?? 'Spot kaynağı bekleniyor'} · {q?.volMode ?? 'IV bekleniyor'} · Endikatif model fiyatı.</p>

@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useMarketData } from '@/store/marketData';
 import { useAnalysisDraft } from '@/store/analysis-draft';
 import type { AssistantArtifact, Quote, ScenarioResult } from '@/lib/assistant/types';
+import { formatDate, formatDateTime } from '@/lib/format';
 
 const fmt = (n: number, digits = 2) => Number.isFinite(n) ? n.toLocaleString('tr-TR', { maximumFractionDigits: digits, minimumFractionDigits: digits }) : '—';
 const money = (n: number) => `${fmt(n)} USD`;
@@ -49,7 +50,7 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
       <div className="mt-2 grid grid-cols-2 gap-3"><div><p className="break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{money(q.premiumTotal)}</p><p className="mt-1 text-xs text-muted-foreground">{fmt(q.premiumPerUnit, 4)} USD/{unit}</p></div><div><p className="break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">%{fmt(q.premiumPctSpot)}</p><p className="mt-1 text-xs text-muted-foreground">Spot nominali üzerinden</p></div></div>
       <dl className="mt-4 grid grid-cols-2 gap-3 text-xs [&>div]:min-w-0 [&_dd]:break-words min-[420px]:grid-cols-3">
         <div><dt className="text-slate-400">Strike</dt><dd className="mt-1 font-mono text-slate-200">{fmt(q.inputs.strike, 4)}</dd></div>
-        <div><dt className="text-slate-400">Vade</dt><dd className="mt-1 text-slate-200">{q.inputs.expiryDate}</dd></div>
+        <div><dt className="text-slate-400">Vade</dt><dd className="mt-1 text-slate-200">{formatDate(q.inputs.expiryDate)}</dd></div>
         <div><dt className="text-slate-400">Miktar</dt><dd className="mt-1 text-slate-200">{fmt(q.inputs.contractSize)} {unit}</dd></div>
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -61,12 +62,12 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
       {details && <div className="mt-4 space-y-2 border-t border-white/10 pt-3 text-xs text-slate-400">
         <p>{q.model} · {modeLabels[q.volMode] ?? q.volMode}</p>
         <p>Spot {fmt(q.inputs.spot, 4)} · IV %{fmt(q.effectiveVol, 4)} · Faiz %{fmt(q.inputs.rate, 4)} · Kira %{fmt(q.inputs.lease, 4)}</p>
-        <p>Değerleme {q.inputs.tradeDate} · Gün bazı {q.inputs.basis} · Strike nominali üzerinden prim %{fmt(q.premiumPctStrike, 4)}</p>
+        <p>Değerleme {formatDate(q.inputs.tradeDate)} · Gün bazı {q.inputs.basis} · Strike nominali üzerinden prim %{fmt(q.premiumPctStrike, 4)}</p>
         <p>Delta {fmt(q.delta, 4)} {unit} · Gamma {fmt(q.gamma, 6)} · Vega {money(q.vega)} / vol puanı · Theta {money(q.theta)} / gün</p>
         <p>Delta nötr hedge: {q.hedgeUnits >= 0 ? 'Al' : 'Sat'} {fmt(Math.abs(q.hedgeUnits), 4)} {unit}</p>
-        <p>Spot kaynağı: {q.spotSource}{q.spotAt ? ` · ${new Date(q.spotAt).toLocaleString('tr-TR')}` : ''}</p>
-        <p>Yüzey tarihi: {q.surfaceAt ?? 'Veri yok'}</p>
-        <p>Hesap zamanı: {new Date(q.pricedAt).toLocaleString('tr-TR')}. Piyasa değişince yeniden fiyatlayın.</p>
+        <p>Spot kaynağı: {q.spotSource}{q.spotAt ? ` · ${formatDateTime(q.spotAt)}` : ''}</p>
+        <p>Yüzey tarihi: {q.surfaceAt ? formatDate(q.surfaceAt) : 'Veri yok'}</p>
+        <p>Hesap zamanı: {formatDateTime(q.pricedAt)}. Piyasa değişince yeniden fiyatlayın.</p>
       </div>}
       {alerts.length > 0 && <div className="mt-3 space-y-1 rounded-lg bg-amber-400/5 p-2 text-xs leading-relaxed text-amber-200">
         {alerts.map((warning, i) => <p key={i}>{warning}</p>)}
@@ -138,7 +139,7 @@ export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact;
   </section>;
   if (artifact.kind === 'workspace') {
     const w = artifact.snapshot;
-    return <section className="workspace-panel"><p className="desk-eyebrow">TERMİNAL KAYITLARI / SALT OKUNUR</p><h3 className="mt-2 text-sm font-semibold">{w.customer?.name ?? 'Risk masası özeti'}</h3><p className="workspace-muted">{w.trades.length} seçili işlem{w.truncated ? ` · ${w.totalTrades} kaydın ilk ${w.trades.length} tanesi; tam portföy değildir` : ''}</p>{w.margin && <><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="workspace-muted">Ek teminat</p><strong>{money(w.margin.cureAmount)}</strong></div><div><p className="workspace-muted">Prosedür brüt zararı</p><strong>{money(w.margin.totalMtmLoss)}</strong></div></div><p className="workspace-muted mt-3">{w.margin.method}</p>{w.margin.dataWarning && <p className="desk-policy mt-3">{w.margin.dataWarning}</p>}</>}{w.riskSummary && <><p className="mt-3 text-sm">{w.riskSummary.customerCount} müşteri · {w.riskSummary.openTrades} açık işlem</p><p className="mt-2 text-sm">Gerekli ek teminat: {money(w.riskSummary.cureAmount)}</p>{w.riskSummary.priorities.map(r => <Link key={r.customerId} className="desk-link block mt-3" href={`/customers/${r.customerId}?tab=collateral`}>{r.name} · {money(r.cureAmount)} ↗</Link>)}</>}{w.trades.map(t => <Link key={t.id} className="block border-t border-border py-3 mt-3 text-xs" href={`/trades?trade=${t.id}`}><strong>{t.underlying} · {t.position} {t.type}</strong><p className="workspace-muted">{fmt(t.contractSize)} ons · {t.expiryDate} · {money(t.premiumTotal)} geçmiş prim</p><span className="desk-link">Pozisyonu ekranda aç ↗</span></Link>)}{w.customer && <Link className="desk-link block mt-3" href={`/customers/${w.customer.id}`}>Müşteri dosyasını aç ↗</Link>}</section>;
+    return <section className="workspace-panel"><p className="desk-eyebrow">TERMİNAL KAYITLARI / SALT OKUNUR</p><h3 className="mt-2 text-sm font-semibold">{w.customer?.name ?? 'Risk masası özeti'}</h3><p className="workspace-muted">{w.trades.length} seçili işlem{w.truncated ? ` · ${w.totalTrades} kaydın ilk ${w.trades.length} tanesi; tam portföy değildir` : ''}</p>{w.margin && <><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="workspace-muted">Ek teminat</p><strong>{money(w.margin.cureAmount)}</strong></div><div><p className="workspace-muted">Prosedür brüt zararı</p><strong>{money(w.margin.totalMtmLoss)}</strong></div></div><p className="workspace-muted mt-3">{w.margin.method}</p>{w.margin.dataWarning && <p className="desk-policy mt-3">{w.margin.dataWarning}</p>}</>}{w.riskSummary && <><p className="mt-3 text-sm">{w.riskSummary.customerCount} müşteri · {w.riskSummary.openTrades} açık işlem</p><p className="mt-2 text-sm">Gerekli ek teminat: {money(w.riskSummary.cureAmount)}</p>{w.riskSummary.priorities.map(r => <Link key={r.customerId} className="desk-link block mt-3" href={`/customers/${r.customerId}?tab=collateral`}>{r.name} · {money(r.cureAmount)} ↗</Link>)}</>}{w.trades.map(t => <Link key={t.id} className="block border-t border-border py-3 mt-3 text-xs" href={`/trades?trade=${t.id}`}><strong>{t.underlying} · {t.position} {t.type}</strong><p className="workspace-muted">{fmt(t.contractSize)} ons · {formatDate(t.expiryDate)} · {money(t.premiumTotal)} geçmiş prim</p><span className="desk-link">Pozisyonu ekranda aç ↗</span></Link>)}{w.customer && <Link className="desk-link block mt-3" href={`/customers/${w.customer.id}`}>Müşteri dosyasını aç ↗</Link>}</section>;
   }
   if (artifact.kind === 'position_analysis') return <section className="min-w-0"><p className="mb-3 text-sm font-semibold">{artifact.result.label}</p><PositionAnalysisView result={artifact.result} compact /></section>;
   if (artifact.kind === 'quote') return <QuoteCard quote={artifact.quote} onApply={onApply} />;

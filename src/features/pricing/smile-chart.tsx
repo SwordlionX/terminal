@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { rebasedExpiryDays, surfaceVolEstimate, type VolSurface } from "@/lib/vol/surface";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDate, formatNumber, formatPercent } from "@/lib/format";
 
 interface Props {
   surface: VolSurface | null;
@@ -84,7 +85,7 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
         <CardTitle className="flex flex-wrap items-baseline gap-2">
           <span>Volatilite Smile (kaynak)</span>
           <span className="text-xs font-normal text-muted-foreground">
-            {sourceLabel ?? `${surface?.symbol} yüzeyi`} · en yakın kote vade: {near.expiry.date} ({near.days.toFixed(1)}g)
+            {sourceLabel ?? `${surface?.symbol} yüzeyi`} · en yakın kote vade: {formatDate(near.expiry.date)} ({formatNumber(near.days, 1)} g)
           </span>
         </CardTitle>
       </CardHeader>
@@ -94,9 +95,9 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
             <rect x={padL} y={padT} width={plotW} height={plotH} fill="none" stroke="currentColor" className="text-zinc-800" strokeWidth={1} />
             {yTicks.map((t, i) => <g key={`y${i}`}>
               <line x1={padL} x2={padL + plotW} y1={yOf(t)} y2={yOf(t)} stroke="currentColor" className="text-zinc-800/60" strokeWidth={1} strokeDasharray="2 3" />
-              <text x={padL - 6} y={yOf(t) + 3} textAnchor="end" className="fill-zinc-500" fontSize={9}>%{t.toFixed(1)}</text>
+              <text x={padL - 6} y={yOf(t) + 3} textAnchor="end" className="fill-zinc-500" fontSize={9}>{formatPercent(t, 1)}</text>
             </g>)}
-            {xTicks.map((t, i) => <text key={`x${i}`} x={xOf(t)} y={H - padB + 14} textAnchor="middle" className="fill-zinc-500" fontSize={9}>{t.toFixed(3)}</text>)}
+            {xTicks.map((t, i) => <text key={`x${i}`} x={xOf(t)} y={H - padB + 14} textAnchor="middle" className="fill-zinc-500" fontSize={9}>{formatNumber(t, 3)}</text>)}
             <text x={padL + plotW / 2} y={H - 4} textAnchor="middle" className="fill-zinc-400" fontSize={9}>Forward-moneyness (K / F)</text>
             <path d={pathFor(false)} fill="none" stroke="currentColor" className="text-emerald-500" strokeWidth={1.5} />
             <path d={pathFor(true)} fill="none" stroke="currentColor" className="text-sky-400" strokeWidth={1.5} strokeDasharray="5 3" />
@@ -109,19 +110,19 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
             <text x={xOf(targetM) + (targetM > (xMin + xMax) / 2 ? -4 : 4)} y={padT + 10}
               textAnchor={targetM > (xMin + xMax) / 2 ? "end" : "start"} fontSize={9}
               className={target.vol == null ? "fill-rose-400" : "fill-zinc-300"}>
-              strike {targetM.toFixed(3)}{target.vol == null ? " · kapsam dışı" : ""}
+              strike {formatNumber(targetM, 3)}{target.vol == null ? " · kapsam dışı" : ""}
             </text>
           </svg>
         </div>
         <div className="mt-2 text-[11px] text-zinc-500 space-y-2">
           <div className="flex flex-wrap gap-x-4 gap-y-1"><span>● Kote noktalar</span><span>— Fiyatlama eğrisi</span><span>┄ SSVI modeli</span></div>
           <div className={target.vol == null ? "text-rose-400/90" : "text-emerald-500/80"}>
-            {manualVol ? "Referans yüzey (fiyatlamada kullanılmıyor) · " : ""}{modeLabel[target.mode]}{target.vol != null ? ` · %${(target.vol * 100).toFixed(2)}` : ` · ${target.reason ?? "Yüzey IV'si yok."}`}
+            {manualVol ? "Referans yüzey (fiyatlamada kullanılmıyor) · " : ""}{modeLabel[target.mode]}{target.vol != null ? ` · ${formatPercent(target.vol * 100)}` : ` · ${target.reason ?? "Yüzey IV'si yok."}`}
           </div>
-          {manualVol && <div className="text-amber-400">Fiyatlama manuel IV ile çalışıyor{effectiveVol != null ? `: %${effectiveVol.toFixed(2)}` : "; girdiler geçersiz"}. Grafikteki eğri ve işaretçi yalnız referans yüzeyi gösterir.</div>}
+          {manualVol && <div className="text-amber-400">Fiyatlama manuel IV ile çalışıyor{effectiveVol != null ? `: ${formatPercent(effectiveVol)}` : "; girdiler geçersiz"}. Grafikteki eğri ve işaretçi yalnız referans yüzeyi gösterir.</div>}
           <details className="workspace-notes"><summary>Eğri ayrıntıları</summary>
-            <p>{pts.length} kote nokta · K / F {quotedMin.toFixed(3)}–{quotedMax.toFixed(3)} · seçili vade {daysToExpiry.toFixed(1)} gün.</p>
-            {target.fitQuality && <p>Uyum hatası: ortalama %{(target.fitQuality.rmseVol * 100).toFixed(2)}, en çok %{(target.fitQuality.maxErrorVol * 100).toFixed(2)} IV.</p>}
+            <p>{pts.length} kote nokta · K / F {formatNumber(quotedMin, 3)}–{formatNumber(quotedMax, 3)} · seçili vade {formatNumber(daysToExpiry, 1)} gün.</p>
+            {target.fitQuality && <p>Uyum hatası: ortalama {formatPercent(target.fitQuality.rmseVol * 100)}, en çok {formatPercent(target.fitQuality.maxErrorVol * 100)} IV.</p>}
             {target.vol != null && Math.abs(near.days - daysToExpiry) > 1e-8 && <p>Seçili vade için kote vadeler arasında toplam varyans enterpolasyonu kullanılır.</p>}
           </details>
         </div>

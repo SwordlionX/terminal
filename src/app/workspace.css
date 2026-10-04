@@ -206,3 +206,24 @@ html[data-terminal-design=terminal] .terminal-shell.sidebar-shell .desk-main-gri
 html[data-terminal-design=terminal] .terminal-shell.sidebar-shell .desk-main-grid { min-width:0; width:100%; }
 .sidebar-shell .desk-ticket-fields .desk-field { align-self:stretch; justify-content:space-between; }
 .sidebar-shell .desk-barrier-control .desk-ticket-fields { grid-template-columns:minmax(0,1fr); }
+
+/* Portföy takip işlem formu */
+.stock-dialog-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 12px; }
+.stock-dialog-fields .stock-dialog-wide { grid-column:1 / -1; }
+
+/* Desktop: the open assistant docks beside the workspace instead of covering quotes and risk. */
+@media(min-width:1100px) {
+  .sidebar-shell { --assistant-width:420px; }
+  .sidebar-shell .assistant-dock { width:var(--assistant-width); top:86px; bottom:82px; height:auto; }
+  .sidebar-shell.assistant-is-open { padding-right:calc(var(--assistant-width) + 40px); }
+}
+
+/* Narrow screens: the quote leads the ticket, and the launcher shrinks to an icon. */
+@container (max-width:780px) {
+  html[data-terminal-design=terminal] .terminal-shell.sidebar-shell .desk-main-grid .desk-quote { order:-1; }
+}
+@media(max-width:900px) {
+  .assistant-floating-launcher { padding:0; width:52px; min-height:52px; justify-content:center; bottom:16px; right:16px; }
+  .assistant-launcher-label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .sidebar-shell .workspace-content { padding-bottom:84px; }
+}

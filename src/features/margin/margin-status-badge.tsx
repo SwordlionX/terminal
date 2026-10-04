@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { MarginResult } from "@/lib/margin/engine";
+import { formatPercent } from "@/lib/format";
 
 type Status = MarginResult["status"];
 
@@ -45,5 +46,5 @@ export function MarginRatioValue({ margin }: { margin: Pick<MarginResult, "statu
   if (margin.status === "UNCOLLATERALIZED") {
     return <span className="text-rose-500" title="Teminat yok, zarar var — oran sonsuz">∞</span>;
   }
-  return <>%{(margin.marginCallRatio * 100).toFixed(1)}</>;
+  return <>{formatPercent(margin.marginCallRatio * 100, 1)}</>;
 }

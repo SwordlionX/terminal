@@ -16,13 +16,15 @@ export function usePricingModel() {
   const md = useMarketData();
   const feed = useMarketFeed(md.product, md.rate / 100);
   // İlk ATM ayarı store'da tutulur; hook yeniden bağlanınca seçilmiş strike silinmez.
-  const { applyLiveSpot, product, manualSpot } = md;
+  const { applyLiveSpot, product, manualSpot, syncToday } = md;
   useEffect(() => {
+    // Her besleme yenilemesinde gün dönümü kontrol edilir; elle seçilmiş tarih korunur.
+    syncToday();
     if (!manualSpot && feed.spot?.price) {
       const price = Math.round(feed.spot.price * 100) / 100;
       applyLiveSpot(product, price);
     }
-  }, [feed.spot?.at, feed.spot?.price, manualSpot, product, applyLiveSpot]);
+  }, [feed.spot?.at, feed.spot?.price, manualSpot, product, applyLiveSpot, syncToday]);
 
   // Rates are derived per maturity from factor curves, never written back as editable assumptions.
   const resolved = useMemo(() => calculatePricing(md, feed.surface), [md, feed.surface]);
@@ -67,9 +69,3 @@ export function usePricingModel() {
   return { md: effectiveMd, feed, dateValid, daysToExpiry, tYears, smileIv, smileEstimate, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, volModeAtLevel, barrierSpot, barrierLease, surfaceSourceLabel,
     displayRate: resolved.displayRate, displayLease: resolved.displayLease };
 }
-
-export const formatCurrency = (val: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
-
-export const formatNumber = (val: number, dig = 4) =>
-  Number(val || 0).toLocaleString('en-US', { minimumFractionDigits: dig, maximumFractionDigits: dig });

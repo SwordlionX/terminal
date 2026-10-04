@@ -1,5 +1,5 @@
 import type { TradeValuation } from '@/lib/pricing/trade-valuation';
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 
 export function TradeValue({ value, field }: { value?: TradeValuation; field: 'positionValue' | 'pnl' }) {
   if (!value || value.state !== 'valued') return <span className="trade-value-missing">—<small>{value?.state === 'settled' ? 'Sonuçlanmış' : value?.reason ?? 'Değerleme yok'}</small></span>;
@@ -14,12 +14,12 @@ export function ValuationDetails({ values }: { values: Record<string, TradeValua
     return reasons.length ? <p className="valuation-data-age">{reasons.join(' ')}</p> : null;
   }
   const warnings = [...new Set(all.flatMap(v => v.warnings))];
-  const dates = [...new Set(all.map(v => v.surfaceAt?.slice(0, 10) ?? 'Tarih yok'))].join(' / ');
-  return <><p className="valuation-data-age">Endikatif değerleme: {all[0].valuationDate} · IV yüzeyi: {dates}</p>
+  const dates = [...new Set(all.map(v => v.surfaceAt ? formatDate(v.surfaceAt) : 'Tarih yok'))].join(' / ');
+  return <><p className="valuation-data-age">Endikatif değerleme: {formatDate(all[0].valuationDate)} · IV yüzeyi: {dates}</p>
     {warnings.filter(w => /^(Spot yenilenemedi|Yüzey verisi)/.test(w)).map(w => <p className="valuation-data-age" key={w}>{w}</p>)}
     <details className="workspace-notes valuation-details"><summary>Değerleme ve veri ayrıntıları</summary>
     <p className="workspace-muted">Güncel K/Z = prim hariç pozisyon değeri + giriş nakit akışı. Alışta giriş primi düşülür; satışta alınan prim eklenir. Endikatif model değeri · ACT/365.</p>
-    {[...new Set(all.map(v => `Spot: ${v.spotAt ?? 'Tarih yok'} · Yüzey: ${v.surfaceAt ?? 'Tarih yok'}`))].map(text => <p className="workspace-muted" key={text}>{text}</p>)}
+    {[...new Set(all.map(v => `Spot: ${v.spotAt ? formatDateTime(v.spotAt) : 'Tarih yok'} · Yüzey: ${v.surfaceAt ? formatDate(v.surfaceAt) : 'Tarih yok'}`))].map(text => <p className="workspace-muted" key={text}>{text}</p>)}
     {warnings.map(w => <p className="workspace-muted" key={w}>{w}</p>)}
   </details></>;
 }

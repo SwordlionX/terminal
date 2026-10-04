@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from 'next/link';
+import { formatMoney } from '@/lib/format';
 
 export interface ExpiryItem {
   id: string;
@@ -14,7 +15,7 @@ export interface ExpiryItem {
 }
 
 export function ExpiryCalendar({ items }: { items: ExpiryItem[] }) {
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(val);
+  const formatCurrency = (val: number) => formatMoney(val, 0);
   
   const today = new Date();
   today.setHours(0,0,0,0);

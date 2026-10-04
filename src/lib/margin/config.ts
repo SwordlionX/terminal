@@ -40,6 +40,9 @@ export const COLLATERAL_HAIRCUT_RATES: Record<string, number> = {
   'Nakit-XAG': 0.00,
 };
 
+/** USD/TRY sabit kuru — yalnız 1.000.000 TL onay eşiği ve TL karşılık gösterimi için. */
+export const USD_TRY_RATE = 50;
+
 // Türev işleme konu döviz çiftinden biri dışında teminata verebileceğiniz döviz çiftleri: TRY, USD, EUR
 export const BASE_COLLATERAL_CURRENCIES = ['TRY', 'USD', 'EUR'];
 

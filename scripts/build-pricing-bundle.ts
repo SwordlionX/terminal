@@ -64,7 +64,7 @@ async function main() {
         evalSec: Date.parse(spot.at) / 1000, fetchedISO: spot.at }, product, NaN);
       if (surfaces[product].expiries.length < 3) throw new Error(`${product}: yeniden kurulan IV yüzeyi yetersiz.`);
     }
-    const id = createHash('sha256').update('proxy-v2.2:' + sources.join(':')).digest('hex');
+    const id = createHash('sha256').update('proxy-v2.3:' + sources.join(':')).digest('hex');
     for (const surface of Object.values(surfaces)) surface.curves!.id = id;
     const bundle: PricingBundle = { version: 2, id, sessionDate: date, builtAt: new Date().toISOString(), usd, surfaces };
     validatePricingBundle(bundle);

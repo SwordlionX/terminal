@@ -75,8 +75,9 @@ export function NumberInput({ value, onValueChange, ...props }: NumberInputProps
   );
 }
 
+/** Turkish decimal comma without grouping, so the text stays easy to edit and parses back exactly. */
 function numToText(v: number): string {
   if (v === 0) return "0";
   if (!Number.isFinite(v)) return "";
-  return String(v);
+  return String(v).replace(".", ",");
 }

@@ -35,6 +35,12 @@ Eski etkin yüzey 2 Ekim tarihlidir; yeni final paket 1 Ekimdir. Farklı seansla
 
 167 otomatik test geçti; bunların 14'ü yeni tarihli faktör/SOFR/Amerikan IV, gün bazı, manuel engel, paket bütünlüğü, asistan ve tarihli pozisyon senaryosu regresyonlarıdır. Tam lint ve üretim derlemesi de doğrulandı. Gemini kabul denemeleri bu aşamada yapılmadı (0 istek).
 
+## 5 Ekim 2026 düzeltmesi — paket `072ca50206d48ea3af02963d878ad534ec4a64a3e9bbf6fdc68f78107653f180`
+
+- **Teslim dönemindeki kontrat:** İlk ihbar günü (kontrat ayından önceki son iş günü) geçmiş futures, satıcı ay içinde her gün teslim edebildiği için spot fiyatında işlem görür (1 Ekim: GCV6 4.172,9 / referans spot 4.172,72). Önceki paket bu fiyatı son işlem gününe (28 Ekim) taşıma düğümü olarak koyuyordu; kısa vadede USD faizine eşit yapay kira üretiyordu (7 gün: altın %3,89, gümüş %6,68). Bu kontrat artık düğüm olarak kullanılmaz; yeni 7–30 gün taşıması altın %1,69, gümüş %2,93. Kısa vadeli ATM call primi ~%2–3 artar, put ~%2–2,6 azalır; 60 gün üstü etki %0,3'ün altında.
+- **Vade yapısı filtresi:** Önceki kabul edilmiş vadeye göre ATM forward vol, önceki ATM vol'ün 1,5 katını aşan vade yüzeye alınmaz (sağlıklı vadelerde oran en çok 1,16). Gümüşün 2027-09-27 ve 2027-10-26 settlement'ları (~%78 forward vol) elendi; en uzun gümüş vadesi 2027-08-26. Boşluk üzerinden enterpolasyon yapılmaz.
+- Paket aynı 1 Ekim önbelleğinden yeniden kuruldu: yeni indirme ve Databento maliyeti yok. Doğrulama: 12 futures düğümü 1e−13 hassasiyetle yeniden üretildi, put-call paritesi ve 360/365 kontrolü geçti. Önceki paket geçmiş anahtarında duruyor.
+
 ## Kaynaklar
 
 - [CME SOFR settlement hesapları](https://www.cmegroup.com/education/files/sofr-futures-settlement-calculation-methodologies.pdf)

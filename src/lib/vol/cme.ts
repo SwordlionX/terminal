@@ -78,6 +78,35 @@ const MAX_SURFACE_DAYS = 400;
 // DİKKAT: bu bir ÜST SINIR DEĞİLDİR; korunan ATM bandı buna eklenir (gözlenen: ~60 strike).
 const MAX_STRIKES = 40;
 
+/**
+ * Bir vade ile önceki kabul edilmiş vade arasındaki ATM forward vol, önceki ATM vol'ün bu
+ * katını aşarsa vade yüzeye alınmaz. 1 Ekim 2026 verisinde sağlıklı vadelerde oran en çok
+ * 1,16 iken gümüşün işlem görmeyen 2027-09 settlement'ları 2,07 (≈%78 forward vol) üretti.
+ */
+const MAX_FORWARD_VOL_RATIO = 1.5;
+
+function atmVol(points: SmilePoint[]): number | null {
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i], b = points[i + 1];
+    if (a.m <= 1 && b.m >= 1) return b.m === a.m ? a.iv : a.iv + (1 - a.m) / (b.m - a.m) * (b.iv - a.iv);
+  }
+  return null;
+}
+
+/** Drops implausible term-structure jumps from illiquid settlement marks; the gap is not interpolated over. */
+export function filterForwardVolOutliers(expiries: ExpirySmile[]): { kept: ExpirySmile[]; dropped: string[] } {
+  const kept: ExpirySmile[] = [], dropped: string[] = [];
+  for (const expiry of [...expiries].sort((a, b) => a.days - b.days)) {
+    const vol = atmVol(expiry.points), previous = kept.at(-1), previousVol = previous ? atmVol(previous.points) : null;
+    if (previous && vol != null && previousVol != null && expiry.days > previous.days) {
+      const forwardVariance = (vol * vol * expiry.days - previousVol * previousVol * previous.days) / (expiry.days - previous.days);
+      if (forwardVariance > (MAX_FORWARD_VOL_RATIO * previousVol) ** 2) { dropped.push(expiry.date); continue; }
+    }
+    kept.push(expiry);
+  }
+  return { kept, dropped };
+}
+
 /** Sıralı (m'e göre) adaylardan ATM bandını TAM koruyup kanatları MAX_STRIKES yoğunluğuna seyreltir. */
 function subsampleStrikes<T extends { m: number }>(sorted: T[]): T[] {
   if (sorted.length <= MAX_STRIKES) return sorted;
@@ -167,13 +196,14 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     }
   }
 
-  expiries.sort((a, b) => a.days - b.days);
+  const { kept, dropped } = filterForwardVolOutliers(expiries);
 
   // DİKKAT: `spot` alanı burada gerçek spot DEĞİL, ön vadenin futures settlement'ıdır
   // (F). Yüzey forward-moneyness ekseninde tutulduğu için downstream bu alanı fiyatlamada
   // kullanmaz; yalnız payload'da bilgi amaçlıdır. Gerçek spot Yahoo'dan ayrıca gelir.
   // Lease is derived from independent factor curves for each requested maturity.
   // Never infer it from option expiries or deduplicate futures by their price.
-  return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries,
+  return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries: kept,
+    ...(dropped.length ? { notes: `Vade yapısı tutarsız (forward vol sıçraması) olduğu için yüzeye alınmayan vadeler: ${dropped.join(', ')}.` } : {}),
     ...(inp.curves ? { curves: inp.curves } : { builtWithR: r }) };
 }

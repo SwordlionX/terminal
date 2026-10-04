@@ -51,6 +51,7 @@ test("manual IV smile chart is reference-only and identifies the effective manua
     "@/components/ui/card": {
       Card: "Card", CardContent: "CardContent", CardHeader: "CardHeader", CardTitle: "CardTitle",
     },
+    "@/lib/format": load("src/lib/format.ts"),
     "@/lib/vol/surface": {
       rebasedExpiryDays: (_surface, expiry) => expiry.days,
       surfaceVolEstimate: () => ({ vol: 0.25, mode: "model" }),

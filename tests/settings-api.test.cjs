@@ -33,18 +33,16 @@ function request(body, malformed = false) {
 function marketFixture() {
   const writes = [];
   const imports = { 'next/server': mockNext(), '@/services/market.service': {
-    getUsdTryRate: async () => 32, setUsdTryRate: async value => writes.push(['usdtry', value]),
     getInterestRate: async () => 0.05, setInterestRate: async value => writes.push(['rate', value]),
   }, '@/lib/settings-validation': load('src/lib/settings-validation.ts') };
-  return { writes, usdtry: load('src/app/api/settings/usdtry/route.ts', imports),
-    rate: load('src/app/api/settings/rate/route.ts', imports) };
+  return { writes, rate: load('src/app/api/settings/rate/route.ts', imports) };
 }
 
 test('rate endpoints reject malformed bodies and invalid numeric values without writes', async () => {
-  for (const [routeName, field] of [['usdtry', 'usdtry'], ['rate', 'rate']]) {
+  for (const [routeName, field] of [['rate', 'rate']]) {
     for (const bad of [null, [], 'x', 3, {}, { [field]: null }, { [field]: true },
       { [field]: '' }, { [field]: '   ' }, { [field]: 'nope' }, { [field]: '0x10' }, { [field]: '0b10' }, { [field]: Infinity },
-      { [field]: NaN }, ...(routeName === 'usdtry' ? [{ [field]: 0 }, { [field]: -1 }] : [{ [field]: -1 }])]) {
+      { [field]: NaN }, { [field]: -1 }]) {
       const f = marketFixture();
       const result = await f[routeName].POST(request(bad));
       assert.equal(result.status, 400, `${routeName}: ${String(bad)}`);
@@ -57,11 +55,10 @@ test('rate endpoints reject malformed bodies and invalid numeric values without 
   }
 });
 
-test('USD/TRY accepts numeric strings; even valid manual interest cannot replace the curve', async () => {
+test('even a valid manual interest rate cannot replace the curve', async () => {
   const f = marketFixture();
   assert.equal((await f.rate.POST(request({ rate: '0' }))).status, 409);
-  assert.equal(JSON.stringify((await f.usdtry.POST(request({ usdtry: '32.5' }))).body), JSON.stringify({ ok: true, usdtry: 32.5 }));
-  assert.equal(JSON.stringify(f.writes), JSON.stringify([['usdtry', 32.5]]));
+  assert.equal(f.writes.length, 0);
 });
 
 test('datasource rejects invalid bodies, fields, and source values without writes', async () => {

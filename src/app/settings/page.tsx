@@ -1,25 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useMarketData, useSettings } from "@/store/marketData";
-import { MARGIN_MATURITY_BUCKETS, COLLATERAL_HAIRCUT_RATES, RISK_THRESHOLDS } from "@/lib/margin/config";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MARGIN_MATURITY_BUCKETS, COLLATERAL_HAIRCUT_RATES, RISK_THRESHOLDS, USD_TRY_RATE } from "@/lib/margin/config";
+import { formatDate, formatNumber, formatPercent } from "@/lib/format";
 import { cmeStatusText, refreshCme, type CmeRefreshStatus } from '@/lib/market-refresh';
 
 export default function SettingsPage() {
-  const s = useSettings();
-  const md = useMarketData();
-
-  // Teminat motorunun (1M TL onay eşiği) kullandığı kalıcı kur
-  const [activeServerRate, setActiveServerRate] = useState<number | null>(null);
-  const [savingRate, setSavingRate] = useState(false);
-  const [rateMsg, setRateMsg] = useState<{ text: string; error: boolean } | null>(null);
-
   // Yüzeyin gece kurulduğu risksiz faiz oranı (SOFR)
   const [activeServerInterest, setActiveServerInterest] = useState<number | null>(null);
 
@@ -47,10 +33,6 @@ export default function SettingsPage() {
     fetch('/api/settings/datasource').then(r => r.json()).then(d => setDsItems(d.items || [])).catch(() => {});
 
   useEffect(() => {
-    fetch('/api/settings/usdtry')
-      .then(r => r.json())
-      .then(d => setActiveServerRate(d.usdtry))
-      .catch(() => {});
     fetch('/api/settings/rate')
       .then(r => r.json())
       .then(d => setActiveServerInterest(Number.isFinite(d.rate) ? d.rate * 100 : null))
@@ -104,196 +86,65 @@ export default function SettingsPage() {
     }
   };
 
-  const saveUsdTryToServer = async () => {
-    setSavingRate(true);
-    setRateMsg(null);
-    try {
-      const res = await fetch('/api/settings/usdtry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usdtry: s.usdtry }),
-      });
-      const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
-      setActiveServerRate(d.usdtry);
-      setRateMsg({ text: 'Teminat motoruna kaydedildi.', error: false });
-    } catch (e) {
-      setRateMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
-    } finally {
-      setSavingRate(false);
-    }
-  };
 
-  const applyToPricing = () => {
-    md.setField('usdtry', s.usdtry);
-    md.setField('basis', s.basis);
-  };
-
+  const pct = (v: number) => formatPercent(v * 100, 0);
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Ayarlar</h1>
+    <div className="desk-workspace">
+      <div className="workspace-heading"><div><h1>Ayarlar</h1></div></div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Piyasa Parametreleri</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>USD faiz eğrisi · 90 gün · ACT/365 (%)</Label>
-                <Input readOnly value={activeServerInterest != null ? activeServerInterest.toFixed(4) : 'Veri yok'} />
-                <p className="text-[11px] text-zinc-500">CME / NY Fed SOFR · Endikatif proxy</p>
-              </div>
-              <div className="space-y-2">
-                <Label>USD/TRY Kuru</Label>
-                <Input type="number" step="0.01" value={s.usdtry} onChange={e => s.setSetting('usdtry', parseFloat(e.target.value) || 0)} />
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <p className="text-[11px] text-zinc-500">
-                    Teminat motorunda aktif: {activeServerRate != null ? activeServerRate.toFixed(2) : "…"}
-                  </p>
-                  <Button type="button" variant="outline" size="sm" onClick={saveUsdTryToServer} disabled={savingRate} className="h-7 px-2 text-xs">
-                    {savingRate ? "Kaydediliyor…" : "Teminat Motoruna Kaydet"}
-                  </Button>
-                </div>
-                {rateMsg && (
-                  <p className={`text-[11px] ${rateMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{rateMsg.text}</p>
-                )}
-              </div>
-              <p className="col-span-2 text-xs text-amber-500">Manuel piyasa girdileri eğri–fiyat tutarlılığını bozar.</p>
-              <div className="space-y-2">
-                <Label>Gün Bazı (Basis)</Label>
-                <Select value={String(s.basis)} onValueChange={v => s.setSetting('basis', (Number(v) === 360 ? 360 : 365))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="365">365</SelectItem>
-                    <SelectItem value="360">360</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <Button onClick={applyToPricing} className="w-full">Fiyatlama Ekranına Uygula</Button>
-            <details className="workspace-notes"><summary>Parametrelerin kullanımı</summary><p>Gün bazı oranların gösterimini değiştirir; iskonto faktörü ve opsiyon primi korunur. USD/TRY teminat dönüşümünde kullanılır. Metal taşıması bankanın kira kotasyonu değildir.</p></details>
-          </CardContent>
-        </Card>
+      <div className="workspace-grid">
+        <section className="workspace-panel">
+          <h2>Piyasa parametreleri</h2>
+          <div className="desk-market-facts">
+            <div><span>USD faiz eğrisi · 90 gün · ACT/365</span><strong>{activeServerInterest != null ? formatPercent(activeServerInterest, 4) : 'Veri yok'}</strong></div>
+            <div><span>USD/TRY</span><strong>{formatNumber(USD_TRY_RATE)} TL · sabit</strong></div>
+          </div>
+          <p className="desk-muted" style={{ marginTop: 12 }}>Faiz CME/SOFR endikatif proxy eğrisinden okunur; manuel piyasa girdisi eğri–fiyat tutarlılığını bozduğu için değiştirilemez. Gün bazı her işlemin koşullarında seçilir.</p>
+          <details className="workspace-notes"><summary>Parametrelerin kullanımı</summary><p>Gün bazı oranların gösterimini değiştirir; iskonto faktörü ve opsiyon primi korunur. USD/TRY yalnız 1.000.000 TL onay eşiği ve TL karşılık gösterimi için kullanılır. Metal taşıması bankanın kira kotasyonu değildir.</p></details>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Risk Eşikleri</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between py-1.5 border-b border-border/50">
-                <span className="text-muted-foreground">Teminat Çağrısı (Zarar/Teminat)</span>
-                <span className="font-mono">%{RISK_THRESHOLDS.MARGIN_CALL * 100}</span>
-              </div>
-              <div className="flex justify-between py-1.5 border-b border-border/50">
-                <span className="text-muted-foreground">Stop Uyarısı</span>
-                <span className="font-mono">%{RISK_THRESHOLDS.STOP_LOSS_WARNING * 100}</span>
-              </div>
-              <div className="flex justify-between py-1.5 border-b border-border/50">
-                <span className="text-muted-foreground">Anında Stop</span>
-                <span className="font-mono">%{RISK_THRESHOLDS.STOP_LOSS_IMMEDIATE * 100}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-muted-foreground">Onay Eşiği (Açık Teminat, TL)</span>
-                <span className="font-mono">{RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL.toLocaleString('tr-TR')}</span>
-              </div>
-            </div>
-            <p className="text-[11px] text-zinc-500 mt-4">Prosedür eşikleri · salt okunur</p>
-          </CardContent>
-        </Card>
+        <section className="workspace-panel">
+          <h2>Risk eşikleri</h2>
+          {[['Teminat çağrısı (zarar / teminat)', pct(RISK_THRESHOLDS.MARGIN_CALL)], ['Stop uyarısı', pct(RISK_THRESHOLDS.STOP_LOSS_WARNING)], ['Anında stop', pct(RISK_THRESHOLDS.STOP_LOSS_IMMEDIATE)], ['Onay eşiği (açık teminat)', `${formatNumber(RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL, 0)} TL`]].map(([label, value]) => <div className="desk-risk-item" key={label}><span>{label}</span><strong>{value}</strong></div>)}
+          <p className="desk-muted" style={{ marginTop: 12 }}>Prosedür eşikleri · salt okunur</p>
+        </section>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Veri Kaynağı (IV Yüzeyi)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-xs text-zinc-500">Final seans · XAU/XAG birlikte güncellenir.</p>
-          <details className="workspace-notes"><summary>Veri güncelleme yöntemi</summary><p>CME final futures/opsiyon settlement, SOFR projeksiyonu ve settlement saatine yakın Tiingo spotu ortak paket olarak doğrulanır. Paket eksikse önceki doğrulanmış seans korunur.</p><p>Yenileme bağlı GitHub işinin sonucunu izler; önizlemede devre dışıdır. Otomatik yenilemenin etkinleştirilmesi ayrıca kararlaştırılacak.</p></details>
-          {dsItems.map(item => (
-            <div key={item.product} className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">
-              <div className="min-w-[180px]">
-                <p className="font-medium text-sm">{item.product === 'XAU' ? 'XAU (Altın)' : item.product === 'XAG' ? 'XAG (Gümüş)' : item.product}</p>
-                {/* İki kaynağın durumu da gösterilir; aktif olan vurgulanır. */}
-                <p className={`text-[11px] ${item.source === 'cme' ? 'text-emerald-500' : 'text-zinc-600'}`}>
-                  CME COMEX: {item.cmeFetchedISO ? `${item.cmeFetchedISO} · ${item.cmeExpiries} vade` : 'veri yok'}
-                </p>
-                {item.cmeNotes && (
-                  <p className="text-[11px] text-amber-600/80 mt-0.5">⚠ {item.cmeNotes}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button" variant="outline" size="sm"
-                  onClick={() => refreshSource(item.product, 'cme')}
-                  disabled={dsBusy !== null}
-                >
-                  {dsBusy === item.product
-                    ? item.source === 'cme' ? 'CME durumu izleniyor…' : 'Çekiliyor…'
-                    : item.source === 'cme' ? "CME'den Yenile" : "Yahoo'dan Yenile"}
-                </Button>
-              </div>
+      <section className="workspace-panel" style={{ marginTop: 24 }}>
+        <h2>Veri kaynağı · IV yüzeyi</h2>
+        <p className="desk-muted">Final seans · XAU/XAG birlikte güncellenir.</p>
+        <details className="workspace-notes"><summary>Veri güncelleme yöntemi</summary><p>CME final futures/opsiyon settlement, SOFR projeksiyonu ve settlement saatine yakın Tiingo spotu ortak paket olarak doğrulanır. Paket eksikse önceki doğrulanmış seans korunur.</p><p>Yenileme bağlı GitHub işinin sonucunu izler; önizlemede devre dışıdır. Otomatik yenilemenin etkinleştirilmesi ayrıca kararlaştırılacak.</p></details>
+        {dsItems.map(item => (
+          <div key={item.product} className="workspace-priority">
+            <div>
+              <strong>{item.product === 'XAU' ? 'XAU · Altın' : item.product === 'XAG' ? 'XAG · Gümüş' : item.product}</strong>
+              <small>CME COMEX: {item.cmeFetchedISO ? `${formatDate(item.cmeFetchedISO)} · ${item.cmeExpiries} vade` : 'veri yok'}{item.source !== 'cme' ? ' · etkin kaynak değil' : ''}</small>
+              {item.cmeNotes && <small style={{ color: 'var(--primary)' }}>{item.cmeNotes}</small>}
             </div>
-          ))}
-          {dsMsg && (
-            <p className={`text-[11px] ${dsMsg.error ? 'text-rose-500' : 'text-emerald-500'}`}>{dsMsg.text}</p>
-          )}
-        </CardContent>
-      </Card>
+            <button className="desk-button" onClick={() => refreshSource(item.product, item.source)} disabled={dsBusy !== null}>
+              {dsBusy === item.product ? (item.source === 'cme' ? 'CME durumu izleniyor…' : 'Çekiliyor…') : item.source === 'cme' ? "CME'den yenile" : "Yahoo'dan yenile"}
+            </button>
+          </div>
+        ))}
+        {dsMsg && <p className="desk-policy" role="status" style={{ marginTop: 12 }}>{dsMsg.text}</p>}
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Teminat Oranları (Vade Dilimlerine Göre)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Vade (gün)</TableHead>
-                <TableHead className="text-right">Grup 1 (USD, EUR, GBP, CHF, JPY)</TableHead>
-                <TableHead className="text-right">Grup 2 (TRY, CNY, RUB, AUD)</TableHead>
-                <TableHead className="text-right">Grup 3 (XAU, XAG, XPD, XPT)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {MARGIN_MATURITY_BUCKETS.map((b, i) => (
-                <TableRow key={i}>
-                  <TableCell className="font-mono">{b.minDays} – {b.maxDays}</TableCell>
-                  <TableCell className="text-right font-mono">%{(b.rates.group1 * 100).toFixed(0)}</TableCell>
-                  <TableCell className="text-right font-mono">%{(b.rates.group2 * 100).toFixed(0)}</TableCell>
-                  <TableCell className="text-right font-mono">%{(b.rates.group3 * 100).toFixed(0)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Ek Teminat Haircut Oranları</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Varlık</TableHead>
-                <TableHead className="text-right">Haircut</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {Object.entries(COLLATERAL_HAIRCUT_RATES).map(([code, rate]) => (
-                <TableRow key={code}>
-                  <TableCell className="font-mono">{code}</TableCell>
-                  <TableCell className="text-right font-mono">%{(rate * 100).toFixed(0)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="workspace-grid" style={{ marginTop: 24 }}>
+        <section className="workspace-panel">
+          <h2>Teminat oranları · vade dilimleri</h2>
+          <div className="workspace-table-scroll"><table className="workspace-table">
+            <thead><tr><th>Vade (gün)</th><th className="number">Grup 1 · USD, EUR, GBP, CHF, JPY</th><th className="number">Grup 2 · TRY, CNY, RUB, AUD</th><th className="number">Grup 3 · XAU, XAG, XPD, XPT</th></tr></thead>
+            <tbody>{MARGIN_MATURITY_BUCKETS.map(b => <tr key={b.minDays}><td>{b.minDays}–{b.maxDays}</td><td className="number">{pct(b.rates.group1)}</td><td className="number">{pct(b.rates.group2)}</td><td className="number">{pct(b.rates.group3)}</td></tr>)}</tbody>
+          </table></div>
+        </section>
+        <section className="workspace-panel">
+          <h2>Ek teminat haircut oranları</h2>
+          <div className="workspace-table-scroll"><table className="workspace-table">
+            <thead><tr><th>Varlık</th><th className="number">Haircut</th></tr></thead>
+            <tbody>{Object.entries(COLLATERAL_HAIRCUT_RATES).map(([code, rate]) => <tr key={code}><td>{code}</td><td className="number">{pct(rate)}</td></tr>)}</tbody>
+          </table></div>
+        </section>
+      </div>
     </div>
   );
 }
