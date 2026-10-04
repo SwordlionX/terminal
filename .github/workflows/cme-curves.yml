@@ -1,0 +1,48 @@
+name: CME final faiz ve taşıma girdileri
+concurrency:
+  group: cme-final-curve-inputs
+  cancel-in-progress: false
+on:
+  schedule:
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Settlement seansı YYYY-MM-DD (boş = son final seans)'
+        required: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/terminal-x/databento-audit/*.csv
+            ~/.cache/terminal-x/databento-audit/budget.json
+          key: cme-curve-budget-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: cme-curve-budget-
+      - name: Final girdileri ayrı snapshot olarak kaydet
+        env:
+          DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          SESSION_DATE: ${{ inputs.date }}
+        run: |
+          args=(--write)
+          if [ -n "$SESSION_DATE" ]; then args+=("--date=$SESSION_DATE"); fi
+          npm run collect:cme:curves -- "${args[@]}"
+      # Preserve paid-request reservations even when a download or validation fails.
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            ~/.cache/terminal-x/databento-audit/*.csv
+            ~/.cache/terminal-x/databento-audit/budget.json
+          key: cme-curve-budget-${{ github.run_id }}-${{ github.run_attempt }}

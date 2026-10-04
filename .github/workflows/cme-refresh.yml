@@ -4,10 +4,10 @@ concurrency:
   group: cme-refresh-engine
   cancel-in-progress: false
 
-# COMEX metalleri ~13:25 CT'de settle olur ancak Databento veriyi ertesi gün
-# TR saatiyle 15:00 (12:00 UTC) civarında yayınlıyor. Bu yüzden garantili olması
-# adına cron 12:00 UTC'de çalışır. Cuma gününün verisi Cumartesi yayınlanacağı
-# için cron Pazartesi-Cumartesi arası (1-6) ayarlanmıştır.
+# Eski IV yenileme yolu: 17:00–19:00 UTC'deki metal settlement'larını kullanır;
+# bu erken kayıtlar preliminary olabilir. 12:00 UTC (TR 15:00) kesin final garantisi değildir.
+# Final faiz/taşıma girdileri, bayrak ve seans kontrolüyle cme-curves.yml'de ayrı toplanır.
+# İki yol henüz aynı fiyatlama sürümüne bağlanmadı; eski yüzey banka kira eğrisi değildir.
 on:
   schedule:
     - cron: '0 12 * * 1-6'
