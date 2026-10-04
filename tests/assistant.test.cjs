@@ -50,6 +50,14 @@ const market = { product: 'XAU', spot: 100, spotSource: 'Terminal test fixture',
 const near = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) <= tolerance, `${a} vs ${b}`);
 const quote = (o = {}, c = context, m = market) => quoteOption({ type: 'Put', position: 'Short', ...o }, c, m);
 
+test('ETF requests and persisted ETF contexts cannot bypass the XAU/XAG terminal scope', () => {
+  for (const product of ['GLD', 'SLV']) {
+    assert.throws(() => validateOption({ type: 'Put', position: 'Short', product }), /XAU \/ XAG/);
+    assert.throws(() => validateContext({ ...context, product }), /XAU \/ XAG/);
+    assert.throws(() => quote({}, { ...context, product }, { ...market, product }), /yalnız XAU veya XAG/);
+  }
+});
+
 test('ambiguous percentage cannot reach pricing or unlock diagnostic web research', async () => {
   let marketCalls = 0, researchCalls = 0;
   const artifacts = [];

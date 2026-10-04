@@ -2,7 +2,7 @@ import type { PricingInputs } from '../pricing/engine';
 import type { VolSurface } from '../vol/surface';
 import type { PositionAnalysis } from '../pricing/position-analysis';
 
-export type Product = 'XAU' | 'XAG' | 'GLD' | 'SLV';
+export type Product = 'XAU' | 'XAG';
 export type OptionType = 'Call' | 'Put';
 export type Position = 'Long' | 'Short';
 export interface ScreenContext extends PricingInputs { product: Product; manualSpot: boolean }
