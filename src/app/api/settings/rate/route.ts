@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getInterestRate, setInterestRate } from '@/services/market.service';
+import { getInterestRate } from '@/services/market.service';
 import { parseSettingsNumber, readSettingsBody } from '@/lib/settings-validation';
 
 export const dynamic = 'force-dynamic';
 
-/** GET /api/settings/rate — CME yüzeyi kurulurken baz alınacak faiz oranı (varsayılan 0.05). */
+/** Read-only 90-day ACT/365 equivalent of the active USD factor curve. */
 export async function GET() {
-  const rate = await getInterestRate();
-  return NextResponse.json({ rate });
+  try {
+    return NextResponse.json({ rate: await getInterestRate(), tenorDays: 90, source: 'CME SR1 + NY Fed SOFR proxy' });
+  } catch {
+    return NextResponse.json({ error: 'USD faiz eğrisi okunamadı; varsayılan faiz kullanılmaz.' }, { status: 503 });
+  }
 }
 
 /** POST /api/settings/rate — faiz oranını günceller. */
@@ -17,6 +20,5 @@ export async function POST(request: Request) {
   if (rate === null || rate < 0) {
     return NextResponse.json({ ok: false, error: 'Geçersiz faiz oranı' }, { status: 400 });
   }
-  await setInterestRate(rate);
-  return NextResponse.json({ ok: true, rate });
+  return NextResponse.json({ ok: false, error: 'Manuel faiz girişi eğri–fiyat tutarlılığını bozar. USD eğrisi veri kaynağından kurulmalıdır.' }, { status: 409 });
 }

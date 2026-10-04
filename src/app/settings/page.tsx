@@ -22,8 +22,6 @@ export default function SettingsPage() {
 
   // Yüzeyin gece kurulduğu risksiz faiz oranı (SOFR)
   const [activeServerInterest, setActiveServerInterest] = useState<number | null>(null);
-  const [savingInterest, setSavingInterest] = useState(false);
-  const [interestMsg, setInterestMsg] = useState<{ text: string; error: boolean } | null>(null);
 
   // Veri kaynağı (Yahoo/CME) durumu — sunucuda kv tablosunda saklanır.
   interface DsItem {
@@ -55,7 +53,7 @@ export default function SettingsPage() {
       .catch(() => {});
     fetch('/api/settings/rate')
       .then(r => r.json())
-      .then(d => setActiveServerInterest(d.rate * 100))
+      .then(d => setActiveServerInterest(Number.isFinite(d.rate) ? d.rate * 100 : null))
       .catch(() => {});
     loadDataSources();
   }, []);
@@ -106,30 +104,6 @@ export default function SettingsPage() {
     }
   };
 
-  /** Kaynağı değiştirir ve HEMEN o kaynaktan taze veri çekip yüzeyi yeniden kurar. */
-  const changeSource = async (product: string, source: 'yahoo' | 'cme') => {
-    if (dsBusyRef.current) return;
-    dsBusyRef.current = true;
-    setDsBusy(product);
-    setDsMsg(null);
-    try {
-      const res = await fetch('/api/settings/datasource', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product, source }),
-      });
-      const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
-      await loadDataSources();
-      dsBusyRef.current = false;
-      setDsBusy(null);
-      await refreshSource(product, source);
-    } catch (e) {
-      setDsMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
-      dsBusyRef.current = false;
-      setDsBusy(null);
-    }
-  };
-
   const saveUsdTryToServer = async () => {
     setSavingRate(true);
     setRateMsg(null);
@@ -150,29 +124,7 @@ export default function SettingsPage() {
     }
   };
 
-  const saveInterestToServer = async () => {
-    setSavingInterest(true);
-    setInterestMsg(null);
-    try {
-      const res = await fetch('/api/settings/rate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rate: s.rate / 100 }), // Yüzdelik girilir, ondalık kaydedilir
-      });
-      const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d.error || 'Kaydedilemedi');
-      setActiveServerInterest(d.rate * 100);
-      setInterestMsg({ text: 'Sunucuya kaydedildi (gece yüzey bu oranla kurulacak).', error: false });
-    } catch (e) {
-      setInterestMsg({ text: e instanceof Error ? e.message : 'Kaydedilemedi', error: true });
-    } finally {
-      setSavingInterest(false);
-    }
-  };
-
   const applyToPricing = () => {
-    md.setField('rate', s.rate);
-    md.setField('lease', md.product === 'XAG' ? s.leaseXAG : s.leaseXAU);
     md.setField('usdtry', s.usdtry);
     md.setField('basis', s.basis);
   };
@@ -189,19 +141,9 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Risksiz Faiz Oranı (%)</Label>
-                <Input type="number" step="0.1" value={s.rate} onChange={e => s.setSetting('rate', parseFloat(e.target.value) || 0)} />
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <p className="text-[11px] text-zinc-500">
-                    Sunucuda aktif: {activeServerInterest != null ? activeServerInterest.toFixed(2) : "…"}
-                  </p>
-                  <Button type="button" variant="outline" size="sm" onClick={saveInterestToServer} disabled={savingInterest} className="h-7 px-2 text-xs">
-                    {savingInterest ? "Kaydediliyor…" : "Sunucuya Kaydet"}
-                  </Button>
-                </div>
-                {interestMsg && (
-                  <p className={`text-[11px] ${interestMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{interestMsg.text}</p>
-                )}
+                <Label>USD faiz eğrisi · 90 gün · ACT/365 (%)</Label>
+                <Input readOnly value={activeServerInterest != null ? activeServerInterest.toFixed(4) : 'Veri yok'} />
+                <p className="text-[11px] text-zinc-500">CME SR1 + NY Fed SOFR endikatif proxy. Fiyatlama, seçilen vadenin iskonto faktörünü kullanır.</p>
               </div>
               <div className="space-y-2">
                 <Label>USD/TRY Kuru</Label>
@@ -218,14 +160,7 @@ export default function SettingsPage() {
                   <p className={`text-[11px] ${rateMsg.error ? "text-rose-500" : "text-emerald-500"}`}>{rateMsg.text}</p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label>Altın Kira Oranı (%)</Label>
-                <Input type="number" step="0.1" value={s.leaseXAU} onChange={e => s.setSetting('leaseXAU', parseFloat(e.target.value) || 0)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Gümüş Kira Oranı (%)</Label>
-                <Input type="number" step="0.1" value={s.leaseXAG} onChange={e => s.setSetting('leaseXAG', parseFloat(e.target.value) || 0)} />
-              </div>
+              <p className="col-span-2 text-xs text-amber-500">Manuel faiz/kira/volatilite girişi eğri–fiyat tutarlılığını bozar. Metal taşıması her vade için CME/SOFR faktörlerinden türetilir; banka kira kotasyonu değildir.</p>
               <div className="space-y-2">
                 <Label>Gün Bazı (Basis)</Label>
                 <Select value={String(s.basis)} onValueChange={v => s.setSetting('basis', (Number(v) === 360 ? 360 : 365))}>
@@ -239,7 +174,7 @@ export default function SettingsPage() {
             </div>
             <Button onClick={applyToPricing} className="w-full">Fiyatlama Ekranına Uygula</Button>
             <p className="text-[11px] text-zinc-500">
-              Ayarlar tarayıcıda saklanır. &quot;Uygula&quot; ile mevcut fiyatlama oturumuna aktarılır.
+              Gün bazı oranların gösterimini değiştirir; iskonto faktörünü ve opsiyon primini değiştirmez. USD/TRY teminat dönüşümünde kullanılır.
             </p>
           </CardContent>
         </Card>
@@ -280,25 +215,8 @@ export default function SettingsPage() {
           <CardTitle>Veri Kaynağı (IV Yüzeyi)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-[11px] text-zinc-500">
-            Her ürünün oynaklık yüzeyi Yahoo (ETF opsiyonları, canlıya yakın) veya CME COMEX
-            (vadeli settlement, günlük) kaynağından üretilir. CME settlement günde bir kez
-            (seans kapanışında) oluşur; kurulan yüzey veritabanına yazılır ve site her açılışta
-            anında oradan okur — sayfa açılışında vol hesabı beklenmez.
-            <span className="text-zinc-400"> Kaynağı değiştirdiğinizde o kaynaktan hemen taze veri
-            çekilir ve yüzey baştan kurulur.</span> İki kaynak veritabanında ayrı saklanır; biri
-            yenilenince diğeri bozulmaz. Yahoo yenilemesi tek seferde hem altını (GLD) hem
-            gümüşü (SLV) tazeler.
-          </p>
-          <p className="text-[11px] text-zinc-500">
-            <span className="text-zinc-400">Günlük yenileme GitHub Actions&apos;ta koşar</span> (12:00 UTC, Pazartesi–Cumartesi;
-            Cuma settlement&apos;ı Cumartesi yayınlandığı için Cumartesi de dahil).
-            &quot;CME&apos;den Yenile&quot; butonu işi GitHub&apos;da başlatır ve aynı işin sonucunu
-            en fazla 20 dakika izler. İsteğin iletilmesi, yenilemenin tamamlandığı anlamına gelmez.
-            Sekme kapansa da iş GitHub&apos;da sürebilir; belirsiz sonuçta tekrar başlatmadan önce
-            işin durumunu kontrol edin. Tamamlanan iş daha eski settlement gününü döndürebilir;
-            yukarıdaki veri tarihini ayrıca kontrol edin.
-          </p>
+          <p className="text-xs text-zinc-500">Altın ve gümüş, aynı seansın final CME futures/opsiyon settlement verisi, SOFR projeksiyonu ve settlement saatine yakın Tiingo spotuyla birlikte yenilenir. İki metal doğrulanmadan yeni sürüm devreye girmez. Final veri eksikse önceki doğrulanmış seansın tarihi açıkça gösterilir.</p>
+          <p className="text-xs text-zinc-500">GitHub otomatik yenilemesinin etkinleştirilmesi ayrıca kararlaştırılacak. Yenileme butonu bağlı GitHub işinin sonucunu izler; önizlemede devre dışıdır.</p>
           {dsItems.map(item => (
             <div key={item.product} className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">
               <div className="min-w-[180px]">
@@ -307,30 +225,14 @@ export default function SettingsPage() {
                 <p className={`text-[11px] ${item.source === 'cme' ? 'text-emerald-500' : 'text-zinc-600'}`}>
                   CME COMEX: {item.cmeFetchedISO ? `${item.cmeFetchedISO} · ${item.cmeExpiries} vade` : 'veri yok'}
                 </p>
-                <p className={`text-[11px] ${item.source === 'yahoo' ? 'text-emerald-500' : 'text-zinc-600'}`}>
-                  Yahoo {item.yahooSymbol ?? ''}: {item.yahooFetchedISO ? `${item.yahooFetchedISO} · ${item.yahooExpiries} vade` : 'veri yok'}
-                </p>
                 {item.cmeNotes && (
                   <p className="text-[11px] text-amber-600/80 mt-0.5">⚠ {item.cmeNotes}</p>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {/* items: Select.Value etiketi buradan çözer; olmadan kutuda ham "yahoo"/"cme" yazıyordu. */}
-                <Select
-                  value={item.source}
-                  items={{ yahoo: 'Yahoo (ETF)', cme: 'CME COMEX' }}
-                  disabled={dsBusy !== null}
-                  onValueChange={v => changeSource(item.product, v === 'cme' ? 'cme' : 'yahoo')}
-                >
-                  <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="yahoo">Yahoo (ETF)</SelectItem>
-                    <SelectItem value="cme" disabled={!item.cmeSupported}>CME COMEX</SelectItem>
-                  </SelectContent>
-                </Select>
                 <Button
                   type="button" variant="outline" size="sm"
-                  onClick={() => refreshSource(item.product, item.source)}
+                  onClick={() => refreshSource(item.product, 'cme')}
                   disabled={dsBusy !== null}
                 >
                   {dsBusy === item.product

@@ -60,6 +60,11 @@ export function terminalCurveInputs(screen: ScreenContext, market: MarketSnapsho
   if (market.spot == null || !Number.isFinite(market.spot) || market.spot <= 0)
     throw new Error('Terminalin spot verisi alınamadı. Dışarıdan fiyat aranmaz; fiyatlama durduruldu.');
   if (!market.surface) throw new Error('Terminalin volatilite eğrisi yok. Manuel veya dış veri kullanılmaz; fiyatlama durduruldu.');
+  if (market.surface.curves) {
+    if (market.surface.curves.id.length === 0) throw new Error('Terminal eğri sürümü eksik.');
+    // Placeholder values are never used for pricing; the shared engine resolves factors per maturity.
+    return { spot: market.spot, rate: 0, lease: 0, vol: 0, manualVol: false as const };
+  }
   const { builtWithR, impliedLeaseRate } = market.surface;
   if (builtWithR == null || !Number.isFinite(builtWithR) || impliedLeaseRate == null || !Number.isFinite(impliedLeaseRate))
     throw new Error('Terminal eğrisinin faiz/kira bilgisi eksik. Manuel varsayımla tamamlanmaz; fiyatlama durduruldu.');

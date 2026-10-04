@@ -131,3 +131,43 @@ export function deAmericanizedIV(
   const res = impliedVolAmerican(S, K, T, r, q, price, type);
   return res.ok ? res.vol : NaN;
 }
+
+/** American futures option, martingale futures tree with term-dependent USD discount. */
+export function americanFutureCurvePrice(F: number, K: number, T: number, discounts: number[], v: number, type: 'call' | 'put'): number {
+  const steps = discounts.length - 1;
+  if (![F, K, T, v].every(Number.isFinite) || F <= 0 || K <= 0 || T <= 0 || v < 0 || steps < 1 ||
+      discounts.some(d => !Number.isFinite(d) || d <= 0) || Math.abs(discounts[0] - 1) > 1e-10 ||
+      (type !== 'call' && type !== 'put')) return NaN;
+  const payoff = (s: number) => type === 'call' ? Math.max(s - K, 0) : Math.max(K - s, 0);
+  if (v === 0) return Math.max(...discounts.map(d => payoff(F) * d));
+  const x = v * Math.sqrt(T / steps), u = Math.exp(x), d = Math.exp(-x), p = (1 - d) / (u - d);
+  const am = new Array<number>(steps + 1), eu = new Array<number>(steps + 1);
+  for (let i = 0; i <= steps; i++) am[i] = eu[i] = payoff(F * Math.pow(u, steps - i) * Math.pow(d, i));
+  for (let step = steps - 1; step >= 0; step--) {
+    const disc = discounts[step + 1] / discounts[step];
+    for (let i = 0; i <= step; i++) {
+      am[i] = Math.max(payoff(F * Math.pow(u, step - i) * Math.pow(d, i)), disc * (p * am[i] + (1 - p) * am[i + 1]));
+      eu[i] = disc * (p * eu[i] + (1 - p) * eu[i + 1]);
+    }
+  }
+  const r = -Math.log(discounts[steps]) / T, european = gk(F, K, T, r, r, v);
+  const closed = type === 'call' ? european.call : european.put;
+  return Math.max(am[0] - eu[0] + closed, payoff(F), closed);
+}
+
+export function impliedVolAmericanFutureCurve(F: number, K: number, T: number, discounts: number[], price: number, type: 'call' | 'put') {
+  const pricer = (v: number) => americanFutureCurvePrice(F, K, T, discounts, v, type);
+  let lo = 0, hi = 5;
+  const low = pricer(lo), high = pricer(hi);
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(low) || !Number.isFinite(high) || price <= low + 1e-10 || price > high)
+    return { ok: false, vol: NaN };
+  const tolerance = Math.min(1e-6, Math.max(1e-10, price * 1e-6));
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2, estimate = pricer(mid);
+    if (!Number.isFinite(estimate)) return { ok: false, vol: NaN };
+    if (Math.abs(estimate - price) <= tolerance) return { ok: true, vol: mid };
+    if (estimate > price) hi = mid; else lo = mid;
+  }
+  const vol = (lo + hi) / 2;
+  return { ok: Math.abs(pricer(vol) - price) <= tolerance, vol };
+}

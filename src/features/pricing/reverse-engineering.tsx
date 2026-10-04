@@ -40,7 +40,7 @@ export function ReverseEngineering({
     }
     let price = targetPremium;
     if (unitMode === "pct") {
-      price = (targetPremium / 100) * strike;
+      price = (targetPremium / 100) * spot;
     }
 
     const res = impliedVol(spot, strike, tYears, rate / 100, lease / 100, price, optionType);
@@ -86,13 +86,13 @@ export function ReverseEngineering({
             <Label className="text-zinc-400 text-xs uppercase tracking-wider">Prim Birimi</Label>
             <Select
             value={unitMode}
-            items={{ oz: 'USD / ons', pct: '% Notional' }}
+            items={{ oz: 'USD / ons', pct: '% Spot nominal' }}
             onValueChange={(v) => setUnitMode(v === "pct" ? "pct" : "oz")}
           >
               <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="oz">USD / ons</SelectItem>
-                <SelectItem value="pct">% Notional</SelectItem>
+                <SelectItem value="pct">% Spot nominal</SelectItem>
               </SelectContent>
             </Select>
           </div>

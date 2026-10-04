@@ -1,10 +1,9 @@
 name: CME final faiz ve taşıma girdileri
 concurrency:
-  group: cme-final-curve-inputs
+  group: cme-refresh-engine
   cancel-in-progress: false
 on:
-  schedule:
-    - cron: '0 12 * * 1-5'
+  # Manual diagnostics only; cme-refresh.yml owns the daily atomic pricing pipeline.
   workflow_dispatch:
     inputs:
       date:

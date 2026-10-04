@@ -22,7 +22,7 @@ function load(file, imports = {}) {
 const european = load('src/lib/math/gk.ts');
 const solver = load('src/lib/math/solver.ts', { './gk': european });
 const american = load('src/lib/math/american.ts', { './gk': european, './solver': solver });
-const { buildCmeSurface } = load('src/lib/vol/cme.ts', { '../math/american': american });
+const { buildCmeSurface } = load('src/lib/vol/cme.ts', { '../math/american': american, '../market/factors': load('src/lib/market/factors.ts') });
 
 test('CME surface inverts American futures settlements before producing Black-76 IVs', () => {
   const F = 70, r = 0.05, vol = 0.25, days = 90, T = days / 365;

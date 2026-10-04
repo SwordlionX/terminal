@@ -1,5 +1,6 @@
 import { deAmericanizedIV } from '../math/american';
 import { fitSsvi, ssviSafeAtDays, ssviVol, type SsviFit } from './ssvi';
+import type { PricingCurves } from '../market/factors';
 
 /**
  * Yahoo snapshot formatı (fetch_yahoo.py / api/market/refresh üretir):
@@ -33,6 +34,8 @@ export interface YahooSnapshot {
 export interface SmilePoint { m: number; iv: number }
 
 export interface ExpirySmile {
+  /** Exact CME option expiry; distinct from the underlying futures last trade. */
+  expiryAt?: string;
   days: number;
   date: string;
   points: SmilePoint[];
@@ -42,9 +45,12 @@ export interface ExpirySmile {
    * spottan türetilmeye devam eder.
    */
   f?: number;
+  underlyingId?: string;
+  underlyingLastTradeTime?: string;
 }
 
 export interface VolSurface {
+  curves?: PricingCurves;
   symbol: string;
   spot: number;
   fetchedISO: string;
@@ -187,6 +193,10 @@ function dateDay(value: string): number | null {
 
 export function rebasedExpiryDays(surface: VolSurface, expiry: ExpirySmile, valuationDate?: string): number {
   if (!valuationDate) return expiry.days;
+  if (surface.curves && expiry.expiryAt) {
+    const valuation = dateDay(valuationDate), at = Date.parse(expiry.expiryAt);
+    return valuation == null || !Number.isFinite(at) ? NaN : at / 86400000 - valuation;
+  }
   const asOf = dateDay(surface.fetchedISO);
   const valuation = dateDay(valuationDate);
   const expiryDate = dateDay(expiry.date);

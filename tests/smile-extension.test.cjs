@@ -105,7 +105,7 @@ test('exact tenor, variance time interpolation, calendar guard, and expiry age',
   assert.match(surface.surfaceVolEstimate(inverted, 1, 45).reason, /takvim arbitrajı/);
 });
 
-test('manual pricing still requires valid finite inputs and a future expiry', () => {
+test('manual pricing is blocked even without a source curve or with invalid inputs', () => {
   let md = { product: 'XAU', spot: 100, strike: 100, rate: 5, lease: 1,
     vol: 20, manualVol: true, manualSpot: true, contractSize: 100, basis: 365,
     tradeDate: '2026-01-01', expiryDate: '2026-04-01', applyLiveSpot() {}, setField() {} };
@@ -116,9 +116,12 @@ test('manual pricing still requires valid finite inputs and a future expiry', ()
     '@/lib/vol/surface': surface,
     '@/lib/pricing/engine': load('src/lib/pricing/engine.ts', {
       '../math': { gk: gkMath.gk, greeks: () => ({}) }, '../vol/surface': surface,
+      '../market/factors': load('src/lib/market/factors.ts'),
     }),
   }).usePricingModel;
-  assert.equal(hook().priceable, true);
+  assert.equal(hook().priceable, false);
+  assert.match(hook().unpriceableReason, /Manuel/);
+  md = { ...md, manualVol: false, manualSpot: false };
   md = { ...md, expiryDate: '2025-12-31' };
   assert.equal(hook().priceable, false);
   md = { ...md, expiryDate: '2026-04-01', contractSize: 0 };
@@ -131,5 +134,5 @@ test('manual pricing still requires valid finite inputs and a future expiry', ()
   md = { ...md, manualVol: true, rate: -1e9, lease: -1e9 };
   const overflow = hook();
   assert.equal(overflow.priceable, false);
-  assert.match(overflow.unpriceableReason, /prim üretemedi/);
+  assert.match(overflow.unpriceableReason, /Manuel/);
 });

@@ -30,6 +30,7 @@ export default function BarrierPricingPage() {
       {/* Girdiler ana Fiyatlama ekranıyla BİREBİR aynı olmalı: aynı bariyer iki ekranda
           iki farklı prim veremez. Önceden burada ham kira + smile'sız (düz BS) yol
           kullanılıyordu; artık ikisi de gerçek spot + ima edilen carry + Vanna-Volga. */}
+      {feed.surface?.curves && <p className="text-sm text-amber-400">Bariyer hesabı, vade-eşdeğer sabit faiz/taşıma yaklaşımıdır; dönemsel eğrinin tüm yolunu modellemez.</p>}
       {priceable ? <BarrierOptions
         spot={barrierSpot}
         strike={md.strike}

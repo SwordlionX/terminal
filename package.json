@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/*.test.cjs",
-    "refresh:cme": "tsx scripts/refresh-cme.ts",
+    "refresh:cme": "tsx scripts/build-pricing-bundle.ts --write",
     "collect:cme:curves": "tsx scripts/refresh-databento-curves.ts"
   },
   "dependencies": {

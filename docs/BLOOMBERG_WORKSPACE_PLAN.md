@@ -38,7 +38,9 @@ Referansta üst marka/sekme şeridi, solda işlem formu, ortada yan yana USD/yü
 
 ## Son karar listesi — açık kalacak
 
-- USD iskonto eğrisini kurma; metal carry/faktörlerini ve Amerikan kaynak IV yeniden kurulumunu aynı sürüme bağlama. `pricingReady=false` olan Databento girdileri banka kira eğrisi olarak etkinleştirilmeyecek. Eski kira hesabının fiyatlamadaki düzeltmesi tamamlanmış sayılmayacak.
+- Faiz/taşıma/IV entegrasyonu onaylanan **endikatif CME/SOFR proxy** kapsamında tamamlandı ve 1 Ekim final paketi doğrulanıp etkinleştirildi. Ham `pricingReady=false` girdi snapshot'ı tek başına fiyatlama girdisi olmaz. Banka OIS/kira eğrisi iddiası yok; yöntem ve sınırlar `docs/PRICING_CURVE_PROXY.md` içinde.
 - Bloomberg/Meridian hangi branch'in sunum/ana sürüm olacağına en son karar verilecek. GitHub default branch geçişi/merge ve final settlement workflow'un otomatik çalışması bu karara bağlı. Kullanıcı "en son karar verelim" dedi: bu turda main merge veya default branch değişimi yapılmayacak.
 
 İlgili veri durumu: `docs/DATABENTO_FINAL_CARRY_INPUTS.md`.
+
+4 Ekim kısa görsel önerileri: `tasarim-demolari/positions.html` ve `risk.html`. Aynı siyah/amber kabuk, beş çalışma alanı, sağa bağlı asistan; sayılar ve müşteri adları temsilidir. Bu iki ikincil ekran henüz gerçek uygulamanın yerine geçirilmedi; kullanıcı tasarım kararı bekleniyor.
