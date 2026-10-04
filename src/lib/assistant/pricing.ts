@@ -8,6 +8,7 @@ import type { MarketSnapshot, OptionRequest, Quote, ScreenContext } from './type
 export function quoteOption(request: OptionRequest, screen: ScreenContext, market: MarketSnapshot): Quote {
   assertCurvePricing(request, screen);
   const product = request.product ?? screen.product;
+  if (product !== 'XAU' && product !== 'XAG') throw new Error('Bu terminalde yalnız XAU veya XAG seçilmeli.');
   if (product !== market.product) throw new Error('Piyasa verisi farklı bir ürüne ait.');
   const same = product === screen.product;
   const curve = terminalCurveInputs(screen, market);

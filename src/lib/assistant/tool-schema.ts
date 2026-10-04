@@ -2,11 +2,11 @@ import type { FunctionDeclaration } from '@google/genai';
 
 const numeric = (description: string) => ({ type: 'number', description });
 const optionProperties = {
-  product: { type: 'string', enum: ['XAU', 'XAG', 'GLD', 'SLV'] },
+  product: { type: 'string', enum: ['XAU', 'XAG'] },
   type: { type: 'string', enum: ['Call', 'Put'] },
   position: { type: 'string', enum: ['Long', 'Short'], description: 'MÜŞTERİ yönü. Long prim öder; Short prim alır. Banka yönü ayrı.' },
   strike: numeric('Kullanım fiyatı; belirtilmediyse aktif ekrandan alınır.'),
-  contractSize: numeric('ZORUNLU. XAU/XAG ons; GLD/SLV adet. Açık kullanıcı miktarı ekran miktarından öncelikli. Birim fiyat için 1 yapma; miktar hiç belirtilmediyse ekran miktarını gönder. Nominal USD ile karıştırma.'),
+  contractSize: numeric('ZORUNLU. XAU/XAG miktarı ons cinsindedir. Açık kullanıcı miktarı ekran miktarından öncelikli. Birim fiyat için 1 yapma; miktar hiç belirtilmediyse ekran miktarını gönder. Nominal USD ile karıştırma.'),
   tradeDate: { type: 'string', description: 'Değerleme tarihi YYYY-MM-DD; belirtilmediyse aktif ekran.' },
   expiryDate: { type: 'string', description: 'Vade YYYY-MM-DD; belirtilmediyse aktif ekran.' },
   basis: { type: 'integer', enum: [360, 365] },

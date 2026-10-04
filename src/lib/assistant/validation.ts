@@ -20,7 +20,7 @@ export function date(value: unknown, name: string): string {
   if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== value) throw new Error(`${name}: tarih geçersiz.`);
   return value;
 }
-export const products = ['XAU', 'XAG', 'GLD', 'SLV'] as const;
+export const products = ['XAU', 'XAG'] as const;
 
 export function validateContext(value: unknown): ScreenContext {
   const o = object(value);
