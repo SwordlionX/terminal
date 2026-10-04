@@ -9,24 +9,69 @@ const test = require('node:test');
 
 function load(file, imports = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  const output = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
-  } }).outputText;
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
   const loadedModule = { exports: {} };
-  vm.runInNewContext(output, { module: loadedModule, exports: loadedModule.exports, require(id) {
-    if (Object.hasOwn(imports, id)) return imports[id];
-    if (id === 'node:crypto') return require(id);
-    throw new Error(`Unmocked dependency: ${id}`);
-  } });
+  vm.runInNewContext(output, {
+    module: loadedModule,
+    exports: loadedModule.exports,
+    require(id) {
+      if (Object.hasOwn(imports, id)) return imports[id];
+      if (id === 'node:crypto') return require(id);
+      throw new Error(`Unmocked dependency: ${id}`);
+    },
+  });
   return loadedModule.exports;
 }
 
-const tradeFields = ['id', 'customerId', 'tradeDate', 'expiryDate', 'underlying', 'type', 'position',
-  'spot', 'strike', 'volatility', 'contractSize', 'premium', 'currentPremium', 'mtm', 'pnl',
-  'delta', 'gamma', 'vega', 'theta', 'marginRate', 'status', 'barrierType', 'barrierLevel',
-  'barrierStyle', 'barrierStartDate', 'barrierEndDate'];
-const numericTradeFields = new Set(['spot', 'strike', 'volatility', 'contractSize', 'premium',
-  'currentPremium', 'mtm', 'pnl', 'delta', 'gamma', 'vega', 'theta', 'marginRate', 'barrierLevel']);
+const tradeFields = [
+  'id',
+  'customerId',
+  'tradeDate',
+  'expiryDate',
+  'underlying',
+  'type',
+  'position',
+  'spot',
+  'strike',
+  'volatility',
+  'contractSize',
+  'premium',
+  'currentPremium',
+  'mtm',
+  'pnl',
+  'delta',
+  'gamma',
+  'vega',
+  'theta',
+  'marginRate',
+  'status',
+  'barrierType',
+  'barrierLevel',
+  'barrierStyle',
+  'barrierStartDate',
+  'barrierEndDate',
+];
+const numericTradeFields = new Set([
+  'spot',
+  'strike',
+  'volatility',
+  'contractSize',
+  'premium',
+  'currentPremium',
+  'mtm',
+  'pnl',
+  'delta',
+  'gamma',
+  'vega',
+  'theta',
+  'marginRate',
+  'barrierLevel',
+]);
 
 async function fixture() {
   // Deliberately bypass production dbc/init. Shared in-memory SQLite keeps libsql's
@@ -69,10 +114,26 @@ async function fixture() {
 
 function trade(overrides = {}) {
   return {
-    customerId: 'c1', tradeDate: '2000-01-01', expiryDate: '2000-03-31', underlying: 'XAU',
-    type: 'Call', position: 'Long', spot: 4000, strike: 4100, volatility: 0.15,
-    contractSize: 10, premium: 1000, currentPremium: 100, mtm: 0, pnl: 0,
-    delta: 0, gamma: 0, vega: 0, theta: 0, marginRate: 0.1, status: 'Open',
+    customerId: 'c1',
+    tradeDate: '2000-01-01',
+    expiryDate: '2000-03-31',
+    underlying: 'XAU',
+    type: 'Call',
+    position: 'Long',
+    spot: 4000,
+    strike: 4100,
+    volatility: 0.15,
+    contractSize: 10,
+    premium: 1000,
+    currentPremium: 100,
+    mtm: 0,
+    pnl: 0,
+    delta: 0,
+    gamma: 0,
+    vega: 0,
+    theta: 0,
+    marginRate: 0.1,
+    status: 'Open',
     ...overrides,
   };
 }
@@ -85,23 +146,39 @@ test('books trade, collateral, and activity history in one transaction', async t
   const { client, repository } = await fixture();
   t.after(() => client.close());
   const id = await repository.bookTrade(trade(), {
-    customerId: 'c1', assetCode: 'Nakit-USD', currency: 'USD', nominalQuantity: 500,
-    marketValueUsd: 500, haircut: 0,
+    customerId: 'c1',
+    assetCode: 'Nakit-USD',
+    currency: 'USD',
+    nominalQuantity: 500,
+    marketValueUsd: 500,
+    haircut: 0,
   });
   assert.match(id, /^t-/);
   assert.equal((await rows(client, 'SELECT id FROM trades')).length, 1);
   assert.equal((await rows(client, 'SELECT id FROM collaterals')).length, 1);
-  assert.deepEqual((await rows(client, 'SELECT type FROM activity_log ORDER BY type')).map(row => row.type), ['Margin Updated', 'Trade Added']);
+  assert.deepEqual(
+    (await rows(client, 'SELECT type FROM activity_log ORDER BY type')).map(row => row.type),
+    ['Margin Updated', 'Trade Added'],
+  );
 });
 
 test('collateral insert failure rolls trade and activity history back', async t => {
   const { client, repository } = await fixture();
   t.after(() => client.close());
-  await client.execute("CREATE TRIGGER fail_collateral BEFORE INSERT ON collaterals BEGIN SELECT RAISE(ABORT, 'injected collateral failure'); END");
-  await assert.rejects(repository.bookTrade(trade(), {
-    customerId: 'c1', assetCode: 'Nakit-USD', currency: 'USD', nominalQuantity: 500,
-    marketValueUsd: 500, haircut: 0,
-  }), /injected collateral failure/);
+  await client.execute(
+    "CREATE TRIGGER fail_collateral BEFORE INSERT ON collaterals BEGIN SELECT RAISE(ABORT, 'injected collateral failure'); END",
+  );
+  await assert.rejects(
+    repository.bookTrade(trade(), {
+      customerId: 'c1',
+      assetCode: 'Nakit-USD',
+      currency: 'USD',
+      nominalQuantity: 500,
+      marketValueUsd: 500,
+      haircut: 0,
+    }),
+    /injected collateral failure/,
+  );
   assert.equal((await rows(client, 'SELECT id FROM trades')).length, 0);
   assert.equal((await rows(client, 'SELECT id FROM collaterals')).length, 0);
   assert.equal((await rows(client, 'SELECT id FROM activity_log')).length, 0);
@@ -151,14 +228,19 @@ test('settlement is single-shot and does not duplicate closure metadata or logs'
   const [metadataAfter] = await rows(client, 'SELECT v FROM kv WHERE k = ?', [`trade_settlement:${id}`]);
   assert.equal(after.pnl, saved.pnl);
   assert.equal(metadataAfter.v, metadata.v);
-  assert.equal((await rows(client, "SELECT id FROM activity_log WHERE type = 'Trade Closed'")).length, activitiesBefore);
+  assert.equal(
+    (await rows(client, "SELECT id FROM activity_log WHERE type = 'Trade Closed'")).length,
+    activitiesBefore,
+  );
 });
 
 test('metadata insertion failure rolls settlement and close activity back', async t => {
   const { client, repository } = await fixture();
   t.after(() => client.close());
   const id = await repository.bookTrade(trade());
-  await client.execute("CREATE TRIGGER fail_settlement_metadata BEFORE INSERT ON kv WHEN NEW.k LIKE 'trade_settlement:%' BEGIN SELECT RAISE(ABORT, 'injected metadata failure'); END");
+  await client.execute(
+    "CREATE TRIGGER fail_settlement_metadata BEFORE INSERT ON kv WHEN NEW.k LIKE 'trade_settlement:%' BEGIN SELECT RAISE(ABORT, 'injected metadata failure'); END",
+  );
   await assert.rejects(repository.settleTradeOwned('c1', id, 4400), /injected metadata failure/);
   const [saved] = await rows(client, 'SELECT status,pnl FROM trades WHERE id = ?', [id]);
   assert.equal(saved.status, 'Open');
@@ -171,8 +253,12 @@ test('ownership guards prevent foreign settlement, deletion, and collateral remo
   const { client, repository } = await fixture();
   t.after(() => client.close());
   const id = await repository.bookTrade(trade(), {
-    customerId: 'c1', assetCode: 'Nakit-USD', currency: 'USD', nominalQuantity: 500,
-    marketValueUsd: 500, haircut: 0,
+    customerId: 'c1',
+    assetCode: 'Nakit-USD',
+    currency: 'USD',
+    nominalQuantity: 500,
+    marketValueUsd: 500,
+    haircut: 0,
   });
   const [collateral] = await rows(client, 'SELECT id FROM collaterals');
   await assert.rejects(repository.settleTradeOwned('c2', id, 4400), /bulunamadı/);
@@ -203,23 +289,57 @@ test('archive returns only Closed trades, preserves legacy null metadata, and fi
   await repository.settleTradeOwned('c1', id, 4400);
   const legacy = trade({ customerId: 'c2', status: 'Closed', pnl: 123 });
   const legacyArgs = [
-    'legacy', legacy.customerId, legacy.tradeDate, legacy.expiryDate, legacy.underlying, legacy.type,
-    legacy.position, legacy.spot, legacy.strike, legacy.volatility, legacy.contractSize, legacy.premium,
-    legacy.currentPremium, legacy.mtm, legacy.pnl, legacy.delta, legacy.gamma, legacy.vega, legacy.theta,
-    legacy.marginRate, legacy.status, null, null, null, null, null,
+    'legacy',
+    legacy.customerId,
+    legacy.tradeDate,
+    legacy.expiryDate,
+    legacy.underlying,
+    legacy.type,
+    legacy.position,
+    legacy.spot,
+    legacy.strike,
+    legacy.volatility,
+    legacy.contractSize,
+    legacy.premium,
+    legacy.currentPremium,
+    legacy.mtm,
+    legacy.pnl,
+    legacy.delta,
+    legacy.gamma,
+    legacy.vega,
+    legacy.theta,
+    legacy.marginRate,
+    legacy.status,
+    null,
+    null,
+    null,
+    null,
+    null,
   ];
-  await client.execute({ sql: `INSERT INTO trades (${tradeFields.join(',')}) VALUES (${tradeFields.map(() => '?').join(',')})`, args: legacyArgs });
-  await client.execute({ sql: "INSERT INTO trades(id,customerId,status,expiryDate,pnl) VALUES (?,?,?,?,?)", args: ['expired', 'c2', 'Expired', '2026-12-31', 999] });
+  await client.execute({
+    sql: `INSERT INTO trades (${tradeFields.join(',')}) VALUES (${tradeFields.map(() => '?').join(',')})`,
+    args: legacyArgs,
+  });
+  await client.execute({
+    sql: 'INSERT INTO trades(id,customerId,status,expiryDate,pnl) VALUES (?,?,?,?,?)',
+    args: ['expired', 'c2', 'Expired', '2026-12-31', 999],
+  });
   const all = await repository.findArchivedTrades();
   assert.equal(all.length, 2);
-  assert.deepEqual(all.map(row => row.trade.status), ['Closed', 'Closed']);
+  assert.deepEqual(
+    all.map(row => row.trade.status),
+    ['Closed', 'Closed'],
+  );
   const old = all.find(row => row.trade.id === 'legacy');
   assert.equal(old.customerName, 'Customer Two');
   assert.equal(old.closedAt, null);
   assert.equal(old.expirySpot, null);
   assert.equal(old.trade.pnl, 123);
   const filtered = await repository.findArchivedTrades('c1');
-  assert.deepEqual(filtered.map(row => row.trade.id), [id]);
+  assert.deepEqual(
+    filtered.map(row => row.trade.id),
+    [id],
+  );
 });
 
 test('zero expiry spot is accepted and malformed or negative spots are rejected without writes', async t => {
@@ -251,9 +371,9 @@ test('concurrent attempts to close one trade produce at most one settlement and 
   assert.equal((await rows(client, "SELECT id FROM activity_log WHERE type = 'Trade Closed'")).length, 1);
 });
 
-
 test('European settlement before expiry leaves trade, metadata and activity untouched', async t => {
-  const { client, repository } = await fixture(); t.after(() => client.close());
+  const { client, repository } = await fixture();
+  t.after(() => client.close());
   const id = await repository.bookTrade(trade({ tradeDate: '2099-01-01', expiryDate: '2099-03-31' }));
   await assert.rejects(repository.settleTradeOwned('c1', id, 4400), /vade öncesi/);
   assert.equal((await rows(client, 'SELECT status FROM trades WHERE id = ?', [id]))[0].status, 'Open');

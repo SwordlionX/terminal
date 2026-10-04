@@ -21,7 +21,7 @@ function rowToCustomer(r: Row): Customer {
     notes: String(r.notes ?? ''),
     createdDate: String(r.createdDate ?? ''),
     updatedDate: String(r.updatedDate ?? ''),
-    status: (r.status === 'Passive' ? 'Passive' : 'Active'),
+    status: r.status === 'Passive' ? 'Passive' : 'Active',
   };
 }
 
@@ -31,10 +31,31 @@ function rowToCustomer(r: Row): Customer {
  * olmayan bir anahtar sessizce yok sayılır. Şemaya kolon eklenirse buraya da eklenmeli.
  */
 const TRADE_COLUMNS = [
-  'customerId', 'tradeDate', 'expiryDate', 'underlying', 'type', 'position',
-  'spot', 'strike', 'volatility', 'contractSize', 'premium', 'currentPremium',
-  'mtm', 'pnl', 'delta', 'gamma', 'vega', 'theta', 'marginRate', 'status',
-  'barrierType', 'barrierLevel', 'barrierStyle', 'barrierStartDate', 'barrierEndDate',
+  'customerId',
+  'tradeDate',
+  'expiryDate',
+  'underlying',
+  'type',
+  'position',
+  'spot',
+  'strike',
+  'volatility',
+  'contractSize',
+  'premium',
+  'currentPremium',
+  'mtm',
+  'pnl',
+  'delta',
+  'gamma',
+  'vega',
+  'theta',
+  'marginRate',
+  'status',
+  'barrierType',
+  'barrierLevel',
+  'barrierStyle',
+  'barrierStartDate',
+  'barrierEndDate',
 ] as const;
 
 export function rowToTrade(r: Row): Trade {
@@ -45,8 +66,8 @@ export function rowToTrade(r: Row): Trade {
     tradeDate: String(r.tradeDate ?? ''),
     expiryDate: String(r.expiryDate ?? ''),
     underlying: String(r.underlying ?? ''),
-    type: (r.type === 'Put' ? 'Put' : 'Call'),
-    position: (r.position === 'Short' ? 'Short' : 'Long'),
+    type: r.type === 'Put' ? 'Put' : 'Call',
+    position: r.position === 'Short' ? 'Short' : 'Long',
     spot: Number(r.spot ?? 0),
     strike: Number(r.strike ?? 0),
     volatility: Number(r.volatility ?? 0),
@@ -60,7 +81,9 @@ export function rowToTrade(r: Row): Trade {
     vega: num(r.vega),
     theta: num(r.theta),
     marginRate: r.marginRate == null ? undefined : Number(r.marginRate),
-    status: (['Open', 'Near Expiry', 'Expired', 'Closed'].includes(String(r.status)) ? String(r.status) : 'Open') as Trade['status'],
+    status: (['Open', 'Near Expiry', 'Expired', 'Closed'].includes(String(r.status))
+      ? String(r.status)
+      : 'Open') as Trade['status'],
     barrierType: r.barrierType == null ? undefined : String(r.barrierType),
     barrierLevel: r.barrierLevel == null ? undefined : Number(r.barrierLevel),
     barrierStyle: r.barrierStyle == null ? undefined : String(r.barrierStyle),
@@ -99,28 +122,49 @@ export const db = {
       const cust: Customer = { ...data, id: 'c' + Date.now(), createdDate: now, updatedDate: now };
       await c.execute({
         sql: 'INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        args: [cust.id, cust.companyName, cust.customerNumber, cust.taxNumber, cust.branch,
-               cust.portfolioManager, cust.relationshipManager, null /* riskLimit (kaldırıldı, kolon legacy) */, cust.customerSegment,
-               cust.notes, cust.createdDate, cust.updatedDate, cust.status],
+        args: [
+          cust.id,
+          cust.companyName,
+          cust.customerNumber,
+          cust.taxNumber,
+          cust.branch,
+          cust.portfolioManager,
+          cust.relationshipManager,
+          null /* riskLimit (kaldırıldı, kolon legacy) */,
+          cust.customerSegment,
+          cust.notes,
+          cust.createdDate,
+          cust.updatedDate,
+          cust.status,
+        ],
       });
       return cust;
     },
     delete: async (id: string): Promise<void> => {
       const c = await dbc();
-      await c.batch([
-        { sql: "DELETE FROM kv WHERE k IN (SELECT 'trade_settlement:' || id FROM trades WHERE customerId = ?)", args: [id] },
-        { sql: 'DELETE FROM trades WHERE customerId = ?', args: [id] },
-        { sql: 'DELETE FROM collaterals WHERE customerId = ?', args: [id] },
-        { sql: 'DELETE FROM activity_log WHERE customerId = ?', args: [id] },
-        { sql: 'DELETE FROM customers WHERE id = ?', args: [id] },
-      ], 'write');
+      await c.batch(
+        [
+          {
+            sql: "DELETE FROM kv WHERE k IN (SELECT 'trade_settlement:' || id FROM trades WHERE customerId = ?)",
+            args: [id],
+          },
+          { sql: 'DELETE FROM trades WHERE customerId = ?', args: [id] },
+          { sql: 'DELETE FROM collaterals WHERE customerId = ?', args: [id] },
+          { sql: 'DELETE FROM activity_log WHERE customerId = ?', args: [id] },
+          { sql: 'DELETE FROM customers WHERE id = ?', args: [id] },
+        ],
+        'write',
+      );
     },
   },
   trades: {
     findMany: findManyTradesCached,
     findByCustomerId: async (customerId: string): Promise<Trade[]> => {
       const c = await dbc();
-      const r = await c.execute({ sql: 'SELECT * FROM trades WHERE customerId = ? ORDER BY tradeDate DESC', args: [customerId] });
+      const r = await c.execute({
+        sql: 'SELECT * FROM trades WHERE customerId = ? ORDER BY tradeDate DESC',
+        args: [customerId],
+      });
       return r.rows.map(rowToTrade);
     },
     create: async (data: Omit<Trade, 'id'>): Promise<Trade> => {
@@ -128,11 +172,34 @@ export const db = {
       const t: Trade = { ...data, id: 't' + Date.now() };
       await c.execute({
         sql: 'INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        args: [t.id, t.customerId, t.tradeDate, t.expiryDate, t.underlying, t.type, t.position,
-               t.spot, t.strike, t.volatility, t.contractSize, t.premium, t.currentPremium,
-               t.mtm, t.pnl, t.delta, t.gamma, t.vega, t.theta, t.marginRate ?? null, t.status,
-               t.barrierType ?? null, t.barrierLevel ?? null, t.barrierStyle ?? null,
-               t.barrierStartDate ?? null, t.barrierEndDate ?? null],
+        args: [
+          t.id,
+          t.customerId,
+          t.tradeDate,
+          t.expiryDate,
+          t.underlying,
+          t.type,
+          t.position,
+          t.spot,
+          t.strike,
+          t.volatility,
+          t.contractSize,
+          t.premium,
+          t.currentPremium,
+          t.mtm,
+          t.pnl,
+          t.delta,
+          t.gamma,
+          t.vega,
+          t.theta,
+          t.marginRate ?? null,
+          t.status,
+          t.barrierType ?? null,
+          t.barrierLevel ?? null,
+          t.barrierStyle ?? null,
+          t.barrierStartDate ?? null,
+          t.barrierEndDate ?? null,
+        ],
       });
       return t;
     },
@@ -164,9 +231,19 @@ export const db = {
       return {
         customerId,
         totalOpenPositions: Number(r.rows[0].n),
-        usdNotional: null, currentMtm: null, totalProfit: null, totalLoss: null,
-        requiredMargin: null, availableMargin: null, excessMargin: null, missingMargin: null,
-        marginUtilization: null, delta: null, gamma: null, vega: null, theta: null,
+        usdNotional: null,
+        currentMtm: null,
+        totalProfit: null,
+        totalLoss: null,
+        requiredMargin: null,
+        availableMargin: null,
+        excessMargin: null,
+        missingMargin: null,
+        marginUtilization: null,
+        delta: null,
+        gamma: null,
+        vega: null,
+        theta: null,
         riskLevel: null,
       };
     },
@@ -181,7 +258,9 @@ export const db = {
           sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
           args: [id, customerId, new Date().toISOString(), type, description],
         });
-      } catch { /* aktivite logu kritik değil */ }
+      } catch {
+        /* aktivite logu kritik değil */
+      }
     },
     findByCustomerId: async (customerId: string): Promise<CustomerTimelineEvent[]> => {
       const c = await dbc();
@@ -189,7 +268,7 @@ export const db = {
         sql: 'SELECT * FROM activity_log WHERE customerId = ? ORDER BY date DESC LIMIT 50',
         args: [customerId],
       });
-      return r.rows.map((row) => ({
+      return r.rows.map(row => ({
         id: String(row.id),
         customerId: String(row.customerId),
         date: String(row.date ?? ''),

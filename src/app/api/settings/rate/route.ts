@@ -20,5 +20,11 @@ export async function POST(request: Request) {
   if (rate === null || rate < 0) {
     return NextResponse.json({ ok: false, error: 'Geçersiz faiz oranı' }, { status: 400 });
   }
-  return NextResponse.json({ ok: false, error: 'Manuel faiz girişi eğri–fiyat tutarlılığını bozar. USD eğrisi veri kaynağından kurulmalıdır.' }, { status: 409 });
+  return NextResponse.json(
+    {
+      ok: false,
+      error: 'Manuel faiz girişi eğri–fiyat tutarlılığını bozar. USD eğrisi veri kaynağından kurulmalıdır.',
+    },
+    { status: 409 },
+  );
 }

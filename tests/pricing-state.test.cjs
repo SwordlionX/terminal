@@ -8,14 +8,22 @@ const test = require('node:test');
 
 function load(file, imports = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  const output = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
-  } }).outputText;
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX,
+    },
+  }).outputText;
   const loadedModule = { exports: {} };
-  vm.runInNewContext(output, { module: loadedModule, exports: loadedModule.exports, require(id) {
-    if (Object.hasOwn(imports, id)) return imports[id];
-    throw new Error(`Unmocked dependency: ${id}`);
-  } });
+  vm.runInNewContext(output, {
+    module: loadedModule,
+    exports: loadedModule.exports,
+    require(id) {
+      if (Object.hasOwn(imports, id)) return imports[id];
+      throw new Error(`Unmocked dependency: ${id}`);
+    },
+  });
   return loadedModule.exports;
 }
 
@@ -86,29 +94,64 @@ function makeReverseHarness() {
   let cursor = 0;
   const solverCalls = [];
   const jsx = (type, props) => ({ type, props: props || {} });
-  const ui = name => function Component() { return name; };
+  const ui = name =>
+    function Component() {
+      return name;
+    };
   const Button = ui('Button');
   const Input = ui('Input');
-  const react = { useState(initial) {
-    const index = cursor++;
-    if (!(index in state)) state[index] = typeof initial === 'function' ? initial() : initial;
-    return [state[index], value => { state[index] = typeof value === 'function' ? value(state[index]) : value; }];
-  } };
+  const react = {
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in state)) state[index] = typeof initial === 'function' ? initial() : initial;
+      return [
+        state[index],
+        value => {
+          state[index] = typeof value === 'function' ? value(state[index]) : value;
+        },
+      ];
+    },
+  };
   const component = load('src/features/pricing/reverse-engineering.tsx', {
     react,
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    '@/components/ui/card': { Card: ui('Card'), CardContent: ui('CardContent'), CardHeader: ui('CardHeader'), CardTitle: ui('CardTitle') },
+    '@/components/ui/card': {
+      Card: ui('Card'),
+      CardContent: ui('CardContent'),
+      CardHeader: ui('CardHeader'),
+      CardTitle: ui('CardTitle'),
+    },
     '@/components/ui/input': { Input },
     '@/components/ui/label': { Label: ui('Label') },
     '@/components/ui/button': { Button },
-    '@/components/ui/select': { Select: ui('Select'), SelectContent: ui('SelectContent'), SelectItem: ui('SelectItem'), SelectTrigger: ui('SelectTrigger'), SelectValue: ui('SelectValue') },
-    '@/lib/math': { impliedVol(...args) { solverCalls.push(args); return { ok: true, vol: 0.3 }; } },
+    '@/components/ui/select': {
+      Select: ui('Select'),
+      SelectContent: ui('SelectContent'),
+      SelectItem: ui('SelectItem'),
+      SelectTrigger: ui('SelectTrigger'),
+      SelectValue: ui('SelectValue'),
+    },
+    '@/lib/math': {
+      impliedVol(...args) {
+        solverCalls.push(args);
+        return { ok: true, vol: 0.3 };
+      },
+    },
   }).ReverseEngineering;
-  function render(props) { cursor = 0; return component(props); }
+  function render(props) {
+    cursor = 0;
+    return component(props);
+  }
   function flatten(node, acc = []) {
     if (node == null || typeof node === 'boolean') return acc;
-    if (Array.isArray(node)) { for (const child of node) flatten(child, acc); return acc; }
-    if (typeof node === 'string' || typeof node === 'number') { acc.push(String(node)); return acc; }
+    if (Array.isArray(node)) {
+      for (const child of node) flatten(child, acc);
+      return acc;
+    }
+    if (typeof node === 'string' || typeof node === 'number') {
+      acc.push(String(node));
+      return acc;
+    }
     if (node.props) {
       acc.push(node);
       flatten(node.props.children, acc);
@@ -147,5 +190,13 @@ test('reverse solver does not run for non-finite or invalid inputs', () => {
   const button = h.flatten(h.render(props)).find(node => node.type === h.Button);
   button.props.onClick();
   assert.equal(h.solverCalls.length, 0);
-  assert.ok(h.flatten(h.render(props)).some(node => node.props?.children === 'Pozitif spot, strike ve vade; sıfır veya pozitif prim girin. Tüm değerler sonlu olmalı.'));
+  assert.ok(
+    h
+      .flatten(h.render(props))
+      .some(
+        node =>
+          node.props?.children ===
+          'Pozitif spot, strike ve vade; sıfır veya pozitif prim girin. Tüm değerler sonlu olmalı.',
+      ),
+  );
 });

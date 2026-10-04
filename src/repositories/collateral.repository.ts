@@ -1,7 +1,7 @@
-import { cache } from "react";
-import { CollateralItem } from "@/types/collateral";
-import { dbc } from "@/lib/db";
-import type { Row } from "@libsql/client";
+import { cache } from 'react';
+import { CollateralItem } from '@/types/collateral';
+import { dbc } from '@/lib/db';
+import type { Row } from '@libsql/client';
 
 function rowToItem(r: Row): CollateralItem {
   return {
@@ -39,8 +39,16 @@ export class CollateralRepository {
     const newItem: CollateralItem = { ...item, id: `col-${Date.now()}`, addedAt: new Date().toISOString() };
     await c.execute({
       sql: 'INSERT INTO collaterals VALUES (?,?,?,?,?,?,?,?)',
-      args: [newItem.id, newItem.customerId, newItem.assetCode, newItem.currency,
-             newItem.nominalQuantity, newItem.marketValueUsd, newItem.haircut ?? null, newItem.addedAt],
+      args: [
+        newItem.id,
+        newItem.customerId,
+        newItem.assetCode,
+        newItem.currency,
+        newItem.nominalQuantity,
+        newItem.marketValueUsd,
+        newItem.haircut ?? null,
+        newItem.addedAt,
+      ],
     });
     return newItem;
   }

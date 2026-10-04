@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState, useTransition } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useState, useTransition } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 /**
  * Genel hata sınırı — evaluatePortfolio() artık canlı spot alınamadığında sessizce eski/giriş
@@ -15,7 +15,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
   const [retryCount, setRetryCount] = useState(0);
 
   const handleRetry = () => {
-    setRetryCount((c) => c + 1);
+    setRetryCount(c => c + 1);
     startTransition(() => reset());
   };
 
@@ -29,12 +29,12 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           <p className="text-sm text-muted-foreground">{error.message}</p>
           <p className="text-sm text-muted-foreground">
             Bu genelde canlı spot fiyatı geçici olarak çekilemediğinde olur (sağlayıcı erişilemez veya kota sınırında).
-            Birkaç saniye sonra tekrar deneyin — teminat kartları bundan etkilenmez, sadece PnL/nominal
-            gösterimi geçici olarak boş kalır.
+            Birkaç saniye sonra tekrar deneyin — teminat kartları bundan etkilenmez, sadece PnL/nominal gösterimi geçici
+            olarak boş kalır.
           </p>
           <div className="flex items-center gap-2">
             <Button onClick={handleRetry} disabled={isPending}>
-              {isPending ? "Deneniyor..." : `Tekrar Dene${retryCount > 0 ? ` (${retryCount})` : ""}`}
+              {isPending ? 'Deneniyor...' : `Tekrar Dene${retryCount > 0 ? ` (${retryCount})` : ''}`}
             </Button>
           </div>
         </CardContent>

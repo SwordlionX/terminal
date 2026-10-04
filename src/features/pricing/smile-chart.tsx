@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useMemo } from "react";
-import { rebasedExpiryDays, surfaceVolEstimate, type VolSurface } from "@/lib/vol/surface";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate, formatNumber, formatPercent } from "@/lib/format";
+import { useMemo } from 'react';
+import { rebasedExpiryDays, surfaceVolEstimate, type VolSurface } from '@/lib/vol/surface';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDate, formatNumber, formatPercent } from '@/lib/format';
 
 interface Props {
   surface: VolSurface | null;
@@ -17,12 +17,24 @@ interface Props {
 }
 
 const modeLabel = {
-  observed: "Kote nokta", interpolated: "Kote smile enterpolasyonu",
-  model: "SSVI uyumu", extrapolated: "SSVI model kanadı", unavailable: "Vol bulunamadı",
+  observed: 'Kote nokta',
+  interpolated: 'Kote smile enterpolasyonu',
+  model: 'SSVI uyumu',
+  extrapolated: 'SSVI model kanadı',
+  unavailable: 'Vol bulunamadı',
 };
 
 /** Observed dots and the exact curve/marker used by the pricing query. */
-export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, sourceLabel, manualVol = false, effectiveVol }: Props) {
+export function SmileChart({
+  surface,
+  fwd,
+  strike,
+  daysToExpiry,
+  valuationDate,
+  sourceLabel,
+  manualVol = false,
+  effectiveVol,
+}: Props) {
   const view = useMemo(() => {
     if (!surface || !surface.expiries.length || !(fwd > 0) || !(strike > 0) || !(daysToExpiry > 0)) return null;
     const active = surface.expiries
@@ -40,38 +52,68 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
     const xMin = Math.max(0.01, Math.min(quotedMin, targetM) * 0.97);
     const xMax = Math.max(quotedMax, targetM) * 1.03;
     const curve = Array.from({ length: 121 }, (_, i) => {
-      const m = xMin + (xMax - xMin) * i / 120;
+      const m = xMin + ((xMax - xMin) * i) / 120;
       const estimate = surfaceVolEstimate(surface, m, daysToExpiry, valuationDate);
       return { m, iv: estimate.vol, mode: estimate.mode };
     });
-    const ivs = [...pts.map(p => p.iv), ...curve.flatMap(p => p.iv == null ? [] : [p.iv]),
-      ...(target.vol == null ? [] : [target.vol])];
-    const ivLow = Math.min(...ivs), ivHigh = Math.max(...ivs);
+    const ivs = [
+      ...pts.map(p => p.iv),
+      ...curve.flatMap(p => (p.iv == null ? [] : [p.iv])),
+      ...(target.vol == null ? [] : [target.vol]),
+    ];
+    const ivLow = Math.min(...ivs),
+      ivHigh = Math.max(...ivs);
     const pad = Math.max((ivHigh - ivLow) * 0.15, 0.005);
-    return { near, pts, targetM, target, quotedMin, quotedMax, xMin, xMax, curve,
-      ivMin: (ivLow - pad) * 100, ivMax: (ivHigh + pad) * 100 };
+    return {
+      near,
+      pts,
+      targetM,
+      target,
+      quotedMin,
+      quotedMax,
+      xMin,
+      xMax,
+      curve,
+      ivMin: (ivLow - pad) * 100,
+      ivMax: (ivHigh + pad) * 100,
+    };
   }, [surface, fwd, strike, daysToExpiry, valuationDate]);
 
-  if (!view) return (
-    <Card>
-      <CardHeader><CardTitle>Volatilite Smile (kaynak)</CardTitle></CardHeader>
-      <CardContent><div className="text-sm text-muted-foreground">Smile verisi veya geçerli vade yok.</div></CardContent>
-    </Card>
-  );
+  if (!view)
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Volatilite Smile (kaynak)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted-foreground">Smile verisi veya geçerli vade yok.</div>
+        </CardContent>
+      </Card>
+    );
 
   const { near, pts, targetM, target, quotedMin, quotedMax, xMin, xMax, curve, ivMin, ivMax } = view;
-  const W = 800, H = 300, padL = 56, padR = 24, padT = 24, padB = 42;
-  const plotW = W - padL - padR, plotH = H - padT - padB;
-  const xOf = (m: number) => padL + (m - xMin) / (xMax - xMin) * plotW;
+  const W = 800,
+    H = 300,
+    padL = 56,
+    padR = 24,
+    padT = 24,
+    padB = 42;
+  const plotW = W - padL - padR,
+    plotH = H - padT - padB;
+  const xOf = (m: number) => padL + ((m - xMin) / (xMax - xMin)) * plotW;
   const yOf = (ivPct: number) => padT + (1 - (ivPct - ivMin) / (ivMax - ivMin)) * plotH;
   const pathFor = (model: boolean) => {
-    let path = "", drawing = false;
+    let path = '',
+      drawing = false;
     for (const p of curve) {
-      const eligible = p.iv != null && (model
-        ? p.mode === "model" || p.mode === "extrapolated"
-        : p.mode === "observed" || p.mode === "interpolated");
-      if (!eligible) { drawing = false; continue; }
-      path += `${drawing ? "L" : "M"}${xOf(p.m).toFixed(2)} ${yOf((p.iv as number) * 100).toFixed(2)} `;
+      const eligible =
+        p.iv != null &&
+        (model ? p.mode === 'model' || p.mode === 'extrapolated' : p.mode === 'observed' || p.mode === 'interpolated');
+      if (!eligible) {
+        drawing = false;
+        continue;
+      }
+      path += `${drawing ? 'L' : 'M'}${xOf(p.m).toFixed(2)} ${yOf((p.iv as number) * 100).toFixed(2)} `;
       drawing = true;
     }
     return path;
@@ -85,45 +127,141 @@ export function SmileChart({ surface, fwd, strike, daysToExpiry, valuationDate, 
         <CardTitle className="flex flex-wrap items-baseline gap-2">
           <span>Volatilite Smile (kaynak)</span>
           <span className="text-xs font-normal text-muted-foreground">
-            {sourceLabel ?? `${surface?.symbol} yüzeyi`} · en yakın kote vade: {formatDate(near.expiry.date)} ({formatNumber(near.days, 1)} g)
+            {sourceLabel ?? `${surface?.symbol} yüzeyi`} · en yakın kote vade: {formatDate(near.expiry.date)} (
+            {formatNumber(near.days, 1)} g)
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="w-full overflow-x-auto">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[420px] h-auto" role="img" aria-label={manualVol ? "Referans smile grafiği; manuel volatilite fiyatlamada kullanılıyor" : "Volatilite smile grafiği: kote noktaları, fiyatlamada kullanılan eğri ve strike işaretçisi"}>
-            <rect x={padL} y={padT} width={plotW} height={plotH} fill="none" stroke="currentColor" className="text-zinc-800" strokeWidth={1} />
-            {yTicks.map((t, i) => <g key={`y${i}`}>
-              <line x1={padL} x2={padL + plotW} y1={yOf(t)} y2={yOf(t)} stroke="currentColor" className="text-zinc-800/60" strokeWidth={1} strokeDasharray="2 3" />
-              <text x={padL - 6} y={yOf(t) + 3} textAnchor="end" className="fill-zinc-500" fontSize={9}>{formatPercent(t, 1)}</text>
-            </g>)}
-            {xTicks.map((t, i) => <text key={`x${i}`} x={xOf(t)} y={H - padB + 14} textAnchor="middle" className="fill-zinc-500" fontSize={9}>{formatNumber(t, 3)}</text>)}
-            <text x={padL + plotW / 2} y={H - 4} textAnchor="middle" className="fill-zinc-400" fontSize={9}>Forward-moneyness (K / F)</text>
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            className="w-full min-w-[420px] h-auto"
+            role="img"
+            aria-label={
+              manualVol
+                ? 'Referans smile grafiği; manuel volatilite fiyatlamada kullanılıyor'
+                : 'Volatilite smile grafiği: kote noktaları, fiyatlamada kullanılan eğri ve strike işaretçisi'
+            }
+          >
+            <rect
+              x={padL}
+              y={padT}
+              width={plotW}
+              height={plotH}
+              fill="none"
+              stroke="currentColor"
+              className="text-zinc-800"
+              strokeWidth={1}
+            />
+            {yTicks.map((t, i) => (
+              <g key={`y${i}`}>
+                <line
+                  x1={padL}
+                  x2={padL + plotW}
+                  y1={yOf(t)}
+                  y2={yOf(t)}
+                  stroke="currentColor"
+                  className="text-zinc-800/60"
+                  strokeWidth={1}
+                  strokeDasharray="2 3"
+                />
+                <text x={padL - 6} y={yOf(t) + 3} textAnchor="end" className="fill-zinc-500" fontSize={9}>
+                  {formatPercent(t, 1)}
+                </text>
+              </g>
+            ))}
+            {xTicks.map((t, i) => (
+              <text
+                key={`x${i}`}
+                x={xOf(t)}
+                y={H - padB + 14}
+                textAnchor="middle"
+                className="fill-zinc-500"
+                fontSize={9}
+              >
+                {formatNumber(t, 3)}
+              </text>
+            ))}
+            <text x={padL + plotW / 2} y={H - 4} textAnchor="middle" className="fill-zinc-400" fontSize={9}>
+              Forward-moneyness (K / F)
+            </text>
             <path d={pathFor(false)} fill="none" stroke="currentColor" className="text-emerald-500" strokeWidth={1.5} />
-            <path d={pathFor(true)} fill="none" stroke="currentColor" className="text-sky-400" strokeWidth={1.5} strokeDasharray="5 3" />
-            {pts.map((p, i) => <circle key={i} cx={xOf(p.m)} cy={yOf(p.iv * 100)} r={2.5} className="fill-emerald-400" />)}
-            <line x1={xOf(targetM)} x2={xOf(targetM)} y1={padT} y2={padT + plotH}
-              stroke="currentColor" strokeWidth={1.5} strokeDasharray="4 3"
-              className={target.vol == null ? "text-rose-500" : "text-zinc-200"} />
-            {target.vol != null && <circle cx={xOf(targetM)} cy={yOf(target.vol * 100)} r={4}
-              className="fill-zinc-100 stroke-zinc-950" strokeWidth={1} />}
-            <text x={xOf(targetM) + (targetM > (xMin + xMax) / 2 ? -4 : 4)} y={padT + 10}
-              textAnchor={targetM > (xMin + xMax) / 2 ? "end" : "start"} fontSize={9}
-              className={target.vol == null ? "fill-rose-400" : "fill-zinc-300"}>
-              strike {formatNumber(targetM, 3)}{target.vol == null ? " · kapsam dışı" : ""}
+            <path
+              d={pathFor(true)}
+              fill="none"
+              stroke="currentColor"
+              className="text-sky-400"
+              strokeWidth={1.5}
+              strokeDasharray="5 3"
+            />
+            {pts.map((p, i) => (
+              <circle key={i} cx={xOf(p.m)} cy={yOf(p.iv * 100)} r={2.5} className="fill-emerald-400" />
+            ))}
+            <line
+              x1={xOf(targetM)}
+              x2={xOf(targetM)}
+              y1={padT}
+              y2={padT + plotH}
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              className={target.vol == null ? 'text-rose-500' : 'text-zinc-200'}
+            />
+            {target.vol != null && (
+              <circle
+                cx={xOf(targetM)}
+                cy={yOf(target.vol * 100)}
+                r={4}
+                className="fill-zinc-100 stroke-zinc-950"
+                strokeWidth={1}
+              />
+            )}
+            <text
+              x={xOf(targetM) + (targetM > (xMin + xMax) / 2 ? -4 : 4)}
+              y={padT + 10}
+              textAnchor={targetM > (xMin + xMax) / 2 ? 'end' : 'start'}
+              fontSize={9}
+              className={target.vol == null ? 'fill-rose-400' : 'fill-zinc-300'}
+            >
+              strike {formatNumber(targetM, 3)}
+              {target.vol == null ? ' · kapsam dışı' : ''}
             </text>
           </svg>
         </div>
         <div className="mt-2 text-[11px] text-zinc-500 space-y-2">
-          <div className="flex flex-wrap gap-x-4 gap-y-1"><span>● Kote noktalar</span><span>— Fiyatlama eğrisi</span><span>┄ SSVI modeli</span></div>
-          <div className={target.vol == null ? "text-rose-400/90" : "text-emerald-500/80"}>
-            {manualVol ? "Referans yüzey (fiyatlamada kullanılmıyor) · " : ""}{modeLabel[target.mode]}{target.vol != null ? ` · ${formatPercent(target.vol * 100)}` : ` · ${target.reason ?? "Yüzey IV'si yok."}`}
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span>● Kote noktalar</span>
+            <span>— Fiyatlama eğrisi</span>
+            <span>┄ SSVI modeli</span>
           </div>
-          {manualVol && <div className="text-amber-400">Fiyatlama manuel IV ile çalışıyor{effectiveVol != null ? `: ${formatPercent(effectiveVol)}` : "; girdiler geçersiz"}. Grafikteki eğri ve işaretçi yalnız referans yüzeyi gösterir.</div>}
-          <details className="workspace-notes"><summary>Eğri ayrıntıları</summary>
-            <p>{pts.length} kote nokta · K / F {formatNumber(quotedMin, 3)}–{formatNumber(quotedMax, 3)} · seçili vade {formatNumber(daysToExpiry, 1)} gün.</p>
-            {target.fitQuality && <p>Uyum hatası: ortalama {formatPercent(target.fitQuality.rmseVol * 100)}, en çok {formatPercent(target.fitQuality.maxErrorVol * 100)} IV.</p>}
-            {target.vol != null && Math.abs(near.days - daysToExpiry) > 1e-8 && <p>Seçili vade için kote vadeler arasında toplam varyans enterpolasyonu kullanılır.</p>}
+          <div className={target.vol == null ? 'text-rose-400/90' : 'text-emerald-500/80'}>
+            {manualVol ? 'Referans yüzey (fiyatlamada kullanılmıyor) · ' : ''}
+            {modeLabel[target.mode]}
+            {target.vol != null ? ` · ${formatPercent(target.vol * 100)}` : ` · ${target.reason ?? "Yüzey IV'si yok."}`}
+          </div>
+          {manualVol && (
+            <div className="text-amber-400">
+              Fiyatlama manuel IV ile çalışıyor
+              {effectiveVol != null ? `: ${formatPercent(effectiveVol)}` : '; girdiler geçersiz'}. Grafikteki eğri ve
+              işaretçi yalnız referans yüzeyi gösterir.
+            </div>
+          )}
+          <details className="workspace-notes">
+            <summary>Eğri ayrıntıları</summary>
+            <p>
+              {pts.length} kote nokta · K / F {formatNumber(quotedMin, 3)}–{formatNumber(quotedMax, 3)} · seçili vade{' '}
+              {formatNumber(daysToExpiry, 1)} gün.
+            </p>
+            {target.fitQuality && (
+              <p>
+                Uyum hatası: ortalama {formatPercent(target.fitQuality.rmseVol * 100)}, en çok{' '}
+                {formatPercent(target.fitQuality.maxErrorVol * 100)} IV.
+              </p>
+            )}
+            {target.vol != null && Math.abs(near.days - daysToExpiry) > 1e-8 && (
+              <p>Seçili vade için kote vadeler arasında toplam varyans enterpolasyonu kullanılır.</p>
+            )}
           </details>
         </div>
       </CardContent>

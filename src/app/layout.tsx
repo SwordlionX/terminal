@@ -1,13 +1,13 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import "./terminal-design.css";
+import type { Metadata } from 'next';
+import './globals.css';
+import './terminal-design.css';
 import { TERMINAL_DESIGN } from '@/lib/terminal-design';
 import { TerminalShell } from '@/components/terminal-shell';
 import './workspace.css';
 
 export const metadata: Metadata = {
-  title: "Opsiyon Terminali",
-  description: "Kurumsal Opsiyon Terminali",
+  title: 'Opsiyon Terminali',
+  description: 'Kurumsal Opsiyon Terminali',
 };
 
 export default function RootLayout({

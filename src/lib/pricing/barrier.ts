@@ -36,8 +36,15 @@ export interface LegResult {
 
 /** Hesap anındaki girdiler — sonrasında girdi değişirse ekrandaki sonuç "bayat" işaretlenir. */
 export interface CalcInputs {
-  spot: number; strike: number; tYears: number; rate: number; lease: number; vol: number;
-  variant: string; barrierH: number; rebateR: number;
+  spot: number;
+  strike: number;
+  tYears: number;
+  rate: number;
+  lease: number;
+  vol: number;
+  variant: string;
+  barrierH: number;
+  rebateR: number;
 }
 
 export interface CalcResult {
@@ -55,15 +62,16 @@ export function priceBarrier(
   { variant, barrierH, rebateR }: { variant: string; barrierH: number; rebateR: number },
 ): CalcResult {
   {
-    const r = rate / 100, q = lease / 100;
+    const r = rate / 100,
+      q = lease / 100;
     const smileModes = new Set<VolEstimateMode>();
     // Smile fonksiyonu (ondalık vol). Yoksa Vanna-Volga kurulamaz → düz BS'e düşülür.
     const smile = volAtLevel
       ? (k: number): number | null => {
-        const v = volAtLevel(k);
-        if (v != null && isFinite(v) && volModeAtLevel) smileModes.add(volModeAtLevel(k));
-        return v != null && isFinite(v) ? v / 100 : null;
-      }
+          const v = volAtLevel(k);
+          if (v != null && isFinite(v) && volModeAtLevel) smileModes.add(volModeAtLevel(k));
+          return v != null && isFinite(v) ? v / 100 : null;
+        }
       : null;
 
     /** Tek bacağı (code = 'c'/'p' + variant) fiyatlar. FİYATLAMA MANTIĞI DEĞİŞMEDİ. */
@@ -74,7 +82,10 @@ export function priceBarrier(
        */
       const priceAt = (s: number, shift: number): number => {
         if (smile) {
-          const sm = (k: number) => { const v = smile(k); return v == null ? null : v + shift; };
+          const sm = (k: number) => {
+            const v = smile(k);
+            return v == null ? null : v + shift;
+          };
           const res = vannaVolgaBarrier(s, strike, barrierH, rebateR, tYears, r, q, code, sm);
           if (res) return res.price;
         }
@@ -88,7 +99,8 @@ export function priceBarrier(
       // yoksa mevcut BS tabanlı hesaplayıcı.
       let greeks: BarrierGreekResult;
       if (vvRes) {
-        const dv = 0.005, dt = 1 / 365;
+        const dv = 0.005,
+          dt = 1 / 365;
         // Delta/Gamma bariyer-korumalı sonlu farkla (bkz. spotFiniteDiff): bariyere yakınken
         // adımlar tek taraflı atılır, süreksizlik örneklenmez.
         const { delta, gamma } = spotFiniteDiff(spot, barrierH, s => priceAt(s, 0));
@@ -110,20 +122,22 @@ export function priceBarrier(
       return {
         price,
         greeks,
-        vv: vvRes ? { bsPrice: vvRes.bsPrice, correction: vvRes.correction, survival: vvRes.survival, atmVol: vvRes.atmVol } : null,
+        vv: vvRes
+          ? { bsPrice: vvRes.bsPrice, correction: vvRes.correction, survival: vvRes.survival, atmVol: vvRes.atmVol }
+          : null,
       };
     };
 
-    const isUp = variant[0] === "u";
-    const isOut = variant[1] === "o";
+    const isUp = variant[0] === 'u';
+    const isOut = variant[1] === 'o';
     // Greek'ler sonlu farkla; bariyer süreksizliğine yakın (~%3) Delta/Gamma güvenilmez
     const nearBarrier = spot > 0 && Math.abs(spot - barrierH) / spot < 0.03;
     // KO opsiyonu bariyeri zaten geçtiyse devre dışı — prim yalnızca rebate
     const knockedOut = isOut && ((isUp && spot >= barrierH) || (!isUp && spot <= barrierH));
 
     return {
-      call: priceLeg("c" + variant),
-      put: priceLeg("p" + variant),
+      call: priceLeg('c' + variant),
+      put: priceLeg('p' + variant),
       smileModes: Array.from(smileModes),
       nearBarrier,
       knockedOut,

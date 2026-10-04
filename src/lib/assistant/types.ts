@@ -5,7 +5,13 @@ import type { PositionAnalysis } from '../pricing/position-analysis';
 export type Product = 'XAU' | 'XAG';
 export type OptionType = 'Call' | 'Put';
 export type Position = 'Long' | 'Short';
-export interface ScreenContext extends PricingInputs { product: Product; manualSpot: boolean; type?: OptionType; position?: Position; barrier?: OptionRequest['barrier'] }
+export interface ScreenContext extends PricingInputs {
+  product: Product;
+  manualSpot: boolean;
+  type?: OptionType;
+  position?: Position;
+  barrier?: OptionRequest['barrier'];
+}
 export interface MarketSnapshot {
   product: Product;
   spot: number | null;
@@ -93,15 +99,37 @@ export type AssistantEvent =
   | { type: 'text'; text: string }
   | { type: 'error'; text: string }
   | { type: 'done'; modelCalls: number; durationMs: number };
-export interface ChatMessage { role: 'user' | 'assistant'; text: string }
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  text: string;
+}
 export interface WorkspaceSnapshot {
   area: import('@/lib/workspace').WorkspaceArea;
   observedAt: string;
   customer?: { id: string; name: string };
-  trades: { id: string; customerId: string; product: Product | null; underlying: string; type: OptionType; position: Position;
-    strike: number; expiryDate: string; originalTradeDate: string; contractSize: number; premiumTotal: number;
-    entryPremiumPerUnit: number | null; status: string; barrier: { type: string; level?: number; style?: string; historyRequired: boolean } | null }[];
-  totalTrades: number; truncated: boolean;
+  trades: {
+    id: string;
+    customerId: string;
+    product: Product | null;
+    underlying: string;
+    type: OptionType;
+    position: Position;
+    strike: number;
+    expiryDate: string;
+    originalTradeDate: string;
+    contractSize: number;
+    premiumTotal: number;
+    entryPremiumPerUnit: number | null;
+    status: string;
+    barrier: { type: string; level?: number; style?: string; historyRequired: boolean } | null;
+  }[];
+  totalTrades: number;
+  truncated: boolean;
   margin?: import('@/lib/margin/engine').MarginResult & { method: string };
-  riskSummary?: { customerCount: number; openTrades: number; cureAmount: number; priorities: { customerId: string; name: string; cureAmount: number; status: string; dataWarning?: string }[] };
+  riskSummary?: {
+    customerCount: number;
+    openTrades: number;
+    cureAmount: number;
+    priorities: { customerId: string; name: string; cureAmount: number; status: string; dataWarning?: string }[];
+  };
 }

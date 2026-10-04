@@ -8,41 +8,75 @@ const test = require('node:test');
 
 function load(file, imports = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  const output = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
-  } }).outputText;
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
   const loadedModule = { exports: {} };
-  vm.runInNewContext(output, { module: loadedModule, exports: loadedModule.exports, require(id) {
-    if (Object.hasOwn(imports, id)) return imports[id];
-    throw new Error(`Unmocked dependency: ${id}`);
-  } });
+  vm.runInNewContext(output, {
+    module: loadedModule,
+    exports: loadedModule.exports,
+    require(id) {
+      if (Object.hasOwn(imports, id)) return imports[id];
+      throw new Error(`Unmocked dependency: ${id}`);
+    },
+  });
   return loadedModule.exports;
 }
 
 function mockNext() {
-  return { NextResponse: { json(body, init = {}) { return { body, status: init.status ?? 200 }; } } };
+  return {
+    NextResponse: {
+      json(body, init = {}) {
+        return { body, status: init.status ?? 200 };
+      },
+    },
+  };
 }
 
 function request(body, malformed = false) {
-  return { json: async () => {
-    if (malformed) throw new SyntaxError('bad json');
-    return body;
-  } };
+  return {
+    json: async () => {
+      if (malformed) throw new SyntaxError('bad json');
+      return body;
+    },
+  };
 }
 
 function marketFixture() {
   const writes = [];
-  const imports = { 'next/server': mockNext(), '@/services/market.service': {
-    getInterestRate: async () => 0.05, setInterestRate: async value => writes.push(['rate', value]),
-  }, '@/lib/settings-validation': load('src/lib/settings-validation.ts') };
+  const imports = {
+    'next/server': mockNext(),
+    '@/services/market.service': {
+      getInterestRate: async () => 0.05,
+      setInterestRate: async value => writes.push(['rate', value]),
+    },
+    '@/lib/settings-validation': load('src/lib/settings-validation.ts'),
+  };
   return { writes, rate: load('src/app/api/settings/rate/route.ts', imports) };
 }
 
 test('rate endpoints reject malformed bodies and invalid numeric values without writes', async () => {
   for (const [routeName, field] of [['rate', 'rate']]) {
-    for (const bad of [null, [], 'x', 3, {}, { [field]: null }, { [field]: true },
-      { [field]: '' }, { [field]: '   ' }, { [field]: 'nope' }, { [field]: '0x10' }, { [field]: '0b10' }, { [field]: Infinity },
-      { [field]: NaN }, { [field]: -1 }]) {
+    for (const bad of [
+      null,
+      [],
+      'x',
+      3,
+      {},
+      { [field]: null },
+      { [field]: true },
+      { [field]: '' },
+      { [field]: '   ' },
+      { [field]: 'nope' },
+      { [field]: '0x10' },
+      { [field]: '0b10' },
+      { [field]: Infinity },
+      { [field]: NaN },
+      { [field]: -1 },
+    ]) {
       const f = marketFixture();
       const result = await f[routeName].POST(request(bad));
       assert.equal(result.status, 400, `${routeName}: ${String(bad)}`);
@@ -62,13 +96,25 @@ test('even a valid manual interest rate cannot replace the curve', async () => {
 });
 
 test('datasource status reports only the active CME/SOFR bundle', async () => {
-  const surface = { fetchedISO: '2026-10-01T17:30:00.000Z', expiries: [1, 2], curves: { id: 'bundle-1' }, notes: 'filtered' };
+  const surface = {
+    fetchedISO: '2026-10-01T17:30:00.000Z',
+    expiries: [1, 2],
+    curves: { id: 'bundle-1' },
+    notes: 'filtered',
+  };
   const route = load('src/app/api/settings/datasource/route.ts', {
     'next/server': mockNext(),
-    '@/services/pricing-bundle.service': { loadPricingBundle: async () => ({ surfaces: { XAU: surface, XAG: surface } }) },
+    '@/services/pricing-bundle.service': {
+      loadPricingBundle: async () => ({ surfaces: { XAU: surface, XAG: surface } }),
+    },
   });
   const result = await route.GET();
-  assert.equal(JSON.stringify(result.body.items.map(i => [i.product, i.expiries, i.bundleId, i.notes])),
-    JSON.stringify([['XAU', 2, 'bundle-1', 'filtered'], ['XAG', 2, 'bundle-1', 'filtered']]));
+  assert.equal(
+    JSON.stringify(result.body.items.map(i => [i.product, i.expiries, i.bundleId, i.notes])),
+    JSON.stringify([
+      ['XAU', 2, 'bundle-1', 'filtered'],
+      ['XAG', 2, 'bundle-1', 'filtered'],
+    ]),
+  );
   assert.equal(route.POST, undefined);
 });

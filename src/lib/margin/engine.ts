@@ -1,9 +1,4 @@
-import {
-  MARGIN_MATURITY_BUCKETS,
-  ASSET_GROUPS,
-  COLLATERAL_HAIRCUT_RATES,
-  RISK_THRESHOLDS
-} from './config';
+import { MARGIN_MATURITY_BUCKETS, ASSET_GROUPS, COLLATERAL_HAIRCUT_RATES, RISK_THRESHOLDS } from './config';
 
 export interface TradePosition {
   // MÜŞTERİNİN yönü (bankanın değil): Short = müşteri opsiyonu YAZDI/SATTI → aleyhine zarar
@@ -26,10 +21,10 @@ export interface CollateralAsset {
 
 export interface MarginResult {
   dataWarning?: string;
-  totalCollateralValue: number;   // Haircut sonrası, canlı teminat değeri (USD)
-  totalMtmLoss: number;           // Brüt intrinsic zarar (prim HARİÇ), müşteri aleyhine — Short pozisyonlar
-  marginCallRatio: number;        // Zarar / Teminat — TEK headline metrik; risk eşikleri bunun üzerinden
-  cureAmount: number;             // Oranı CURE_TARGET'a indirmek için gereken ek teminat = max(0, zarar/hedef − teminat)
+  totalCollateralValue: number; // Haircut sonrası, canlı teminat değeri (USD)
+  totalMtmLoss: number; // Brüt intrinsic zarar (prim HARİÇ), müşteri aleyhine — Short pozisyonlar
+  marginCallRatio: number; // Zarar / Teminat — TEK headline metrik; risk eşikleri bunun üzerinden
+  cureAmount: number; // Oranı CURE_TARGET'a indirmek için gereken ek teminat = max(0, zarar/hedef − teminat)
   // UNCOLLATERALIZED: teminat sıfır ama zarar var → oran matematiksel olarak sonsuz.
   // Ayrı durum olarak işaretlenir; "%100" gibi sınırlı bir sayı olarak göstermek yanıltıcı olur.
   status: 'SAFE' | 'MARGIN_CALL' | 'WARNING_60' | 'STOP_LOSS_80' | 'UNCOLLATERALIZED';
@@ -37,7 +32,6 @@ export interface MarginResult {
 }
 
 export class MarginEngine {
-  
   /**
    * Determine the margin rate for a specific asset and maturity bucket.
    */
@@ -56,7 +50,7 @@ export class MarginEngine {
       let rate = bucket.rates.group1;
       if (ASSET_GROUPS.group2.includes(p)) rate = bucket.rates.group2;
       else if (ASSET_GROUPS.group3.includes(p)) rate = bucket.rates.group3;
-      
+
       if (rate > maxRate) maxRate = rate;
     }
 
@@ -78,9 +72,9 @@ export class MarginEngine {
    * @param usdTryRate Current USD/TRY rate to evaluate the 1,000,000 TL limit
    */
   public static calculatePortfolioMargin(
-    positions: TradePosition[], 
+    positions: TradePosition[],
     collaterals: CollateralAsset[],
-    usdTryRate: number
+    usdTryRate: number,
   ): MarginResult {
     // Banka teminat mantığı (resmi prosedür): TEK metrik = zarar / teminat.
     // Zarar = pozisyonun brüt intrinsic zararı (prim HARİÇ); yalnızca müşteri aleyhine olan
@@ -106,13 +100,12 @@ export class MarginEngine {
     }
 
     // Zarar / Teminat — risk eşikleri (%39/%60/%80) bunun üzerinden tetiklenir.
-    const marginCallRatio = totalCollateralValue > 0 ? (totalMtmLoss / totalCollateralValue) : (totalMtmLoss > 0 ? 1 : 0);
+    const marginCallRatio = totalCollateralValue > 0 ? totalMtmLoss / totalCollateralValue : totalMtmLoss > 0 ? 1 : 0;
 
     // Teminat çağrısı karşılığı: oranı CURE_TARGET'a (%35) indirmek için gereken ek teminat.
     // zarar / (teminat + X) = hedef  →  X = zarar/hedef − teminat.
-    const cureAmount = totalMtmLoss > 0
-      ? Math.max(0, totalMtmLoss / RISK_THRESHOLDS.CURE_TARGET - totalCollateralValue)
-      : 0;
+    const cureAmount =
+      totalMtmLoss > 0 ? Math.max(0, totalMtmLoss / RISK_THRESHOLDS.CURE_TARGET - totalCollateralValue) : 0;
 
     let status: MarginResult['status'] = 'SAFE';
     if (totalCollateralValue <= 0 && totalMtmLoss > 0) {
@@ -127,7 +120,7 @@ export class MarginEngine {
     }
 
     // 1M TL eşiği artık gereken ek teminat (cureAmount) üzerinden (PDF: "eksik teminat tutarı")
-    const isDeficitOver1Million = (cureAmount * usdTryRate) > RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL;
+    const isDeficitOver1Million = cureAmount * usdTryRate > RISK_THRESHOLDS.DEFICIT_THRESHOLD_TL;
 
     return {
       totalCollateralValue,
@@ -135,7 +128,7 @@ export class MarginEngine {
       marginCallRatio,
       cureAmount,
       status,
-      isDeficitOver1Million
+      isDeficitOver1Million,
     };
   }
 }

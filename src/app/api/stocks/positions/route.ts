@@ -58,7 +58,9 @@ function parseBody(body: unknown): { symbol: string; pos: StoredPosition } | { e
     const n = typeof v === 'string' ? parseFloat(v) : v;
     return typeof n === 'number' && Number.isFinite(n) ? n : null;
   };
-  const basePrice = num(b.basePrice), quantity = num(b.quantity), premium = num(b.premium);
+  const basePrice = num(b.basePrice),
+    quantity = num(b.quantity),
+    premium = num(b.premium);
 
   if (basePrice == null || basePrice < 0) return { error: 'Maliyet/kullanım fiyatı geçersiz' };
   if (quantity == null || quantity <= 0) return { error: 'Miktar 0’dan büyük olmalı' };

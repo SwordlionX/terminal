@@ -2,8 +2,13 @@ import { db } from '@/services/mockDb';
 import { resolveWorkspace } from './workspace-context';
 import type { ScreenContext, WorkspaceSnapshot } from './types';
 
-export async function readCustomerFile(query: string, screen: ScreenContext): Promise<{
-  matches: { id: string; name: string }[]; truncated: boolean; snapshot?: WorkspaceSnapshot;
+export async function readCustomerFile(
+  query: string,
+  screen: ScreenContext,
+): Promise<{
+  matches: { id: string; name: string }[];
+  truncated: boolean;
+  snapshot?: WorkspaceSnapshot;
 }> {
   const fold = (s: string) => s.normalize('NFKC').toLocaleLowerCase('tr-TR').trim();
   const name = fold(query);

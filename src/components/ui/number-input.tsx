@@ -1,13 +1,10 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { Input } from "@/components/ui/input";
-import { parseNumberInput } from "@/lib/number-input-parser";
+import * as React from 'react';
+import { Input } from '@/components/ui/input';
+import { parseNumberInput } from '@/lib/number-input-parser';
 
-type NumberInputProps = Omit<
-  React.ComponentProps<typeof Input>,
-  "value" | "onChange" | "type"
-> & {
+type NumberInputProps = Omit<React.ComponentProps<typeof Input>, 'value' | 'onChange' | 'type'> & {
   /** Sayısal değer (hesaplama için kaynak). */
   value: number;
   /** Kullanıcı değiştirdiğinde çağrılır; alan boşsa 0 döner ama alan boş kalır. */
@@ -31,7 +28,7 @@ export function NumberInput({ value, onValueChange, ...props }: NumberInputProps
     const current = parseNumberInput(text);
     if (current !== value) {
       // Boş alan 0'a denk geliyorsa boş bırak; aksi halde değeri yansıt.
-      setText(value === 0 && text.trim() === "" ? "" : numToText(value));
+      setText(value === 0 && text.trim() === '' ? '' : numToText(value));
       setInvalid(false);
     }
   }
@@ -40,8 +37,8 @@ export function NumberInput({ value, onValueChange, ...props }: NumberInputProps
     const raw = e.target.value;
     setText(raw);
     const parsed = parseNumberInput(raw);
-    setInvalid(raw.trim() !== "" && parsed === null);
-    if (raw.trim() === "") {
+    setInvalid(raw.trim() !== '' && parsed === null);
+    if (raw.trim() === '') {
       onValueChange(0);
       return;
     }
@@ -50,7 +47,7 @@ export function NumberInput({ value, onValueChange, ...props }: NumberInputProps
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const parsed = parseNumberInput(text);
-    if (text.trim() === "") {
+    if (text.trim() === '') {
       setInvalid(false);
     } else if (parsed === null) {
       setText(numToText(value));
@@ -70,14 +67,14 @@ export function NumberInput({ value, onValueChange, ...props }: NumberInputProps
       value={text}
       onChange={handleChange}
       onBlur={handleBlur}
-      aria-invalid={invalid || props["aria-invalid"]}
+      aria-invalid={invalid || props['aria-invalid']}
     />
   );
 }
 
 /** Turkish decimal comma without grouping, so the text stays easy to edit and parses back exactly. */
 function numToText(v: number): string {
-  if (v === 0) return "0";
-  if (!Number.isFinite(v)) return "";
-  return String(v).replace(".", ",");
+  if (v === 0) return '0';
+  if (!Number.isFinite(v)) return '';
+  return String(v).replace('.', ',');
 }

@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo } from "react";
-import { useMarketData } from "@/store/marketData";
-import { useMarketFeed } from "@/hooks/use-market-feed";
-import { surfaceVolEstimate } from "@/lib/vol/surface";
-import { calculatePricing } from "@/lib/pricing/engine";
+import { useEffect, useMemo } from 'react';
+import { useMarketData } from '@/store/marketData';
+import { useMarketFeed } from '@/hooks/use-market-feed';
+import { surfaceVolEstimate } from '@/lib/vol/surface';
+import { calculatePricing } from '@/lib/pricing/engine';
 
 /**
  * Fiyatlama ekranları arasında paylaşılan piyasa verisi + türetilmiş hesap mantığı.
@@ -28,9 +28,22 @@ export function usePricingModel() {
 
   // Rates are derived per maturity from factor curves, never written back as editable assumptions.
   const resolved = useMemo(() => calculatePricing(md, feed.surface), [md, feed.surface]);
-  const { dateValid, daysToExpiry, tYears, fwd, pricingSpot, smileEstimate, smileIv,
-    numericInputsValid, effVol, result, gr, autoAvailable, priceable, unpriceableReason } =
-    resolved;
+  const {
+    dateValid,
+    daysToExpiry,
+    tYears,
+    fwd,
+    pricingSpot,
+    smileEstimate,
+    smileIv,
+    numericInputsValid,
+    effVol,
+    result,
+    gr,
+    autoAvailable,
+    priceable,
+    unpriceableReason,
+  } = resolved;
   const usingCmeFwd = false;
 
   // The requested maturity uses USD and metal factor ratios from one market bundle.
@@ -56,8 +69,33 @@ export function usePricingModel() {
   // Barrier closed form uses maturity-equivalent constants: explicitly an approximation.
   const barrierSpot = md.spot;
   const barrierLease = resolved.effectiveLease;
-  const effectiveMd = feed.surface?.curves ? { ...md, rate: resolved.effectiveRate, lease: resolved.effectiveLease } : md;
+  const effectiveMd = feed.surface?.curves
+    ? { ...md, rate: resolved.effectiveRate, lease: resolved.effectiveLease }
+    : md;
 
-  return { md: effectiveMd, feed, dateValid, daysToExpiry, tYears, smileIv, smileEstimate, effVol, result, gr, autoAvailable, priceable, unpriceableReason, pricingSpot, fwd, usingCmeFwd, volAtLevel, volModeAtLevel, barrierSpot, barrierLease, surfaceSourceLabel,
-    displayRate: resolved.displayRate, displayLease: resolved.displayLease };
+  return {
+    md: effectiveMd,
+    feed,
+    dateValid,
+    daysToExpiry,
+    tYears,
+    smileIv,
+    smileEstimate,
+    effVol,
+    result,
+    gr,
+    autoAvailable,
+    priceable,
+    unpriceableReason,
+    pricingSpot,
+    fwd,
+    usingCmeFwd,
+    volAtLevel,
+    volModeAtLevel,
+    barrierSpot,
+    barrierLease,
+    surfaceSourceLabel,
+    displayRate: resolved.displayRate,
+    displayLease: resolved.displayLease,
+  };
 }

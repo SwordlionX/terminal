@@ -6,7 +6,10 @@ import type { PricingCurves } from '../market/factors';
  * tutulur; fiyatlama hedef vadenin forward'ıyla m'i hesaplar ve iki komşu vadeyi aynı m'de okur.
  */
 
-export interface SmilePoint { m: number; iv: number }
+export interface SmilePoint {
+  m: number;
+  iv: number;
+}
 
 export interface ExpirySmile {
   /** Exact CME option expiry; distinct from the underlying futures last trade. */
@@ -52,7 +55,8 @@ function smileAt(points: SmilePoint[], m: number): number {
   if (m < points[0].m) return NaN;
   if (m > points[points.length - 1].m) return NaN;
   for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i], b = points[i + 1];
+    const a = points[i],
+      b = points[i + 1];
     if (m >= a.m && m <= b.m) {
       const w = (m - a.m) / (b.m - a.m);
       return a.iv + w * (b.iv - a.iv);
@@ -76,14 +80,14 @@ function dateDay(value: string): number | null {
   const prefix = value.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(prefix)) return null;
   const time = Date.parse(`${prefix}T00:00:00Z`);
-  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === prefix
-    ? time / 86400000 : null;
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === prefix ? time / 86400000 : null;
 }
 
 export function rebasedExpiryDays(surface: VolSurface, expiry: ExpirySmile, valuationDate?: string): number {
   if (!valuationDate) return expiry.days;
   if (surface.curves && expiry.expiryAt) {
-    const valuation = dateDay(valuationDate), at = Date.parse(expiry.expiryAt);
+    const valuation = dateDay(valuationDate),
+      at = Date.parse(expiry.expiryAt);
     return valuation == null || !Number.isFinite(at) ? NaN : at / 86400000 - valuation;
   }
   const asOf = dateDay(surface.fetchedISO);
@@ -103,7 +107,8 @@ function sliceEstimate(expiry: ExpirySmile, m: number, rebasedDays: number): Vol
   if (!sorted || points.some(p => !(p.m > 0) || !(p.iv > 0) || !Number.isFinite(p.m) || !Number.isFinite(p.iv))) {
     return { vol: null, mode: 'unavailable', reason: 'Smile noktaları geçersiz veya yinelenmiş.' };
   }
-  const first = points[0].m, last = points[points.length - 1].m;
+  const first = points[0].m,
+    last = points[points.length - 1].m;
   const outside = m < first || m > last;
   if (!fittedSlices.has(expiry)) fittedSlices.set(expiry, fitSsvi(points, expiry.days));
   const fit = fittedSlices.get(expiry);
@@ -113,17 +118,27 @@ function sliceEstimate(expiry: ExpirySmile, m: number, rebasedDays: number): Vol
     }
     const vol = ssviVol(fit, m);
     if (Number.isFinite(vol) && vol > 0 && vol < 4) {
-      return { vol, mode: outside ? 'extrapolated' : 'model',
-        fitQuality: { rmseVol: fit.rmseVol, maxErrorVol: fit.maxErrorVol, points: fit.points } };
+      return {
+        vol,
+        mode: outside ? 'extrapolated' : 'model',
+        fitQuality: { rmseVol: fit.rmseVol, maxErrorVol: fit.maxErrorVol, points: fit.points },
+      };
     }
   }
-  if (outside) return { vol: null, mode: 'unavailable',
-    reason: fit ? 'Kalan vadede SSVI kanadı güvenli değil.' : 'SSVI uyumu için yeterli ve tutarlı kote yok.' };
+  if (outside)
+    return {
+      vol: null,
+      mode: 'unavailable',
+      reason: fit ? 'Kalan vadede SSVI kanadı güvenli değil.' : 'SSVI uyumu için yeterli ve tutarlı kote yok.',
+    };
   const vol = smileAt(points, m);
   if (!Number.isFinite(vol)) return { vol: null, mode: 'unavailable', reason: 'Smile enterpolasyonu başarısız.' };
   const observed = points.some(p => Math.abs(p.m - m) <= 1e-10);
-  return { vol, mode: observed ? 'observed' : 'interpolated',
-    reason: fit ? 'SSVI uyumu kalan vadede güvenli değil; kote smile kullanıldı.' : undefined };
+  return {
+    vol,
+    mode: observed ? 'observed' : 'interpolated',
+    reason: fit ? 'SSVI uyumu kalan vadede güvenli değil; kote smile kullanıldı.' : undefined,
+  };
 }
 
 /**
@@ -140,36 +155,52 @@ export function surfaceVolEstimate(surface: VolSurface, m: number, days: number,
   if (exps.length === 0) return { vol: null, mode: 'unavailable', reason: 'Smile verisi yok.' };
   if (!Number.isFinite(m) || m <= 0 || !Number.isFinite(days) || days <= 0)
     return { vol: null, mode: 'unavailable', reason: 'Strike veya vade geçersiz.' };
-  const aged = exps.map(expiry => ({ expiry, days: rebasedExpiryDays(surface, expiry, valuationDate) }))
+  const aged = exps
+    .map(expiry => ({ expiry, days: rebasedExpiryDays(surface, expiry, valuationDate) }))
     .filter(entry => Number.isFinite(entry.days) && entry.days > 0)
     .sort((a, b) => a.days - b.days);
-  if (!aged.length) return { vol: null, mode: 'unavailable', reason: 'Değerleme tarihinde kote vadeler dolmuş veya tarih geçersiz.' };
+  if (!aged.length)
+    return { vol: null, mode: 'unavailable', reason: 'Değerleme tarihinde kote vadeler dolmuş veya tarih geçersiz.' };
 
   // An observed expiry needs only its own smile. A neighboring tenor may not quote
   // this moneyness, which must not invalidate the exact-tenor observation.
   const exact = aged.find(entry => Math.abs(entry.days - days) < 1e-8);
   if (exact) return sliceEstimate(exact.expiry, m, exact.days);
 
-  const first = aged[0], last = aged[aged.length - 1];
+  const first = aged[0],
+    last = aged[aged.length - 1];
   // Ekstrapolasyon yok: kote vade aralığının dışında güvenilir vol türetilemez.
   if (days < first.days || days > last.days)
     return { vol: null, mode: 'unavailable', reason: 'Vade kote vadelerin dışında.' };
 
   for (let i = 0; i < aged.length - 1; i++) {
-    const e1 = aged[i], e2 = aged[i + 1];
+    const e1 = aged[i],
+      e2 = aged[i + 1];
     if (days > e1.days && days < e2.days) {
       const a = sliceEstimate(e1.expiry, m, e1.days);
       const b = sliceEstimate(e2.expiry, m, e2.days);
       if (a.vol == null || b.vol == null)
         return { vol: null, mode: 'unavailable', reason: a.reason ?? b.reason ?? 'İki vadede de vol bulunmalı.' };
-      const v1 = a.vol * a.vol * e1.days, v2 = b.vol * b.vol * e2.days;
+      const v1 = a.vol * a.vol * e1.days,
+        v2 = b.vol * b.vol * e2.days;
       if (v2 + 1e-12 < v1)
-        return { vol: null, mode: 'unavailable', reason: 'Vadeler arasında toplam varyans azalıyor; takvim arbitrajı riski.' };
+        return {
+          vol: null,
+          mode: 'unavailable',
+          reason: 'Vadeler arasında toplam varyans azalıyor; takvim arbitrajı riski.',
+        };
       const weight = (days - e1.days) / (e2.days - e1.days);
       const vol = Math.sqrt(((1 - weight) * v1 + weight * v2) / days);
-      return { vol, mode: a.mode === 'extrapolated' || b.mode === 'extrapolated' ? 'extrapolated' :
-        a.mode === 'model' || b.mode === 'model' ? 'model' : 'interpolated',
-        fitQuality: a.fitQuality ?? b.fitQuality };
+      return {
+        vol,
+        mode:
+          a.mode === 'extrapolated' || b.mode === 'extrapolated'
+            ? 'extrapolated'
+            : a.mode === 'model' || b.mode === 'model'
+              ? 'model'
+              : 'interpolated',
+        fitQuality: a.fitQuality ?? b.fitQuality,
+      };
     }
   }
   return { vol: null, mode: 'unavailable', reason: 'Uygun kote vade bulunamadı.' };

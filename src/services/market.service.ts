@@ -8,24 +8,36 @@ import { USD_TRY_RATE } from '../lib/margin/config';
 // zorluyordu. 60 sn hem ekran için yeterince canlı hem kota açısından rahat.
 const SPOT_TTL_MS = 60 * 1000;
 
-interface SpotCacheEntry { price: number; at: number; source: string; stale?: boolean; quoteAt?: number | null }
+interface SpotCacheEntry {
+  price: number;
+  at: number;
+  source: string;
+  stale?: boolean;
+  quoteAt?: number | null;
+}
 const spotCache: Record<string, SpotCacheEntry> = {};
 
 // Sağlayıcı takılırsa /api/market isteği (dolayısıyla ekranın açılışı) beklemesin: sınır
 // dolunca sıradaki sağlayıcıya, o da olmazsa eski önbelleğe düşülür.
 const SPOT_TIMEOUT_MS = 4000;
 
-interface ProviderQuote { price: number; quoteAt: number | null }
+interface ProviderQuote {
+  price: number;
+  quoteAt: number | null;
+}
 
 const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY || 'f4289f23003940cfbf46c7825bd8ec3a';
 export const TIINGO_KEY = process.env.TIINGO_API_KEY || 'af1224275560d5fb3e93aca2a0fa157da7cce183';
 
 async function fetchTwelveDataPrice(symbol: string): Promise<ProviderQuote | null> {
   try {
-    const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${TWELVEDATA_KEY}`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
-    });
+    const res = await fetch(
+      `https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${TWELVEDATA_KEY}`,
+      {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
+      },
+    );
     if (!res.ok) {
       console.warn(`[spot] Twelve Data ${symbol}: HTTP ${res.status}`);
       return null;
@@ -47,10 +59,13 @@ async function fetchTwelveDataPrice(symbol: string): Promise<ProviderQuote | nul
 
 async function fetchTiingoPrice(symbol: string): Promise<ProviderQuote | null> {
   try {
-    const res = await fetch(`https://api.tiingo.com/tiingo/fx/top?tickers=${encodeURIComponent(symbol)}&token=${TIINGO_KEY}`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
-    });
+    const res = await fetch(
+      `https://api.tiingo.com/tiingo/fx/top?tickers=${encodeURIComponent(symbol)}&token=${TIINGO_KEY}`,
+      {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(SPOT_TIMEOUT_MS),
+      },
+    );
     if (!res.ok) {
       console.warn(`[spot] Tiingo ${symbol}: HTTP ${res.status}`);
       return null;
@@ -95,7 +110,9 @@ const SPOT_PROVIDERS: Record<string, { source: string; get: () => Promise<Provid
  * süresi geçmiş önbellek. Süresi geçmiş fiyat, ilk alındığı zaman korunarak stale işaretlenir.
  * Dönen `source` hangi basamağa inildiğini söyler; ekran rozeti bunu etiketler.
  */
-export async function getSpot(product: string): Promise<{ price: number; at: number; source: string; stale?: boolean; quoteAt?: number | null } | null> {
+export async function getSpot(
+  product: string,
+): Promise<{ price: number; at: number; source: string; stale?: boolean; quoteAt?: number | null } | null> {
   const key = product.toUpperCase();
   const cached = spotCache[key];
   if (cached && Date.now() - cached.at < SPOT_TTL_MS) return cached;
@@ -124,7 +141,8 @@ export async function getUsdTryRate(): Promise<number> {
 export async function getInterestRate(): Promise<number> {
   const bundle = await loadPricingBundle();
   if (!bundle) throw new Error('USD vade eğrisi yok; varsayılan faiz kullanılmaz.');
-  const from = Date.parse(bundle.sessionDate + 'T00:00:00Z'), days = 90;
+  const from = Date.parse(bundle.sessionDate + 'T00:00:00Z'),
+    days = 90;
   const discount = factorAt(bundle.usd.nodes, from + days * 86400000);
   if (discount == null) throw new Error('USD faiz eğrisinin kapsamı eksik.');
   return -Math.log(discount) / (days / 365);
@@ -143,6 +161,7 @@ export async function getSurface(product: string): Promise<VolSurface> {
   const key = product.toUpperCase();
   if (key !== 'XAU' && key !== 'XAG') throw new Error('Yalnız XAU ve XAG fiyatlanır.');
   const bundle = await loadPricingBundle();
-  if (!bundle) throw new Error('Faiz, taşıma ve IV yeni sürümde birlikte kurulmalı; eski kira hesabıyla fiyatlama yapılmaz.');
+  if (!bundle)
+    throw new Error('Faiz, taşıma ve IV yeni sürümde birlikte kurulmalı; eski kira hesabıyla fiyatlama yapılmaz.');
   return bundle.surfaces[key];
 }

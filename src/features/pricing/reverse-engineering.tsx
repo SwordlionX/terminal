@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { impliedVol } from "@/lib/math";
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { impliedVol } from '@/lib/math';
 
 interface ReverseEngineeringProps {
   spot: number;
@@ -17,29 +17,37 @@ interface ReverseEngineeringProps {
   contractSize: number;
 }
 
-export function ReverseEngineering({
-  spot, strike, tYears, rate, lease
-}: ReverseEngineeringProps) {
+export function ReverseEngineering({ spot, strike, tYears, rate, lease }: ReverseEngineeringProps) {
   const [targetPremium, setTargetPremium] = useState<number>(0);
-  const [unitMode, setUnitMode] = useState<"oz" | "pct">("oz");
-  const [optionType, setOptionType] = useState<"call" | "put">("call");
-  
+  const [unitMode, setUnitMode] = useState<'oz' | 'pct'>('oz');
+  const [optionType, setOptionType] = useState<'call' | 'put'>('call');
+
   const inputKey = JSON.stringify([spot, strike, tYears, rate, lease, targetPremium, unitMode, optionType]);
   const [calculation, setCalculation] = useState<{ key: string; iv: number | null; error: string | null } | null>(null);
   const stale = calculation !== null && calculation.key !== inputKey;
-  const resultIv = stale ? null : calculation?.iv ?? null;
-  const errorMsg = stale ? null : calculation?.error ?? null;
+  const resultIv = stale ? null : (calculation?.iv ?? null);
+  const errorMsg = stale ? null : (calculation?.error ?? null);
 
-  const formatPercent = (val: number) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val * 100);
+  const formatPercent = (val: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val * 100);
 
   const runReverse = () => {
-    if (![spot, strike, tYears, rate, lease, targetPremium].every(Number.isFinite) ||
-        spot <= 0 || strike <= 0 || tYears <= 0 || targetPremium < 0) {
-      setCalculation({ key: inputKey, iv: null, error: "Pozitif spot, strike ve vade; sıfır veya pozitif prim girin. Tüm değerler sonlu olmalı." });
+    if (
+      ![spot, strike, tYears, rate, lease, targetPremium].every(Number.isFinite) ||
+      spot <= 0 ||
+      strike <= 0 ||
+      tYears <= 0 ||
+      targetPremium < 0
+    ) {
+      setCalculation({
+        key: inputKey,
+        iv: null,
+        error: 'Pozitif spot, strike ve vade; sıfır veya pozitif prim girin. Tüm değerler sonlu olmalı.',
+      });
       return;
     }
     let price = targetPremium;
-    if (unitMode === "pct") {
+    if (unitMode === 'pct') {
       price = (targetPremium / 100) * spot;
     }
 
@@ -47,25 +55,33 @@ export function ReverseEngineering({
     if (res.ok && Number.isFinite(res.vol)) {
       setCalculation({ key: inputKey, iv: res.vol, error: null });
     } else {
-      setCalculation({ key: inputKey, iv: null, error: "Çözüm bulunamadı. Girdiğiniz prim matematiksel fiyat sınırlarının dışında olabilir." });
+      setCalculation({
+        key: inputKey,
+        iv: null,
+        error: 'Çözüm bulunamadı. Girdiğiniz prim matematiksel fiyat sınırlarının dışında olabilir.',
+      });
     }
   };
 
   return (
     <Card className="bg-[#09090b] border-zinc-800 text-zinc-100 mt-6 shadow-xl">
       <CardHeader className="pb-3 border-b border-zinc-800">
-        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">Tersine Mühendislik (Implied Volatility Solver)</CardTitle>
+        <CardTitle className="text-zinc-300 uppercase text-xs font-bold tracking-widest">
+          Tersine Mühendislik (Implied Volatility Solver)
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-5">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label className="text-zinc-400 text-xs uppercase tracking-wider">Opsiyon Tipi</Label>
             <Select
-            value={optionType}
-            items={{ call: 'Alış (Call)', put: 'Satış (Put)' }}
-            onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}
-          >
-              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
+              value={optionType}
+              items={{ call: 'Alış (Call)', put: 'Satış (Put)' }}
+              onValueChange={v => setOptionType(v === 'put' ? 'put' : 'call')}
+            >
+              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="call">Alış (Call)</SelectItem>
                 <SelectItem value="put">Satış (Put)</SelectItem>
@@ -74,22 +90,24 @@ export function ReverseEngineering({
           </div>
           <div className="space-y-2">
             <Label className="text-zinc-400 text-xs uppercase tracking-wider">Hedef Prim</Label>
-            <Input 
-              type="number" 
-              value={targetPremium || ''} 
-              onChange={e => setTargetPremium(Number(e.target.value))} 
-              className="bg-zinc-900 border-zinc-700 font-mono text-zinc-200" 
+            <Input
+              type="number"
+              value={targetPremium || ''}
+              onChange={e => setTargetPremium(Number(e.target.value))}
+              className="bg-zinc-900 border-zinc-700 font-mono text-zinc-200"
               placeholder="örn. 120"
             />
           </div>
           <div className="space-y-2">
             <Label className="text-zinc-400 text-xs uppercase tracking-wider">Prim Birimi</Label>
             <Select
-            value={unitMode}
-            items={{ oz: 'USD / ons', pct: '% Spot nominal' }}
-            onValueChange={(v) => setUnitMode(v === "pct" ? "pct" : "oz")}
-          >
-              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
+              value={unitMode}
+              items={{ oz: 'USD / ons', pct: '% Spot nominal' }}
+              onValueChange={v => setUnitMode(v === 'pct' ? 'pct' : 'oz')}
+            >
+              <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="oz">USD / ons</SelectItem>
                 <SelectItem value="pct">% Spot nominal</SelectItem>
@@ -97,16 +115,25 @@ export function ReverseEngineering({
             </Select>
           </div>
           <div className="flex items-end">
-            <Button onClick={runReverse} className="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-bold tracking-wide">
+            <Button
+              onClick={runReverse}
+              className="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-bold tracking-wide"
+            >
               IV ÇÖZ (ÇALIŞTIR)
             </Button>
           </div>
         </div>
 
-        {stale && <p role="status" className="text-sm text-amber-400">Girdiler değişti. Güncel IV için yeniden hesaplayın.</p>}
+        {stale && (
+          <p role="status" className="text-sm text-amber-400">
+            Girdiler değişti. Güncel IV için yeniden hesaplayın.
+          </p>
+        )}
         {resultIv !== null && (
           <div className="mt-4 p-5 rounded-lg bg-zinc-900/40 border border-zinc-700/50 flex justify-between items-center shadow-inner">
-            <span className="text-zinc-200 font-semibold tracking-wide">Bulunan Zımni Volatilite (Implied Volatility):</span>
+            <span className="text-zinc-200 font-semibold tracking-wide">
+              Bulunan Zımni Volatilite (Implied Volatility):
+            </span>
             <span className="text-3xl font-bold font-mono text-emerald-400">{formatPercent(resultIv)}%</span>
           </div>
         )}

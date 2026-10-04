@@ -1,11 +1,114 @@
-"use client";
+'use client';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { Customer } from '@/types';
 import { WorkspaceContext } from '@/components/workspace-context';
 import { NewCustomerDialog } from './new-customer-dialog';
-export function CustomerWorkspace({ customers, selected, tab = 'summary', summary, trades, collateral, notes }: { customers: Pick<Customer, 'id' | 'companyName' | 'customerNumber' | 'customerSegment'>[]; selected: Pick<Customer, 'id' | 'companyName' | 'customerNumber' | 'customerSegment'> | null; tab?: string; summary: React.ReactNode; trades: React.ReactNode; collateral: React.ReactNode; notes: React.ReactNode }) {
-  const [search, setSearch] = useState(''), [activeTab, setTab] = useState(['summary', 'trades', 'collateral', 'notes'].includes(tab) ? tab : 'summary');
+export function CustomerWorkspace({
+  customers,
+  selected,
+  tab = 'summary',
+  summary,
+  trades,
+  collateral,
+  notes,
+}: {
+  customers: Pick<Customer, 'id' | 'companyName' | 'customerNumber' | 'customerSegment'>[];
+  selected: Pick<Customer, 'id' | 'companyName' | 'customerNumber' | 'customerSegment'> | null;
+  tab?: string;
+  summary: React.ReactNode;
+  trades: React.ReactNode;
+  collateral: React.ReactNode;
+  notes: React.ReactNode;
+}) {
+  const [search, setSearch] = useState(''),
+    [activeTab, setTab] = useState(['summary', 'trades', 'collateral', 'notes'].includes(tab) ? tab : 'summary');
   const content: Record<string, React.ReactNode> = { summary, trades, collateral, notes };
-  return <div><WorkspaceContext area="customers" customerId={selected?.id} label={selected ? `${selected.companyName} · müşteri dosyası` : 'Müşteri listesi'} /><div className="workspace-heading"><div><h1>Müşteri dosyaları</h1></div><NewCustomerDialog /></div><div className="customer-workspace"><aside className="customer-list" aria-label="Müşteri listesi"><input aria-label="Müşterilerde ara" className="workspace-search" style={{ width: '100%', minWidth: 0 }} placeholder="Müşteri ara…" value={search} onChange={e => setSearch(e.target.value)} />{customers.filter(c => `${c.companyName} ${c.customerNumber}`.toLocaleLowerCase('tr').includes(search.toLocaleLowerCase('tr'))).map(c => <Link key={c.id} href={`/customers/${c.id}?tab=${activeTab}`} aria-current={c.id === selected?.id ? 'page' : undefined}>{c.companyName}<small>{c.customerNumber} · {c.customerSegment}</small></Link>)}{!customers.length && <p className="workspace-empty">Henüz müşteri kaydı yok.</p>}</aside><section className="customer-file">{selected ? <><div className="workspace-heading"><div><h1>{selected.companyName}</h1><p>{selected.customerNumber} · {selected.customerSegment}</p></div><Link className="desk-link" href={`/trades?customer=${selected.id}`}>Pozisyon masası ↗</Link></div><div className="workspace-tabs" aria-label="Müşteri dosyası bölümleri">{[['summary', 'Özet'], ['trades', 'İşlemler'], ['collateral', 'Teminat'], ['notes', 'Notlar ve hareketler']].map(([key, label]) => <button key={key} aria-pressed={activeTab === key} onClick={() => { setTab(key); window.history.replaceState(null, '', `/customers/${selected.id}?tab=${key}`); }}>{label}</button>)}</div>{Object.entries(content).map(([key, node]) => <div key={key} hidden={activeTab !== key}>{node}</div>)}</> : <p className="workspace-empty">Bir müşteri seç veya yeni müşteri kaydı oluştur.</p>}</section></div></div>;
+  return (
+    <div>
+      <WorkspaceContext
+        area="customers"
+        customerId={selected?.id}
+        label={selected ? `${selected.companyName} · müşteri dosyası` : 'Müşteri listesi'}
+      />
+      <div className="workspace-heading">
+        <div>
+          <h1>Müşteri dosyaları</h1>
+        </div>
+        <NewCustomerDialog />
+      </div>
+      <div className="customer-workspace">
+        <aside className="customer-list" aria-label="Müşteri listesi">
+          <input
+            aria-label="Müşterilerde ara"
+            className="workspace-search"
+            style={{ width: '100%', minWidth: 0 }}
+            placeholder="Müşteri ara…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {customers
+            .filter(c =>
+              `${c.companyName} ${c.customerNumber}`.toLocaleLowerCase('tr').includes(search.toLocaleLowerCase('tr')),
+            )
+            .map(c => (
+              <Link
+                key={c.id}
+                href={`/customers/${c.id}?tab=${activeTab}`}
+                aria-current={c.id === selected?.id ? 'page' : undefined}
+              >
+                {c.companyName}
+                <small>
+                  {c.customerNumber} · {c.customerSegment}
+                </small>
+              </Link>
+            ))}
+          {!customers.length && <p className="workspace-empty">Henüz müşteri kaydı yok.</p>}
+        </aside>
+        <section className="customer-file">
+          {selected ? (
+            <>
+              <div className="workspace-heading">
+                <div>
+                  <h1>{selected.companyName}</h1>
+                  <p>
+                    {selected.customerNumber} · {selected.customerSegment}
+                  </p>
+                </div>
+                <Link className="desk-link" href={`/trades?customer=${selected.id}`}>
+                  Pozisyon masası ↗
+                </Link>
+              </div>
+              <div className="workspace-tabs" aria-label="Müşteri dosyası bölümleri">
+                {[
+                  ['summary', 'Özet'],
+                  ['trades', 'İşlemler'],
+                  ['collateral', 'Teminat'],
+                  ['notes', 'Notlar ve hareketler'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    aria-pressed={activeTab === key}
+                    onClick={() => {
+                      setTab(key);
+                      window.history.replaceState(null, '', `/customers/${selected.id}?tab=${key}`);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {Object.entries(content).map(([key, node]) => (
+                <div key={key} hidden={activeTab !== key}>
+                  {node}
+                </div>
+              ))}
+            </>
+          ) : (
+            <p className="workspace-empty">Bir müşteri seç veya yeni müşteri kaydı oluştur.</p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
 }

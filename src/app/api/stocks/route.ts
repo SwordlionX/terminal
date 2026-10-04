@@ -16,7 +16,10 @@ export const dynamic = 'force-dynamic';
 const QUOTE_TTL_MS = 30 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
 
-interface Quote { price: number; previousClose: number | null }
+interface Quote {
+  price: number;
+  previousClose: number | null;
+}
 const quoteCache = new Map<string, { at: number; val: Quote }>();
 
 export async function GET(request: Request) {
@@ -44,14 +47,11 @@ export async function GET(request: Request) {
     //   ?interval=1d&range=5d  -> previousClose boş, chartPreviousClose 317.0  ← 5 GÜN öncesi
     // range verildiğinde chartPreviousClose pencerenin BAŞINDAN önceki kapanışa kayıyor;
     // yüzde değişim günlük olmaktan çıkıp dönemsel oluyordu.
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
-      {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        cache: 'no-store',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      },
-    );
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
     if (!res.ok) {
       return NextResponse.json({ error: `Yahoo yanıt vermedi (HTTP ${res.status})` }, { status: 502 });

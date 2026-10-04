@@ -5,12 +5,21 @@ export async function terminalMarket(product: Product): Promise<MarketSnapshot> 
   const [spot, surface] = await Promise.all([
     getSpot(product).catch(() => null),
     (async () => {
-      try { return { value: await getSurface(product), source: 'cme', error: undefined }; }
-      catch { return { value: null, source: null, error: 'Terminalin volatilite yüzeyi okunamadı.' }; }
+      try {
+        return { value: await getSurface(product), source: 'cme', error: undefined };
+      } catch {
+        return { value: null, source: null, error: 'Terminalin volatilite yüzeyi okunamadı.' };
+      }
     })(),
   ]);
-  return { product, spot: spot?.price ?? null, spotSource: spot?.source ?? 'Veri yok',
+  return {
+    product,
+    spot: spot?.price ?? null,
+    spotSource: spot?.source ?? 'Veri yok',
     spotAt: spot ? new Date(spot.quoteAt ?? spot.at).toISOString() : null,
     spotStale: spot?.stale ?? false,
-    surface: surface.value, surfaceSource: surface.source, error: surface.error };
+    surface: surface.value,
+    surfaceSource: surface.source,
+    error: surface.error,
+  };
 }

@@ -13,8 +13,12 @@ test('responsive layout server markup remains identical when a mobile browser is
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const render = browser => {
     const fixtureModule = { exports: {} };
-    vm.runInNewContext(code, { module: fixtureModule, exports: fixtureModule.exports, require,
-      ...(browser ? { window: browser } : {}) });
+    vm.runInNewContext(code, {
+      module: fixtureModule,
+      exports: fixtureModule.exports,
+      require,
+      ...(browser ? { window: browser } : {}),
+    });
     const View = () => React.createElement('div', null, fixtureModule.exports.useIsMobile() ? 'mobile' : 'desktop');
     return renderToString(React.createElement(View));
   };

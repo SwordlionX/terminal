@@ -38,12 +38,7 @@ export function profitSideOf(type: OptionType, position: OptionPosition): 'above
 }
 
 /** "70,04 üstü kâr" gibi kısa etiket. */
-export function breakEvenLabel(
-  type: OptionType,
-  position: OptionPosition,
-  be: number,
-  digits = 2,
-): string {
+export function breakEvenLabel(type: OptionType, position: OptionPosition, be: number, digits = 2): string {
   const side = profitSideOf(type, position) === 'above' ? 'üstü' : 'altı';
   return `${be.toFixed(digits)} ${side} kâr`;
 }

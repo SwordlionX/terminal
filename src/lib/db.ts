@@ -21,8 +21,8 @@ function getClient(): Client {
     if (!url) {
       throw new Error(
         'TURSO_DATABASE_URL tanımlı değil. Veritabanı yalnızca Turso üzerinden çalışır; ' +
-        'yerel dosya yedeği kaldırıldı. .env.local (yerel) veya Vercel proje env ayarlarına ' +
-        'TURSO_DATABASE_URL ve TURSO_AUTH_TOKEN ekleyin.'
+          'yerel dosya yedeği kaldırıldı. .env.local (yerel) veya Vercel proje env ayarlarına ' +
+          'TURSO_DATABASE_URL ve TURSO_AUTH_TOKEN ekleyin.',
       );
     }
     // `file:` ADRESLERİ REDDEDİLİR. Otomatik yerel-dosya düşüşü koddan kaldırılmıştı ama
@@ -33,8 +33,8 @@ function getClient(): Client {
     if (/^file:/i.test(url.trim())) {
       throw new Error(
         'TURSO_DATABASE_URL bir yerel dosyayı (file:) gösteriyor. Yerel dosya kopyası ' +
-        'DESTEKLENMİYOR — kimse güncellemediği için bayat veriyi canlı gibi gösteriyor. ' +
-        'Gerçek Turso adresini (libsql://... veya https://...) ve TURSO_AUTH_TOKEN değerini ayarlayın.'
+          'DESTEKLENMİYOR — kimse güncellemediği için bayat veriyi canlı gibi gösteriyor. ' +
+          'Gerçek Turso adresini (libsql://... veya https://...) ve TURSO_AUTH_TOKEN değerini ayarlayın.',
       );
     }
     client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
@@ -55,35 +55,48 @@ async function init(c: Client): Promise<void> {
   const ver = await c.execute("SELECT v FROM kv WHERE k = 'schema_version'");
   if (ver.rows.length && String(ver.rows[0].v) === SCHEMA_VERSION) return;
 
-  await c.batch([
-    `CREATE TABLE IF NOT EXISTS customers (
+  await c.batch(
+    [
+      `CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY, companyName TEXT NOT NULL, customerNumber TEXT, taxNumber TEXT,
       branch TEXT, portfolioManager TEXT, relationshipManager TEXT, riskLimit REAL,
       customerSegment TEXT, notes TEXT, createdDate TEXT, updatedDate TEXT, status TEXT
     )`,
-    `CREATE TABLE IF NOT EXISTS trades (
+      `CREATE TABLE IF NOT EXISTS trades (
       id TEXT PRIMARY KEY, customerId TEXT NOT NULL, tradeDate TEXT, expiryDate TEXT,
       underlying TEXT, type TEXT, position TEXT, spot REAL, strike REAL, volatility REAL,
       contractSize REAL, premium REAL, currentPremium REAL, mtm REAL, pnl REAL,
       delta REAL, gamma REAL, vega REAL, theta REAL, marginRate REAL, status TEXT,
       barrierType TEXT, barrierLevel REAL, barrierStyle TEXT, barrierStartDate TEXT, barrierEndDate TEXT
     )`,
-    `CREATE TABLE IF NOT EXISTS collaterals (
+      `CREATE TABLE IF NOT EXISTS collaterals (
       id TEXT PRIMARY KEY, customerId TEXT NOT NULL, assetCode TEXT, currency TEXT,
       nominalQuantity REAL, marketValueUsd REAL, haircut REAL, addedAt TEXT
     )`,
-    `CREATE TABLE IF NOT EXISTS activity_log (
+      `CREATE TABLE IF NOT EXISTS activity_log (
       id TEXT PRIMARY KEY, customerId TEXT NOT NULL, date TEXT, type TEXT, description TEXT
     )`,
-    `CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)`,
-    `CREATE TABLE IF NOT EXISTS stock_positions (
+      `CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)`,
+      `CREATE TABLE IF NOT EXISTS stock_positions (
       symbol TEXT PRIMARY KEY, tradeType TEXT, basePrice REAL, quantity REAL, premium REAL, updatedAt TEXT
     )`,
-  ], 'write');
+    ],
+    'write',
+  );
 
   // Daha önce oluşturulmuş (eski şemalı) veritabanları için göç — kolon zaten varsa hata yutulur.
-  for (const col of ['barrierType TEXT', 'barrierLevel REAL', 'barrierStyle TEXT', 'barrierStartDate TEXT', 'barrierEndDate TEXT']) {
-    try { await c.execute(`ALTER TABLE trades ADD COLUMN ${col}`); } catch { /* kolon zaten var */ }
+  for (const col of [
+    'barrierType TEXT',
+    'barrierLevel REAL',
+    'barrierStyle TEXT',
+    'barrierStartDate TEXT',
+    'barrierEndDate TEXT',
+  ]) {
+    try {
+      await c.execute(`ALTER TABLE trades ADD COLUMN ${col}`);
+    } catch {
+      /* kolon zaten var */
+    }
   }
 
   // İlk kurulumda gerçek müşteri + işlem verisini yükle (kaynak: "YAŞAYAN OPSİYONLAR" dökümü, 06.07.2026)
@@ -92,11 +105,81 @@ async function init(c: Client): Promise<void> {
     const now = new Date().toISOString();
     const note = 'İçe aktarıldı: YAŞAYAN OPSİYONLAR dökümü (06.07.2026)';
     const customers: (string | number | null)[][] = [
-      ['c-22384484', 'SEVİL PARFÜMERİ KOZMETİK TİCARET VE SANAYİ ANONİM ŞİRKETİ', '22384484', '', '153', 'GÜL YAMAK', '', null, 'Kurumsal', note, now, now, 'Active'],
-      ['c-2628150', 'YILMAZ KÖKSAL', '2628150', '', '153', 'FURKAN KESKİNSOY', '', null, 'Bireysel', note, now, now, 'Active'],
-      ['c-21733691', 'KULE YETKİLİ MÜESSESE ANONİM ŞİRKETİ', '21733691', '', '153', 'FURKAN KESKİNSOY', '', null, 'Kurumsal', note, now, now, 'Active'],
-      ['c-20919083', 'CENGİZ KARA - CENGİZ KORKMAZ', '20919083', '', '153', 'GÜL YAMAK', '', null, 'Bireysel', note, now, now, 'Active'],
-      ['c-22441826', 'PLASPAK PLASTİK VE AMBALAJ SANAYİ VE TİCARET ANONİM ŞİRKETİ', '22441826', '', '153', 'GÜL YAMAK', '', null, 'Kurumsal', note, now, now, 'Active'],
+      [
+        'c-22384484',
+        'SEVİL PARFÜMERİ KOZMETİK TİCARET VE SANAYİ ANONİM ŞİRKETİ',
+        '22384484',
+        '',
+        '153',
+        'GÜL YAMAK',
+        '',
+        null,
+        'Kurumsal',
+        note,
+        now,
+        now,
+        'Active',
+      ],
+      [
+        'c-2628150',
+        'YILMAZ KÖKSAL',
+        '2628150',
+        '',
+        '153',
+        'FURKAN KESKİNSOY',
+        '',
+        null,
+        'Bireysel',
+        note,
+        now,
+        now,
+        'Active',
+      ],
+      [
+        'c-21733691',
+        'KULE YETKİLİ MÜESSESE ANONİM ŞİRKETİ',
+        '21733691',
+        '',
+        '153',
+        'FURKAN KESKİNSOY',
+        '',
+        null,
+        'Kurumsal',
+        note,
+        now,
+        now,
+        'Active',
+      ],
+      [
+        'c-20919083',
+        'CENGİZ KARA - CENGİZ KORKMAZ',
+        '20919083',
+        '',
+        '153',
+        'GÜL YAMAK',
+        '',
+        null,
+        'Bireysel',
+        note,
+        now,
+        now,
+        'Active',
+      ],
+      [
+        'c-22441826',
+        'PLASPAK PLASTİK VE AMBALAJ SANAYİ VE TİCARET ANONİM ŞİRKETİ',
+        '22441826',
+        '',
+        '153',
+        'GÜL YAMAK',
+        '',
+        null,
+        'Kurumsal',
+        note,
+        now,
+        now,
+        'Active',
+      ],
     ];
 
     // NOT: Vade/gün, spot ve kullanım fiyatı olarak dökümdeki "Anlaşma Kuru" kullanıldı (gerçek işlem-anı
@@ -111,11 +194,146 @@ async function init(c: Client): Promise<void> {
     // olarak eklenmedi — sistemde henüz USD/TRY opsiyonları için doğru fiyatlama altyapısı (canlı kur,
     // doğru faiz eğrisi) yok, gümüş/altın motoruyla zorlamak yanlış teminat/MTM üretiyordu.
     const trades: (string | number | null)[][] = [
-      ['t-005074', 'c-22384484', '2026-06-03', '2026-11-30', 'XAG', 'Put', 'Short', 78, 78, 0.15, 1256.41025641, 10000, 7.95918367, 0, 0, null, null, null, null, 0.71, 'Open', null, null, null, null, null],
-      ['t-005162', 'c-2628150', '2026-06-05', '2026-09-03', 'XAG', 'Put', 'Short', 73.5, 73.5, 0.15, 1360.54421769, 5500, 4.0425, 0, 0, null, null, null, null, 0.47, 'Open', null, null, null, null, null],
-      ['t-005316', 'c-20919083', '2026-06-11', '2026-09-11', 'XAG', 'Put', 'Short', 66.5, 66.5, 0.15, 30075.18, 94000.18, 3.12550681, 0, 0, null, null, null, null, 0.32, 'Open', 'Knock Out Up', 72, 'Amerikan', '2026-06-11', '2026-09-11'],
-      ['t-005381', 'c-22441826', '2026-06-16', '2026-09-14', 'XAG', 'Put', 'Short', 72.5, 72.5, 0.15, 2758.62, 7000, 2.53750063, 0, 0, null, null, null, null, 0.32, 'Open', 'Knock Out Up', 75.5, 'Amerikan', '2026-06-16', '2026-09-14'],
-      ['t-004896', 'c-22384484', '2026-05-22', '2026-11-18', 'XAG', 'Put', 'Short', 81, 81, 0.15, 2037.03703704, 18150, 8.91, 0, 0, null, null, null, null, 0.71, 'Open', null, null, null, null, null],
+      [
+        't-005074',
+        'c-22384484',
+        '2026-06-03',
+        '2026-11-30',
+        'XAG',
+        'Put',
+        'Short',
+        78,
+        78,
+        0.15,
+        1256.41025641,
+        10000,
+        7.95918367,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        0.71,
+        'Open',
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
+      [
+        't-005162',
+        'c-2628150',
+        '2026-06-05',
+        '2026-09-03',
+        'XAG',
+        'Put',
+        'Short',
+        73.5,
+        73.5,
+        0.15,
+        1360.54421769,
+        5500,
+        4.0425,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        0.47,
+        'Open',
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
+      [
+        't-005316',
+        'c-20919083',
+        '2026-06-11',
+        '2026-09-11',
+        'XAG',
+        'Put',
+        'Short',
+        66.5,
+        66.5,
+        0.15,
+        30075.18,
+        94000.18,
+        3.12550681,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        0.32,
+        'Open',
+        'Knock Out Up',
+        72,
+        'Amerikan',
+        '2026-06-11',
+        '2026-09-11',
+      ],
+      [
+        't-005381',
+        'c-22441826',
+        '2026-06-16',
+        '2026-09-14',
+        'XAG',
+        'Put',
+        'Short',
+        72.5,
+        72.5,
+        0.15,
+        2758.62,
+        7000,
+        2.53750063,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        0.32,
+        'Open',
+        'Knock Out Up',
+        75.5,
+        'Amerikan',
+        '2026-06-16',
+        '2026-09-14',
+      ],
+      [
+        't-004896',
+        'c-22384484',
+        '2026-05-22',
+        '2026-11-18',
+        'XAG',
+        'Put',
+        'Short',
+        81,
+        81,
+        0.15,
+        2037.03703704,
+        18150,
+        8.91,
+        0,
+        0,
+        null,
+        null,
+        null,
+        null,
+        0.71,
+        'Open',
+        null,
+        null,
+        null,
+        null,
+        null,
+      ],
     ];
 
     // İşlem açılışında müşteriden alınan başlangıç nakit teminatı — dökümdeki "Gerekli Teminat Oranı"
@@ -123,8 +341,8 @@ async function init(c: Client): Promise<void> {
     // yazılıyor (haircut 0). Böylece "hesabımda ne kadar teminat var" sorusu artık $0 değil, gerçek
     // yatırılan tutarı gösteriyor; canlı yeniden değerleme bunun üzerinden erimeyi/açığı hesaplayacak.
     const collaterals: (string | number | null)[][] = [
-      ['col-22384484', 'c-22384484', 'Nakit-USD', 'USD', 186730.00, 186730.00, 0, now],
-      ['col-2628150', 'c-2628150', 'Nakit-USD', 'USD', 47000.00, 47000.00, 0, now],
+      ['col-22384484', 'c-22384484', 'Nakit-USD', 'USD', 186730.0, 186730.0, 0, now],
+      ['col-2628150', 'c-2628150', 'Nakit-USD', 'USD', 47000.0, 47000.0, 0, now],
       ['col-20919083', 'c-20919083', 'Nakit-USD', 'USD', 639999.83, 639999.83, 0, now],
       ['col-22441826', 'c-22441826', 'Nakit-USD', 'USD', 63999.98, 63999.98, 0, now],
     ];
@@ -132,16 +350,34 @@ async function init(c: Client): Promise<void> {
     // Aktivite geçmişi tohumu — içe aktarılan müşteri/işlemler için gerçek olay kaydı
     // (fresh DB / demo reset'te timeline boş görünmesin). Olay tarihi olarak işlem tarihi kullanılır.
     const activities: (string | number | null)[][] = [
-      ...customers.map((cu) => [`act-seed-${cu[0]}`, cu[0], now, 'Customer Created', 'Müşteri içe aktarıldı (YAŞAYAN OPSİYONLAR dökümü, 06.07.2026).']),
-      ...trades.map((tr) => [`act-seed-${tr[0]}`, tr[1], tr[2], 'Trade Added', `İşlem içe aktarıldı: ${tr[4]} ${tr[6]} ${tr[5]} · strike ${tr[8]}`]),
+      ...customers.map(cu => [
+        `act-seed-${cu[0]}`,
+        cu[0],
+        now,
+        'Customer Created',
+        'Müşteri içe aktarıldı (YAŞAYAN OPSİYONLAR dökümü, 06.07.2026).',
+      ]),
+      ...trades.map(tr => [
+        `act-seed-${tr[0]}`,
+        tr[1],
+        tr[2],
+        'Trade Added',
+        `İşlem içe aktarıldı: ${tr[4]} ${tr[6]} ${tr[5]} · strike ${tr[8]}`,
+      ]),
     ];
 
-    await c.batch([
-      ...customers.map((args) => ({ sql: `INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, args })),
-      ...trades.map((args) => ({ sql: `INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args })),
-      ...collaterals.map((args) => ({ sql: `INSERT INTO collaterals VALUES (?,?,?,?,?,?,?,?)`, args })),
-      ...activities.map((args) => ({ sql: `INSERT INTO activity_log VALUES (?,?,?,?,?)`, args })),
-    ], 'write');
+    await c.batch(
+      [
+        ...customers.map(args => ({ sql: `INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, args })),
+        ...trades.map(args => ({
+          sql: `INSERT INTO trades VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          args,
+        })),
+        ...collaterals.map(args => ({ sql: `INSERT INTO collaterals VALUES (?,?,?,?,?,?,?,?)`, args })),
+        ...activities.map(args => ({ sql: `INSERT INTO activity_log VALUES (?,?,?,?,?)`, args })),
+      ],
+      'write',
+    );
   }
 
   // Aktivite backfill — activity_log boşsa ama müşteri/işlem varsa (özellik eklenmeden önce kurulmuş
@@ -151,16 +387,31 @@ async function init(c: Client): Promise<void> {
     const cust = await c.execute('SELECT id, createdDate FROM customers');
     if (cust.rows.length) {
       const trd = await c.execute('SELECT id, customerId, tradeDate, underlying, type, position, strike FROM trades');
-      await c.batch([
-        ...cust.rows.map((r) => ({
-          sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
-          args: [`act-bf-${String(r.id)}`, String(r.id), String(r.createdDate ?? new Date().toISOString()), 'Customer Created', 'Müşteri kaydı (geçmiş).'],
-        })),
-        ...trd.rows.map((r) => ({
-          sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
-          args: [`act-bf-${String(r.id)}`, String(r.customerId), String(r.tradeDate ?? ''), 'Trade Added', `İşlem: ${String(r.underlying)} ${String(r.position)} ${String(r.type)} · strike ${Number(r.strike)}`],
-        })),
-      ], 'write');
+      await c.batch(
+        [
+          ...cust.rows.map(r => ({
+            sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
+            args: [
+              `act-bf-${String(r.id)}`,
+              String(r.id),
+              String(r.createdDate ?? new Date().toISOString()),
+              'Customer Created',
+              'Müşteri kaydı (geçmiş).',
+            ],
+          })),
+          ...trd.rows.map(r => ({
+            sql: 'INSERT INTO activity_log VALUES (?,?,?,?,?)',
+            args: [
+              `act-bf-${String(r.id)}`,
+              String(r.customerId),
+              String(r.tradeDate ?? ''),
+              'Trade Added',
+              `İşlem: ${String(r.underlying)} ${String(r.position)} ${String(r.type)} · strike ${Number(r.strike)}`,
+            ],
+          })),
+        ],
+        'write',
+      );
     }
   }
 
@@ -179,7 +430,7 @@ export async function dbc(): Promise<Client> {
     // ulaşılamadığında reddedilmiş promise sonsuza dek elde kalıyor ve o sunucu örneğindeki
     // HER dbc() çağrısı aynı hatayla düşüyordu (yeniden deneme yok) — örnek geri dönüşene
     // kadar site "veri okunamadı" gösteriyordu. Artık bir sonraki istek baştan dener.
-    readyPromise = init(c).catch((e) => {
+    readyPromise = init(c).catch(e => {
       readyPromise = null;
       throw e;
     });

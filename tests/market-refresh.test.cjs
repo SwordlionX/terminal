@@ -8,19 +8,33 @@ const test = require('node:test');
 
 function load(file, globals = {}, imports = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  const output = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
-  } }).outputText;
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
   const loadedModule = { exports: {} };
-  vm.runInNewContext(output, { module: loadedModule, exports: loadedModule.exports, require(id) {
-    if (Object.hasOwn(imports, id)) return imports[id];
-    if (id === 'node:crypto') return { randomUUID: () => 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc' };
-    throw new Error(`Unmocked dependency: ${id}`);
-  }, AbortController, DOMException, setTimeout, clearTimeout, ...globals });
+  vm.runInNewContext(output, {
+    module: loadedModule,
+    exports: loadedModule.exports,
+    require(id) {
+      if (Object.hasOwn(imports, id)) return imports[id];
+      if (id === 'node:crypto') return { randomUUID: () => 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc' };
+      throw new Error(`Unmocked dependency: ${id}`);
+    },
+    AbortController,
+    DOMException,
+    setTimeout,
+    clearTimeout,
+    ...globals,
+  });
   return loadedModule.exports;
 }
 
-function response(body, ok = true) { return { ok, json: async () => body }; }
+function response(body, ok = true) {
+  return { ok, json: async () => body };
+}
 
 test('CME helper polls one request until completed and reports intermediate run states', async () => {
   const { refreshCme } = load('src/lib/market-refresh.ts');
@@ -36,7 +50,11 @@ test('CME helper polls one request until completed and reports intermediate run 
     if (polls === 3) return response({ ok: true, status: 'running' });
     return response({ ok: true, status: 'completed' });
   };
-  const result = await refreshCme('XAU', { fetcher, wait: async ms => seen.push(ms), onStatus: status => statuses.push(status) });
+  const result = await refreshCme('XAU', {
+    fetcher,
+    wait: async ms => seen.push(ms),
+    onStatus: status => statuses.push(status),
+  });
   assert.equal(result, 'completed');
   assert.match(seen[0][0], /product=XAU/);
   assert.match(seen[1][0], /status\?product=XAU&request_id=request-1/);
@@ -45,19 +63,31 @@ test('CME helper polls one request until completed and reports intermediate run 
 
 test('CME helper treats persistent notfound as pending until the overall timeout', async () => {
   const { refreshCme } = load('src/lib/market-refresh.ts');
-  const waiting = async (_url, init) => init?.method === 'POST'
-    ? response({ ok: true, request_id: 'request-2' }) : response({ ok: true, status: 'notfound' });
+  const waiting = async (_url, init) =>
+    init?.method === 'POST'
+      ? response({ ok: true, request_id: 'request-2' })
+      : response({ ok: true, status: 'notfound' });
   let clock = 0;
-  assert.equal(await refreshCme('XAU', {
-    fetcher: waiting, timeoutMs: 36, pollMs: 12, now: () => clock,
-    wait: async ms => { clock += ms; },
-  }), 'timeout');
+  assert.equal(
+    await refreshCme('XAU', {
+      fetcher: waiting,
+      timeoutMs: 36,
+      pollMs: 12,
+      now: () => clock,
+      wait: async ms => {
+        clock += ms;
+      },
+    }),
+    'timeout',
+  );
 });
 
 test('CME helper reports failure and per-request timeout remains bounded', async () => {
   const { refreshCme } = load('src/lib/market-refresh.ts');
-  const failed = async (_url, init) => init?.method === 'POST'
-    ? response({ ok: true, request_id: 'request-3' }) : response({ ok: true, status: 'failed' });
+  const failed = async (_url, init) =>
+    init?.method === 'POST'
+      ? response({ ok: true, request_id: 'request-3' })
+      : response({ ok: true, status: 'failed' });
   assert.equal(await refreshCme('XAG', { fetcher: failed }), 'failed');
   const hanging = async () => new Promise(() => {});
   await assert.rejects(refreshCme('XAG', { fetcher: hanging, requestTimeoutMs: 5 }), /zaman aşımına uğradı/);
@@ -67,12 +97,20 @@ test('CME helper preserves external abort during polling delay and an unresponsi
   const { refreshCme } = load('src/lib/market-refresh.ts');
   const controller = new AbortController();
   let beginWait;
-  const waitStarted = new Promise(resolve => { beginWait = resolve; });
-  const delayed = async (_url, init) => init?.method === 'POST'
-    ? response({ ok: true, request_id: 'request-abort-delay' }) : response({ ok: true, status: 'running' });
+  const waitStarted = new Promise(resolve => {
+    beginWait = resolve;
+  });
+  const delayed = async (_url, init) =>
+    init?.method === 'POST'
+      ? response({ ok: true, request_id: 'request-abort-delay' })
+      : response({ ok: true, status: 'running' });
   const waitingTask = refreshCme('XAU', {
-    fetcher: delayed, signal: controller.signal,
-    wait: () => { beginWait(); return new Promise(() => {}); },
+    fetcher: delayed,
+    signal: controller.signal,
+    wait: () => {
+      beginWait();
+      return new Promise(() => {});
+    },
   });
   await waitStarted;
   controller.abort();
@@ -80,7 +118,9 @@ test('CME helper preserves external abort during polling delay and an unresponsi
 
   const hangingController = new AbortController();
   let beginFetch;
-  const fetchStarted = new Promise(resolve => { beginFetch = resolve; });
+  const fetchStarted = new Promise(resolve => {
+    beginFetch = resolve;
+  });
   const unresponsive = async (_url, init) => {
     if (init?.method === 'POST') return response({ ok: true, request_id: 'request-abort-fetch' });
     beginFetch();
@@ -95,7 +135,14 @@ test('CME helper preserves external abort during polling delay and an unresponsi
 test('CME helper rejects invalid product before dispatch', async () => {
   const { refreshCme } = load('src/lib/market-refresh.ts');
   let called = false;
-  await assert.rejects(refreshCme('BTC', { fetcher: async () => { called = true; } }), /XAU veya XAG/);
+  await assert.rejects(
+    refreshCme('BTC', {
+      fetcher: async () => {
+        called = true;
+      },
+    }),
+    /XAU veya XAG/,
+  );
   assert.equal(called, false);
 });
 
@@ -104,9 +151,21 @@ test('CME dispatch blocks preview and missing PAT responses never reveal credent
   const routeFile = 'src/app/api/market/refresh/cme/route.ts';
   let env = { VERCEL_ENV: 'preview', GITHUB_PAT: 'secret-pat-value' };
   let dispatchCount = 0;
-  const route = load(routeFile, { process: { env }, fetch: async () => { dispatchCount += 1; return { ok: true }; }, URL }, {
-    'next/server': { NextRequest: class {}, NextResponse }, '@/services/cme.service': { getDataSource: async () => 'cme' },
-  });
+  const route = load(
+    routeFile,
+    {
+      process: { env },
+      fetch: async () => {
+        dispatchCount += 1;
+        return { ok: true };
+      },
+      URL,
+    },
+    {
+      'next/server': { NextRequest: class {}, NextResponse },
+      '@/services/cme.service': { getDataSource: async () => 'cme' },
+    },
+  );
   const req = { url: 'https://app.test/api/market/refresh/cme?product=XAU' };
   const preview = await route.POST(req);
   assert.equal(preview.status, 409);
@@ -114,9 +173,21 @@ test('CME dispatch blocks preview and missing PAT responses never reveal credent
   assert.doesNotMatch(JSON.stringify(preview), /secret-pat-value/);
 
   env = {};
-  const missingTokenRoute = load(routeFile, { fetch: async () => { dispatchCount += 1; return { ok: true }; }, process: { env }, URL }, {
-    'next/server': { NextRequest: class {}, NextResponse }, '@/services/cme.service': { getDataSource: async () => 'cme' },
-  });
+  const missingTokenRoute = load(
+    routeFile,
+    {
+      fetch: async () => {
+        dispatchCount += 1;
+        return { ok: true };
+      },
+      process: { env },
+      URL,
+    },
+    {
+      'next/server': { NextRequest: class {}, NextResponse },
+      '@/services/cme.service': { getDataSource: async () => 'cme' },
+    },
+  );
   const missingToken = await missingTokenRoute.POST(req);
   assert.equal(missingToken.status, 503);
   assert.doesNotMatch(JSON.stringify(missingToken), /PAT|secret/i);
@@ -126,11 +197,21 @@ test('CME dispatch blocks preview and missing PAT responses never reveal credent
 test('CME dispatch validates products before any GitHub request', async () => {
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
   let dispatchCount = 0;
-  const { POST } = load('src/app/api/market/refresh/cme/route.ts', {
-    fetch: async () => { dispatchCount += 1; return { ok: true }; },
-    process: { env: { GITHUB_PAT: 'test', VERCEL_ENV: 'production' } },
-    URL,
-  }, { 'next/server': { NextRequest: class {}, NextResponse }, '@/services/cme.service': { getDataSource: async () => 'cme' } });
+  const { POST } = load(
+    'src/app/api/market/refresh/cme/route.ts',
+    {
+      fetch: async () => {
+        dispatchCount += 1;
+        return { ok: true };
+      },
+      process: { env: { GITHUB_PAT: 'test', VERCEL_ENV: 'production' } },
+      URL,
+    },
+    {
+      'next/server': { NextRequest: class {}, NextResponse },
+      '@/services/cme.service': { getDataSource: async () => 'cme' },
+    },
+  );
   const invalid = await POST({ url: 'https://app.test/api/market/refresh/cme?product=BTC' });
   assert.equal(invalid.status, 400);
   assert.equal(dispatchCount, 0);
@@ -140,21 +221,40 @@ test('production CME POST dispatches the exact workflow ref and product, returni
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
   const timeoutSignal = { marker: 'timeout-signal' };
   const timeoutValues = [];
-  class TestAbortSignal { static timeout(ms) { timeoutValues.push(ms); return timeoutSignal; } }
+  class TestAbortSignal {
+    static timeout(ms) {
+      timeoutValues.push(ms);
+      return timeoutSignal;
+    }
+  }
   let captured;
-  const { POST } = load('src/app/api/market/refresh/cme/route.ts', {
-    URL,
-    AbortSignal: TestAbortSignal,
-    process: { env: { GITHUB_PAT: 'private-token', VERCEL_ENV: 'production', CME_REFRESH_REF: 'main' } },
-    fetch: async (url, options) => { captured = { url, options }; return { ok: true }; },
-  }, { 'next/server': { NextRequest: class {}, NextResponse }, '@/services/cme.service': { getDataSource: async () => 'cme' } });
+  const { POST } = load(
+    'src/app/api/market/refresh/cme/route.ts',
+    {
+      URL,
+      AbortSignal: TestAbortSignal,
+      process: { env: { GITHUB_PAT: 'private-token', VERCEL_ENV: 'production', CME_REFRESH_REF: 'main' } },
+      fetch: async (url, options) => {
+        captured = { url, options };
+        return { ok: true };
+      },
+    },
+    {
+      'next/server': { NextRequest: class {}, NextResponse },
+      '@/services/cme.service': { getDataSource: async () => 'cme' },
+    },
+  );
   const result = await POST({ url: 'https://app.test/api/market/refresh/cme?product=XAG' });
   assert.equal(result.status, 200);
   assert.equal(result.body.status, 'queued');
   assert.equal(result.body.request_id, 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc');
-  assert.equal(captured.url, 'https://api.github.com/repos/SwordlionX/terminal/actions/workflows/cme-refresh.yml/dispatches');
+  assert.equal(
+    captured.url,
+    'https://api.github.com/repos/SwordlionX/terminal/actions/workflows/cme-refresh.yml/dispatches',
+  );
   assert.deepEqual(JSON.parse(captured.options.body), {
-    ref: 'main', inputs: { product: 'XAG', request_id: 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc' },
+    ref: 'main',
+    inputs: { product: 'XAG', request_id: 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc' },
   });
   assert.equal(captured.options.signal, timeoutSignal);
   assert.deepEqual(timeoutValues, [10_000]);
@@ -163,15 +263,27 @@ test('production CME POST dispatches the exact workflow ref and product, returni
 
 test('CME POST sanitizes GitHub rejection and network errors', async () => {
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
-  const makePost = fetch => load('src/app/api/market/refresh/cme/route.ts', {
-    URL, AbortSignal,
-    process: { env: { GITHUB_PAT: 'private-token', VERCEL_ENV: 'production' } }, fetch,
-  }, { 'next/server': { NextRequest: class {}, NextResponse }, '@/services/cme.service': { getDataSource: async () => 'cme' } }).POST;
+  const makePost = fetch =>
+    load(
+      'src/app/api/market/refresh/cme/route.ts',
+      {
+        URL,
+        AbortSignal,
+        process: { env: { GITHUB_PAT: 'private-token', VERCEL_ENV: 'production' } },
+        fetch,
+      },
+      {
+        'next/server': { NextRequest: class {}, NextResponse },
+        '@/services/cme.service': { getDataSource: async () => 'cme' },
+      },
+    ).POST;
   const req = { url: 'https://app.test/api/market/refresh/cme?product=XAU' };
   const rejected = await makePost(async () => ({ ok: false, statusText: 'private-token leaked by GitHub' }))(req);
   assert.equal(rejected.status, 502);
   assert.doesNotMatch(JSON.stringify(rejected), /private-token|statusText|leaked by GitHub/);
-  const networkError = await makePost(async () => { throw new Error('private-token transport detail'); })(req);
+  const networkError = await makePost(async () => {
+    throw new Error('private-token transport detail');
+  })(req);
   assert.equal(networkError.status, 502);
   assert.doesNotMatch(JSON.stringify(networkError), /private-token|transport detail/);
 });
@@ -179,11 +291,22 @@ test('CME POST sanitizes GitHub rejection and network errors', async () => {
 test('CME cron keeps authorization checks and only dispatches with the configured secret', async () => {
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
   let dispatchCount = 0;
-  const { GET } = load('src/app/api/market/refresh/cme/route.ts', {
-    URL, AbortSignal,
-    process: { env: { CRON_SECRET: 'cron-secret', GITHUB_PAT: 'private-token', VERCEL_ENV: 'production' } },
-    fetch: async () => { dispatchCount += 1; return { ok: true }; },
-  }, { 'next/server': { NextRequest: class {}, NextResponse }, '@/services/cme.service': { getDataSource: async () => 'cme' } });
+  const { GET } = load(
+    'src/app/api/market/refresh/cme/route.ts',
+    {
+      URL,
+      AbortSignal,
+      process: { env: { CRON_SECRET: 'cron-secret', GITHUB_PAT: 'private-token', VERCEL_ENV: 'production' } },
+      fetch: async () => {
+        dispatchCount += 1;
+        return { ok: true };
+      },
+    },
+    {
+      'next/server': { NextRequest: class {}, NextResponse },
+      '@/services/cme.service': { getDataSource: async () => 'cme' },
+    },
+  );
   const url = 'https://app.test/api/market/refresh/cme?product=XAU';
   const denied = await GET({ url, headers: new Headers() });
   assert.equal(denied.status, 401);
@@ -197,15 +320,34 @@ test('CME cron keeps authorization checks and only dispatches with the configure
 test('CME cron rejects preview dispatches and explicitly invalid products', async () => {
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
   let dispatchCount = 0;
-  const loadRoute = env => load('src/app/api/market/refresh/cme/route.ts', {
-    fetch: async () => { dispatchCount += 1; return { ok: true }; }, process: { env }, URL,
-    AbortSignal,
-  }, { 'next/server': { NextRequest: class {}, NextResponse }, '@/services/cme.service': { getDataSource: async () => 'cme' } });
+  const loadRoute = env =>
+    load(
+      'src/app/api/market/refresh/cme/route.ts',
+      {
+        fetch: async () => {
+          dispatchCount += 1;
+          return { ok: true };
+        },
+        process: { env },
+        URL,
+        AbortSignal,
+      },
+      {
+        'next/server': { NextRequest: class {}, NextResponse },
+        '@/services/cme.service': { getDataSource: async () => 'cme' },
+      },
+    );
   const invalidRoute = loadRoute({ GITHUB_PAT: 'token', VERCEL_ENV: 'production' });
-  const invalid = await invalidRoute.GET({ url: 'https://app.test/api/market/refresh/cme?product=BTC', headers: new Headers() });
+  const invalid = await invalidRoute.GET({
+    url: 'https://app.test/api/market/refresh/cme?product=BTC',
+    headers: new Headers(),
+  });
   assert.equal(invalid.status, 400);
   const previewRoute = loadRoute({ GITHUB_PAT: 'token', VERCEL_ENV: 'preview' });
-  const preview = await previewRoute.GET({ url: 'https://app.test/api/market/refresh/cme?product=XAU', headers: new Headers() });
+  const preview = await previewRoute.GET({
+    url: 'https://app.test/api/market/refresh/cme?product=XAU',
+    headers: new Headers(),
+  });
   assert.equal(preview.status, 409);
   assert.equal(dispatchCount, 0);
 });
@@ -213,35 +355,66 @@ test('CME cron rejects preview dispatches and explicitly invalid products', asyn
 test('status lookup filters workflow dispatches by exact request id and returns minimal state', async () => {
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
   let url;
-  const { GET } = load('src/app/api/market/refresh/cme/status/route.ts', {
-    URL, AbortSignal,
-    process: { env: { GITHUB_PAT: 'test-token' } },
-    fetch: async (requestedUrl, options) => {
-      url = requestedUrl;
-      assert.equal(options.cache, 'no-store');
-      assert.ok(options.signal);
-      return { ok: true, json: async () => ({ workflow_runs: [
-        { display_title: 'another-request', status: 'completed', conclusion: 'success' },
-        { display_title: 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc', status: 'completed', conclusion: 'failure', run_number: 123 },
-      ] }) };
+  const { GET } = load(
+    'src/app/api/market/refresh/cme/status/route.ts',
+    {
+      URL,
+      AbortSignal,
+      process: { env: { GITHUB_PAT: 'test-token' } },
+      fetch: async (requestedUrl, options) => {
+        url = requestedUrl;
+        assert.equal(options.cache, 'no-store');
+        assert.ok(options.signal);
+        return {
+          ok: true,
+          json: async () => ({
+            workflow_runs: [
+              { display_title: 'another-request', status: 'completed', conclusion: 'success' },
+              {
+                display_title: 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc',
+                status: 'completed',
+                conclusion: 'failure',
+                run_number: 123,
+              },
+            ],
+          }),
+        };
+      },
     },
-  }, { 'next/server': { NextResponse } });
-  const result = await GET({ url: 'https://app.test/api/market/refresh/cme/status?product=XAG&request_id=a8e3b7d4-7a12-4c90-8d31-eeb243039dcc' });
+    { 'next/server': { NextResponse } },
+  );
+  const result = await GET({
+    url: 'https://app.test/api/market/refresh/cme/status?product=XAG&request_id=a8e3b7d4-7a12-4c90-8d31-eeb243039dcc',
+  });
   assert.match(url, /event=workflow_dispatch/);
-  assert.equal(JSON.stringify(result.body), JSON.stringify({ ok: true, status: 'failed', request_id: 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc' }));
+  assert.equal(
+    JSON.stringify(result.body),
+    JSON.stringify({ ok: true, status: 'failed', request_id: 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc' }),
+  );
 });
 
 test('status maps waiting and pending to queued, and canceled/skipped to failed', async () => {
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
   const id = 'a8e3b7d4-7a12-4c90-8d31-eeb243039dcc';
   for (const [runStatus, conclusion, expected] of [
-    ['waiting', null, 'queued'], ['pending', null, 'queued'],
-    ['completed', 'cancelled', 'failed'], ['completed', 'skipped', 'failed'],
+    ['waiting', null, 'queued'],
+    ['pending', null, 'queued'],
+    ['completed', 'cancelled', 'failed'],
+    ['completed', 'skipped', 'failed'],
   ]) {
-    const { GET } = load('src/app/api/market/refresh/cme/status/route.ts', {
-      URL, AbortSignal, process: { env: { GITHUB_PAT: 'test-token' } },
-      fetch: async () => ({ ok: true, json: async () => ({ workflow_runs: [{ display_title: id, status: runStatus, conclusion }] }) }),
-    }, { 'next/server': { NextResponse } });
+    const { GET } = load(
+      'src/app/api/market/refresh/cme/status/route.ts',
+      {
+        URL,
+        AbortSignal,
+        process: { env: { GITHUB_PAT: 'test-token' } },
+        fetch: async () => ({
+          ok: true,
+          json: async () => ({ workflow_runs: [{ display_title: id, status: runStatus, conclusion }] }),
+        }),
+      },
+      { 'next/server': { NextResponse } },
+    );
     const result = await GET({ url: `https://app.test/api/market/refresh/cme/status?product=XAU&request_id=${id}` });
     assert.equal(result.body.status, expected);
   }
@@ -250,9 +423,17 @@ test('status maps waiting and pending to queued, and canceled/skipped to failed'
 test('status lookup rejects invalid product or request id without GitHub access', async () => {
   const NextResponse = { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) };
   let called = false;
-  const { GET } = load('src/app/api/market/refresh/cme/status/route.ts', {
-    URL, process: { env: { GITHUB_PAT: 'test-token' } }, fetch: async () => { called = true; },
-  }, { 'next/server': { NextResponse } });
+  const { GET } = load(
+    'src/app/api/market/refresh/cme/status/route.ts',
+    {
+      URL,
+      process: { env: { GITHUB_PAT: 'test-token' } },
+      fetch: async () => {
+        called = true;
+      },
+    },
+    { 'next/server': { NextResponse } },
+  );
   const result = await GET({ url: 'https://app.test/api/market/refresh/cme/status?product=BTC&request_id=nope' });
   assert.equal(result.status, 400);
   assert.equal(called, false);

@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { VolSurface } from '@/lib/vol/surface';
@@ -58,7 +58,8 @@ export function useMarketFeed(product: string): MarketFeed {
       // XAG ekranına sızamaz — eskiden bu yüzden gümüşteyken ekrana PAXG (altın) fiyatı
       // yazılıyordu. Etiket sunucunun döndürdüğü `product` alanından alınır.
       const forProduct = String(j.product ?? product).toUpperCase();
-      if (id !== requestId.current || currentProduct.current !== requestedProduct || forProduct !== requestedProduct) return;
+      if (id !== requestId.current || currentProduct.current !== requestedProduct || forProduct !== requestedProduct)
+        return;
       const incoming: FeedData = {
         product: forProduct,
         spot: j.spot ?? null,
@@ -66,7 +67,9 @@ export function useMarketFeed(product: string): MarketFeed {
         surfaceSource: j.surfaceSource ?? null,
         snapshotISO: j.snapshotISO ?? null,
         rateNote: j.rateNote ?? null,
-        dataError: j.dataError ?? (!j.surface ? 'Yüzey yenilenemedi; varsa aynı kaynaktan son alınan yüzey gösteriliyor.' : null),
+        dataError:
+          j.dataError ??
+          (!j.surface ? 'Yüzey yenilenemedi; varsa aynı kaynaktan son alınan yüzey gösteriliyor.' : null),
         quoteError: j.spot?.stale || !j.spot ? 'Spot yenilenemedi; varsa son alınan fiyat korunuyor.' : null,
       };
       setData(previous => mergeMarketFeed(previous, incoming));
@@ -75,7 +78,9 @@ export function useMarketFeed(product: string): MarketFeed {
       setError(null);
     } catch {
       if (id !== requestId.current || currentProduct.current !== requestedProduct) return;
-      setData(previous => markMarketFeedUnavailable(previous, requestedProduct, 'Piyasa verisi yenilenemedi; son alınan veri korunuyor.'));
+      setData(previous =>
+        markMarketFeedUnavailable(previous, requestedProduct, 'Piyasa verisi yenilenemedi; son alınan veri korunuyor.'),
+      );
       setError({ product: requestedProduct, message: 'Piyasa verisi yenilenemedi; son alınan veri korunuyor.' });
     }
   }, [product]);
@@ -101,13 +106,20 @@ export function useMarketFeed(product: string): MarketFeed {
       try {
         const status = await refreshCme(product, {
           signal: controller.signal,
-          onStatus: (value: CmeRefreshStatus) => setRefreshStatus({ product: product.toUpperCase(), text: cmeStatusText[value] }),
+          onStatus: (value: CmeRefreshStatus) =>
+            setRefreshStatus({ product: product.toUpperCase(), text: cmeStatusText[value] }),
         });
-        if (status !== 'completed') throw new Error(status === 'failed' ? 'CME yenilemesi başarısız oldu.' : 'CME yenileme sonucu doğrulanamadı.');
+        if (status !== 'completed')
+          throw new Error(
+            status === 'failed' ? 'CME yenilemesi başarısız oldu.' : 'CME yenileme sonucu doğrulanamadı.',
+          );
         await fetchFeed();
       } catch (e) {
         if (controller.signal.aborted) return;
-        setError({ product: product.toUpperCase(), message: e instanceof Error ? e.message : 'Zincir yenileme başarısız' });
+        setError({
+          product: product.toUpperCase(),
+          message: e instanceof Error ? e.message : 'Zincir yenileme başarısız',
+        });
       } finally {
         if (refreshController.current === controller) refreshController.current = null;
         refreshFlight.current = null;

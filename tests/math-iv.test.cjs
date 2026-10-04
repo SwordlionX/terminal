@@ -8,14 +8,21 @@ const test = require('node:test');
 
 function load(file, imports = {}) {
   const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-  const output = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
-  } }).outputText;
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
   const loadedModule = { exports: {} };
-  vm.runInNewContext(output, { module: loadedModule, exports: loadedModule.exports, require(id) {
-    if (Object.hasOwn(imports, id)) return imports[id];
-    throw new Error(`Unmocked dependency: ${id}`);
-  } });
+  vm.runInNewContext(output, {
+    module: loadedModule,
+    exports: loadedModule.exports,
+    require(id) {
+      if (Object.hasOwn(imports, id)) return imports[id];
+      throw new Error(`Unmocked dependency: ${id}`);
+    },
+  });
   return loadedModule.exports;
 }
 
@@ -61,8 +68,12 @@ test('Low-volatility high-carry tree remains American and monotone', () => {
 });
 
 test('Zero-volatility American value includes deterministic early exercise', () => {
-  const S = 100, K = 90, T = 20, r = 0.1, q = 0.05;
-  const time = Math.log(r * K / (q * S)) / (r - q);
+  const S = 100,
+    K = 90,
+    T = 20,
+    r = 0.1,
+    q = 0.05;
+  const time = Math.log((r * K) / (q * S)) / (r - q);
   const expected = Math.max(0, S * Math.exp(-q * time) - K * Math.exp(-r * time));
   near(american.americanPrice(S, K, T, r, q, 0, 'call'), expected);
   const put = american.americanPrice(100, 100, 1, -0.05, 0, 0, 'put');

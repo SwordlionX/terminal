@@ -18,9 +18,9 @@ import { VolSurface, ExpirySmile, SmilePoint } from './surface';
 
 export interface CmeOptionDef {
   cls: 'C' | 'P';
-  expSec: number;   // vade (epoch saniye)
-  strike: number;   // kullanım fiyatı (fiyat birimi)
-  und: string;      // underlying_id — dayanak SI futures instrument_id'si
+  expSec: number; // vade (epoch saniye)
+  strike: number; // kullanım fiyatı (fiyat birimi)
+  und: string; // underlying_id — dayanak SI futures instrument_id'si
 }
 
 export interface CmeInputs {
@@ -40,7 +40,8 @@ export interface CmeInputs {
 
 // Yüzeye yalnızca ATM'i saran makul bir moneyness penceresi alınır; hem gürültülü uzak
 // kanatları eler hem de vade başına binom inversiyon sayısını sınırlar.
-const MONEY_LO = 0.75, MONEY_HI = 1.30;
+const MONEY_LO = 0.75,
+  MONEY_HI = 1.3;
 const BINOM_STEPS = 72;
 
 /**
@@ -87,20 +88,28 @@ const MAX_FORWARD_VOL_RATIO = 1.5;
 
 function atmVol(points: SmilePoint[]): number | null {
   for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i], b = points[i + 1];
-    if (a.m <= 1 && b.m >= 1) return b.m === a.m ? a.iv : a.iv + (1 - a.m) / (b.m - a.m) * (b.iv - a.iv);
+    const a = points[i],
+      b = points[i + 1];
+    if (a.m <= 1 && b.m >= 1) return b.m === a.m ? a.iv : a.iv + ((1 - a.m) / (b.m - a.m)) * (b.iv - a.iv);
   }
   return null;
 }
 
 /** Drops implausible term-structure jumps from illiquid settlement marks; the gap is not interpolated over. */
 export function filterForwardVolOutliers(expiries: ExpirySmile[]): { kept: ExpirySmile[]; dropped: string[] } {
-  const kept: ExpirySmile[] = [], dropped: string[] = [];
+  const kept: ExpirySmile[] = [],
+    dropped: string[] = [];
   for (const expiry of [...expiries].sort((a, b) => a.days - b.days)) {
-    const vol = atmVol(expiry.points), previous = kept.at(-1), previousVol = previous ? atmVol(previous.points) : null;
+    const vol = atmVol(expiry.points),
+      previous = kept.at(-1),
+      previousVol = previous ? atmVol(previous.points) : null;
     if (previous && vol != null && previousVol != null && expiry.days > previous.days) {
-      const forwardVariance = (vol * vol * expiry.days - previousVol * previousVol * previous.days) / (expiry.days - previous.days);
-      if (forwardVariance > (MAX_FORWARD_VOL_RATIO * previousVol) ** 2) { dropped.push(expiry.date); continue; }
+      const forwardVariance =
+        (vol * vol * expiry.days - previousVol * previousVol * previous.days) / (expiry.days - previous.days);
+      if (forwardVariance > (MAX_FORWARD_VOL_RATIO * previousVol) ** 2) {
+        dropped.push(expiry.date);
+        continue;
+      }
     }
     kept.push(expiry);
   }
@@ -175,7 +184,7 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
       const anchor = factorAt(inp.curves.usd, inp.evalSec * 1000);
       if (anchor == null) continue;
       discounts = Array.from({ length: BINOM_STEPS + 1 }, (_, i) => {
-        const value = factorAt(inp.curves!.usd, (inp.evalSec + (expSec - inp.evalSec) * i / BINOM_STEPS) * 1000);
+        const value = factorAt(inp.curves!.usd, (inp.evalSec + ((expSec - inp.evalSec) * i) / BINOM_STEPS) * 1000);
         return value == null ? NaN : value / anchor;
       });
       if (discounts.some(d => !Number.isFinite(d))) continue;
@@ -191,7 +200,15 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     // Yüzey ATM'i sarmalı (m=1 kote aralık içinde) — değilse o vade güvenilmez.
     if (points.length >= 3 && points[0].m <= 1 && points[points.length - 1].m >= 1) {
       const date = new Date(expSec * 1000).toISOString().slice(0, 10);
-      expiries.push({ days, date, expiryAt: new Date(expSec * 1000).toISOString(), points, f: F, underlyingId: und, underlyingLastTradeTime: inp.futureExpirations?.get(und) });
+      expiries.push({
+        days,
+        date,
+        expiryAt: new Date(expSec * 1000).toISOString(),
+        points,
+        f: F,
+        underlyingId: und,
+        underlyingLastTradeTime: inp.futureExpirations?.get(und),
+      });
       if (frontF === 0) frontF = F;
     }
   }
@@ -203,7 +220,16 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
   // kullanmaz; yalnız payload'da bilgi amaçlıdır. Gerçek spot Twelve Data/Tiingo'dan ayrıca gelir.
   // Lease is derived from independent factor curves for each requested maturity.
   // Never infer it from option expiries or deduplicate futures by their price.
-  return { symbol, spot: frontF, fetchedISO: inp.fetchedISO, expiries: kept,
-    ...(dropped.length ? { notes: `Vade yapısı tutarsız (forward vol sıçraması) olduğu için yüzeye alınmayan vadeler: ${dropped.join(', ')}.` } : {}),
-    ...(inp.curves ? { curves: inp.curves } : { builtWithR: r }) };
+  return {
+    symbol,
+    spot: frontF,
+    fetchedISO: inp.fetchedISO,
+    expiries: kept,
+    ...(dropped.length
+      ? {
+          notes: `Vade yapısı tutarsız (forward vol sıçraması) olduğu için yüzeye alınmayan vadeler: ${dropped.join(', ')}.`,
+        }
+      : {}),
+    ...(inp.curves ? { curves: inp.curves } : { builtWithR: r }),
+  };
 }

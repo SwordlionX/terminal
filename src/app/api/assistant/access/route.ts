@@ -11,5 +11,10 @@ export async function POST(request: Request) {
     const { code } = JSON.parse(raw);
     if (typeof code !== 'string' || code.length > 200) throw new Error('Erişim kodu geçersiz.');
     return Response.json({ ok: true }, { headers: { 'Set-Cookie': issueCookie(code), 'Cache-Control': 'no-store' } });
-  } catch { return Response.json({ error: 'Erişim sağlanamadı. Kodu kontrol edip daha sonra tekrar deneyin.' }, { status: 401 }); }
+  } catch {
+    return Response.json(
+      { error: 'Erişim sağlanamadı. Kodu kontrol edip daha sonra tekrar deneyin.' },
+      { status: 401 },
+    );
+  }
 }

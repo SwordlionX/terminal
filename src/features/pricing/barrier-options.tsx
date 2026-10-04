@@ -1,18 +1,18 @@
-"use client";
+'use client';
 
-import { useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { priceBarrier, type BarrierOptionsProps, type CalcResult, type LegResult } from "@/lib/pricing/barrier";
+import { useMemo, useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { priceBarrier, type BarrierOptionsProps, type CalcResult, type LegResult } from '@/lib/pricing/barrier';
 
 /** Bariyer yapısı: yön (u/d) + tip (o/i). Call ve put AYNI yapı için birlikte fiyatlanır. */
 const VARIANTS: { value: string; label: string }[] = [
-  { value: "uo", label: "Up & Out (yukarı — değerse ölür)" },
-  { value: "do", label: "Down & Out (aşağı — değerse ölür)" },
-  { value: "ui", label: "Up & In (yukarı — değerse doğar)" },
-  { value: "di", label: "Down & In (aşağı — değerse doğar)" },
+  { value: 'uo', label: 'Up & Out (yukarı — değerse ölür)' },
+  { value: 'do', label: 'Down & Out (aşağı — değerse ölür)' },
+  { value: 'ui', label: 'Up & In (yukarı — değerse doğar)' },
+  { value: 'di', label: 'Down & In (aşağı — değerse doğar)' },
 ];
 
 const fmt = (val: number) =>
@@ -22,8 +22,7 @@ const fmt = (val: number) =>
 const fmtPct = (val: number) =>
   new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(val || 0);
 
-const fmtUsd = (val: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+const fmtUsd = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
 /**
  * Bariyer fiyatlama durumu + hesabı. Girdi paneli (BarrierInputs) ile sonuç paneli
@@ -31,7 +30,14 @@ const fmtUsd = (val: number) =>
  * prim "Prim & Değerleme"nin altında — bu yüzden durum burada ortaklaştırıldı.
  */
 export function useBarrierPricing({
-  spot, strike, tYears, rate, lease, vol, volAtLevel, volModeAtLevel,
+  spot,
+  strike,
+  tYears,
+  rate,
+  lease,
+  vol,
+  volAtLevel,
+  volModeAtLevel,
 }: BarrierOptionsProps) {
   /**
    * Bariyer seviyesi. Kullanıcı bir değer girene kadar null tutulur ve ekranda CANLI
@@ -42,7 +48,7 @@ export function useBarrierPricing({
   const [barrierHRaw, setBarrierH] = useState<number | string | null>(null);
   const barrierH = barrierHRaw ?? Math.round(spot * 1.1 * 100) / 100;
   const [rebateR, setRebateR] = useState<number | string>(0);
-  const [variant, setVariant] = useState<string>("uo");
+  const [variant, setVariant] = useState<string>('uo');
 
   /**
    * HESAPLA ile ONAYLANAN bariyer yapısı. Fiyat bu yapıdan ve CANLI piyasa girdilerinden
@@ -72,9 +78,9 @@ export function useBarrierPricing({
   }, [committed, spot, strike, tYears, rate, lease, vol, volAtLevel, volModeAtLevel]);
 
   /** Kullanıcı formu değiştirdi ama HESAPLA'ya basmadı mı? */
-  const stale = !!committed && (
-    committed.variant !== variant || committed.barrierH !== Number(barrierH) || committed.rebateR !== Number(rebateR)
-  );
+  const stale =
+    !!committed &&
+    (committed.variant !== variant || committed.barrierH !== Number(barrierH) || committed.rebateR !== Number(rebateR));
 
   return { barrierH, setBarrierH, rebateR, setRebateR, variant, setVariant, calcResult, calculate, stale };
 }
@@ -97,12 +103,16 @@ export function BarrierInputs({ state }: { state: BarrierPricing }) {
         <Select
           value={variant}
           items={Object.fromEntries(VARIANTS.map(v => [v.value, v.label]))}
-          onValueChange={(v) => setVariant(v || "uo")}
+          onValueChange={v => setVariant(v || 'uo')}
         >
-          <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             {VARIANTS.map(v => (
-              <SelectItem key={v.value} value={v.value}>{v.label}</SelectItem>
+              <SelectItem key={v.value} value={v.value}>
+                {v.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -145,21 +155,29 @@ export function BarrierInputs({ state }: { state: BarrierPricing }) {
  * tekrarlanmaz.
  */
 export function BarrierResult({
-  state, contractSize = 1, detailed = false,
-}: { state: BarrierPricing; contractSize?: number; detailed?: boolean }) {
+  state,
+  contractSize = 1,
+  detailed = false,
+}: {
+  state: BarrierPricing;
+  contractSize?: number;
+  detailed?: boolean;
+}) {
   const { calcResult, stale } = state;
   if (!calcResult) return null;
 
   const { call, put, inputs } = calcResult;
   const label = VARIANTS.find(v => v.value === inputs.variant)?.label ?? inputs.variant;
-  const pct = (p: number) => inputs.strike > 0 ? (p / inputs.strike) * 100 : 0;
+  const pct = (p: number) => (inputs.strike > 0 ? (p / inputs.strike) * 100 : 0);
   const noSmile = !call.vv || !put.vv;
 
   return (
     <div className="space-y-4">
       <div className="text-sm font-semibold text-zinc-300">
-        Bariyer Değerleme{" "}
-        <span className="font-normal text-zinc-500">· {label} · H {fmt(inputs.barrierH)}</span>
+        Bariyer Değerleme{' '}
+        <span className="font-normal text-zinc-500">
+          · {label} · H {fmt(inputs.barrierH)}
+        </span>
       </div>
 
       {stale && (
@@ -195,17 +213,20 @@ export function BarrierResult({
       {/* Smile uygulanamadıysa bu SESSİZ GEÇİLMEZ: fiyat skew düzeltmesi olmadan üretilmiştir. */}
       {calcResult.smileModes.includes('extrapolated') && (
         <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
-          Bariyer hesabının yardımcı smile noktalarında SSVI uzatması kullanıldı. Seçili strike kote aralıkta olsa bile bu sonuç model kanadına dayanabilir; piyasa kotasyonu değildir.
+          Bariyer hesabının yardımcı smile noktalarında SSVI uzatması kullanıldı. Seçili strike kote aralıkta olsa bile
+          bu sonuç model kanadına dayanabilir; piyasa kotasyonu değildir.
         </p>
       )}
       {!calcResult.smileModes.includes('extrapolated') && calcResult.smileModes.includes('model') && (
-        <p className="text-xs text-muted-foreground">Bariyer hesabının yardımcı smile noktalarında SSVI uyumu kullanıldı.</p>
+        <p className="text-xs text-muted-foreground">
+          Bariyer hesabının yardımcı smile noktalarında SSVI uyumu kullanıldı.
+        </p>
       )}
       {noSmile && (
         <div className="rounded-md border border-amber-700/40 bg-amber-950/20 px-3 py-2">
           <p className="text-[11px] text-amber-300/90">
-            Smile verisi yok / kolonlar kote aralığın dışında — düz tek-vol Black-Scholes
-            kullanıldı. Bariyerli opsiyonda skew düzeltmesi uygulanamadı.
+            Smile verisi yok / kolonlar kote aralığın dışında — düz tek-vol Black-Scholes kullanıldı. Bariyerli
+            opsiyonda skew düzeltmesi uygulanamadı.
           </p>
         </div>
       )}
@@ -225,7 +246,12 @@ export function BarrierResult({
           ekranında kart sade tutulur — orada istenen tek şey prim. */}
       {detailed && (
         <div className="space-y-4 pt-2 border-t border-zinc-800">
-          {([['Call', call], ['Put', put]] as [string, LegResult][]).map(([name, leg]) => (
+          {(
+            [
+              ['Call', call],
+              ['Put', put],
+            ] as [string, LegResult][]
+          ).map(([name, leg]) => (
             <div key={name} className="space-y-2">
               <div className="text-xs uppercase tracking-wider text-zinc-500">{name}</div>
               {leg.vv && (
@@ -236,7 +262,9 @@ export function BarrierResult({
                   </div>
                   <div className="flex justify-between text-xs font-mono text-zinc-400">
                     <span>smile düzeltmesi (Vanna-Volga)</span>
-                    <span>{leg.vv.correction >= 0 ? "+" : "−"}${fmt(Math.abs(leg.vv.correction))}</span>
+                    <span>
+                      {leg.vv.correction >= 0 ? '+' : '−'}${fmt(Math.abs(leg.vv.correction))}
+                    </span>
                   </div>
                   <div className="flex justify-between text-[11px] font-mono text-zinc-500">
                     <span>bariyere değmeme olasılığı</span>

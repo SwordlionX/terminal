@@ -1,9 +1,9 @@
-import { MarginEngine, MarginResult, TradePosition, CollateralAsset } from "@/lib/margin/engine";
-import { collateralRepository } from "@/repositories/collateral.repository";
-import { db } from "@/services/mockDb";
-import { getSpot, getUsdTryRate } from "@/services/market.service";
-import { Trade } from "@/types";
-import { CollateralItem } from "@/types/collateral";
+import { MarginEngine, MarginResult, TradePosition, CollateralAsset } from '@/lib/margin/engine';
+import { collateralRepository } from '@/repositories/collateral.repository';
+import { db } from '@/services/mockDb';
+import { getSpot, getUsdTryRate } from '@/services/market.service';
+import { Trade } from '@/types';
+import { CollateralItem } from '@/types/collateral';
 
 /**
  * Teminatı canlı USD değerine getirir. Teminat tipleri yalnızca USD / XAU / XAG:
@@ -13,22 +13,30 @@ import { CollateralItem } from "@/types/collateral";
  * Böylece gerekli teminat (canlı intrinsic zarar) ile mevcut teminat aynı anlıklıkta olur.
  */
 export async function revalueCollaterals(items: CollateralItem[]): Promise<CollateralItem[]> {
-  const metals = [...new Set(
-    items.map(i => i.currency.toUpperCase()).filter(c => c === 'XAU' || c === 'XAG')
-  )];
-  const spotMap: Record<string, number> = {}, valuationWarnings: Record<string, string | undefined> = {};
-  await Promise.all(metals.map(async (m) => {
-    const live = await getSpot(m);
-    if (live?.price) spotMap[m] = live.price;
-    valuationWarnings[m] = !live?.price ? 'Metal teminat fiyatı alınamadı; kayıtlı teminat değeri kullanıldı.'
-      : live.stale || !live.quoteAt || Date.now() - live.quoteAt > 86400000 ? 'Metal teminatın spot gözlemi eski veya tarihi doğrulanamıyor.' : undefined;
-  }));
+  const metals = [...new Set(items.map(i => i.currency.toUpperCase()).filter(c => c === 'XAU' || c === 'XAG'))];
+  const spotMap: Record<string, number> = {},
+    valuationWarnings: Record<string, string | undefined> = {};
+  await Promise.all(
+    metals.map(async m => {
+      const live = await getSpot(m);
+      if (live?.price) spotMap[m] = live.price;
+      valuationWarnings[m] = !live?.price
+        ? 'Metal teminat fiyatı alınamadı; kayıtlı teminat değeri kullanıldı.'
+        : live.stale || !live.quoteAt || Date.now() - live.quoteAt > 86400000
+          ? 'Metal teminatın spot gözlemi eski veya tarihi doğrulanamıyor.'
+          : undefined;
+    }),
+  );
 
   return items.map(i => {
     const cur = i.currency.toUpperCase();
     if (cur === 'USD') return { ...i, marketValueUsd: i.nominalQuantity };
     if (cur === 'XAU' || cur === 'XAG') {
-      return { ...i, marketValueUsd: spotMap[cur] ? i.nominalQuantity * spotMap[cur] : i.marketValueUsd, valuationWarning: valuationWarnings[cur] };
+      return {
+        ...i,
+        marketValueUsd: spotMap[cur] ? i.nominalQuantity * spotMap[cur] : i.marketValueUsd,
+        valuationWarning: valuationWarnings[cur],
+      };
     }
     return i; // beklenmeyen tip — dokunma, snapshot kalsın
   });
@@ -54,7 +62,7 @@ export interface TradeCollateral {
   customerId: string;
   currentSpot: number;
   spotIsLive: boolean;
-  intrinsicLoss: number;   // canlı spota göre müşteri aleyhine BRÜT intrinsic zarar (prim hariç)
+  intrinsicLoss: number; // canlı spota göre müşteri aleyhine BRÜT intrinsic zarar (prim hariç)
 }
 
 /**
@@ -65,15 +73,23 @@ export interface TradeCollateral {
 async function buildTradeCollaterals(trades: Trade[]): Promise<TradeCollateral[]> {
   const open = trades.filter(t => t.status === 'Open' || t.status === 'Near Expiry');
   const products = [...new Set(open.map(t => t.underlying.toUpperCase()))];
-  const spotMap: Record<string, number> = {}, warningMap: Record<string, string | undefined> = {};
-  await Promise.all(products.map(async (p) => {
-    const live = await getSpot(p);
-    spotMap[p] = live?.price ?? 0; // 0 ise aşağıda giriş spotuna düşülür
-    warningMap[p] = !live?.price ? 'Spot alınamadı; giriş spotu kullanıldı. Risk durumu güncel veriyle doğrulanmalı.'
-      : live.stale ? 'Eski spot kaydı kullanılıyor; risk durumu güncel veriyle doğrulanmalı.'
-      : live.quoteAt && Date.now() - live.quoteAt > 86400000 ? 'Spot gözlemi 24 saatten eski; veri tarihi kontrol edilmeli.'
-      : !live.quoteAt ? 'Spotun piyasa gözlem zamanı doğrulanamıyor; kayıt okuma zamanı canlılığı kanıtlamaz.' : undefined;
-  }));
+  const spotMap: Record<string, number> = {},
+    warningMap: Record<string, string | undefined> = {};
+  await Promise.all(
+    products.map(async p => {
+      const live = await getSpot(p);
+      spotMap[p] = live?.price ?? 0; // 0 ise aşağıda giriş spotuna düşülür
+      warningMap[p] = !live?.price
+        ? 'Spot alınamadı; giriş spotu kullanıldı. Risk durumu güncel veriyle doğrulanmalı.'
+        : live.stale
+          ? 'Eski spot kaydı kullanılıyor; risk durumu güncel veriyle doğrulanmalı.'
+          : live.quoteAt && Date.now() - live.quoteAt > 86400000
+            ? 'Spot gözlemi 24 saatten eski; veri tarihi kontrol edilmeli.'
+            : !live.quoteAt
+              ? 'Spotun piyasa gözlem zamanı doğrulanamıyor; kayıt okuma zamanı canlılığı kanıtlamaz.'
+              : undefined;
+    }),
+  );
 
   return open.map(t => {
     const prod = t.underlying.toUpperCase();
@@ -97,7 +113,7 @@ export class MarginService {
    * usdTryRate verilmezse Ayarlar sayfasından kaydedilen (kv tablosundaki) kalıcı kur kullanılır.
    */
   async evaluateCustomerMargin(customerId: string, usdTryRate?: number): Promise<MarginResult> {
-    const rate = usdTryRate ?? await getUsdTryRate();
+    const rate = usdTryRate ?? (await getUsdTryRate());
     const trades = await db.trades.findByCustomerId(customerId);
     const collateralItems = await revalueCollaterals(await collateralRepository.findByCustomerId(customerId));
     const tradeCollaterals = await buildTradeCollaterals(trades);
@@ -118,11 +134,16 @@ export class MarginService {
       assetCode: c.assetCode,
       currency: c.currency,
       marketValueUsd: c.marketValueUsd,
-      haircut: c.haircut
+      haircut: c.haircut,
     }));
 
     const margin = MarginEngine.calculatePortfolioMargin(positions, collaterals, rate);
-    const warnings = [...new Set([...tradeCollaterals.flatMap(t => t.dataWarning ? [t.dataWarning] : []), ...collateralItems.flatMap(c => c.valuationWarning ? [c.valuationWarning] : [])])];
+    const warnings = [
+      ...new Set([
+        ...tradeCollaterals.flatMap(t => (t.dataWarning ? [t.dataWarning] : [])),
+        ...collateralItems.flatMap(c => (c.valuationWarning ? [c.valuationWarning] : [])),
+      ]),
+    ];
     return { ...margin, ...(warnings.length ? { dataWarning: warnings.join(' ') } : {}) };
   }
 
@@ -132,13 +153,19 @@ export class MarginService {
    * için kullanılır (her müşteride ayrı ayrı DB'ye gidilmez).
    */
   async evaluateAllCustomers(usdTryRate?: number) {
-    const rate = usdTryRate ?? await getUsdTryRate();
+    const rate = usdTryRate ?? (await getUsdTryRate());
     const [customers, trades, rawCollateral] = await Promise.all([
-      db.customers.findMany(), db.trades.findMany(), collateralRepository.findAll(),
+      db.customers.findMany(),
+      db.trades.findMany(),
+      collateralRepository.findAll(),
     ]);
-    const [tradeValues, collaterals] = await Promise.all([buildTradeCollaterals(trades), revalueCollaterals(rawCollateral)]);
+    const [tradeValues, collaterals] = await Promise.all([
+      buildTradeCollaterals(trades),
+      revalueCollaterals(rawCollateral),
+    ]);
     const lossByTrade = new Map(tradeValues.map(t => [t.tradeId, t.intrinsicLoss]));
-    const positionsByCustomer = new Map<string, TradePosition[]>(), collateralByCustomer = new Map<string, CollateralAsset[]>();
+    const positionsByCustomer = new Map<string, TradePosition[]>(),
+      collateralByCustomer = new Map<string, CollateralAsset[]>();
     for (const t of trades) {
       if (t.status !== 'Open' && t.status !== 'Near Expiry') continue;
       const positions = positionsByCustomer.get(t.customerId) ?? [];
@@ -147,12 +174,29 @@ export class MarginService {
     }
     for (const c of collaterals) {
       const items = collateralByCustomer.get(c.customerId) ?? [];
-      items.push({ id: c.id, assetCode: c.assetCode, currency: c.currency, marketValueUsd: c.marketValueUsd, haircut: c.haircut });
+      items.push({
+        id: c.id,
+        assetCode: c.assetCode,
+        currency: c.currency,
+        marketValueUsd: c.marketValueUsd,
+        haircut: c.haircut,
+      });
       collateralByCustomer.set(c.customerId, items);
     }
     return customers.map(customer => {
-      const warnings = [...new Set([...tradeValues.filter(t => t.customerId === customer.id).flatMap(t => t.dataWarning ? [t.dataWarning] : []), ...collaterals.filter(c => c.customerId === customer.id).flatMap(c => c.valuationWarning ? [c.valuationWarning] : [])])];
-      const margin = MarginEngine.calculatePortfolioMargin(positionsByCustomer.get(customer.id) ?? [], collateralByCustomer.get(customer.id) ?? [], rate);
+      const warnings = [
+        ...new Set([
+          ...tradeValues.filter(t => t.customerId === customer.id).flatMap(t => (t.dataWarning ? [t.dataWarning] : [])),
+          ...collaterals
+            .filter(c => c.customerId === customer.id)
+            .flatMap(c => (c.valuationWarning ? [c.valuationWarning] : [])),
+        ]),
+      ];
+      const margin = MarginEngine.calculatePortfolioMargin(
+        positionsByCustomer.get(customer.id) ?? [],
+        collateralByCustomer.get(customer.id) ?? [],
+        rate,
+      );
       return { customer, margin: { ...margin, ...(warnings.length ? { dataWarning: warnings.join(' ') } : {}) } };
     });
   }

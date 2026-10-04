@@ -24,16 +24,12 @@ export function mergeMarketFeed<TSurface>(
 ): MarketFeedSnapshot<TSurface> {
   const sameProduct = previous?.product === incoming.product;
   const sameSurfaceSource = sameProduct && previous?.surfaceSource === incoming.surfaceSource;
-  const spot = incoming.spot
-    ? incoming.spot
-    : sameProduct && previous?.spot
-      ? { ...previous.spot, stale: true }
-      : null;
-  const surface = incoming.surface ?? (sameSurfaceSource ? previous?.surface ?? null : null);
+  const spot = incoming.spot ? incoming.spot : sameProduct && previous?.spot ? { ...previous.spot, stale: true } : null;
+  const surface = incoming.surface ?? (sameSurfaceSource ? (previous?.surface ?? null) : null);
   const snapshotISO = incoming.surface
     ? incoming.snapshotISO
     : surface && sameSurfaceSource
-      ? previous?.snapshotISO ?? incoming.snapshotISO
+      ? (previous?.snapshotISO ?? incoming.snapshotISO)
       : incoming.snapshotISO;
   return { ...incoming, spot, surface, snapshotISO };
 }

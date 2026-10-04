@@ -142,9 +142,7 @@ const isCall = (t: StockTradeType) => t === 'call_buy' || t === 'call_sell';
 const isWriter = (t: StockTradeType) => t === 'call_sell' || t === 'put_sell';
 
 export function normalizeStockTradeType(v: unknown): StockTradeType | null {
-  return typeof v === 'string' && (STOCK_TRADE_TYPES as string[]).includes(v)
-    ? (v as StockTradeType)
-    : null;
+  return typeof v === 'string' && (STOCK_TRADE_TYPES as string[]).includes(v) ? (v as StockTradeType) : null;
 }
 
 /**

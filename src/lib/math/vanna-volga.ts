@@ -25,28 +25,40 @@ import { barrierPrice } from './barrier';
 /** Ters normal CDF (Acklam rasyonel yaklaşımı, |hata| ~1e-9). */
 function normInv(p: number): number {
   if (p <= 0 || p >= 1) return NaN;
-  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
-             1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
-  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
-             6.680131188771972e+01, -1.328068155288572e+01];
-  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
-             -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
-  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
-             3.754408661907416e+00];
-  const pl = 0.02425, ph = 1 - pl;
+  const a = [
+    -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1,
+    2.506628277459239,
+  ];
+  const b = [
+    -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1,
+  ];
+  const c = [
+    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734, 4.374664141464968,
+    2.938163982698783,
+  ];
+  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416];
+  const pl = 0.02425,
+    ph = 1 - pl;
   if (p < pl) {
     const q = Math.sqrt(-2 * Math.log(p));
-    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-           ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    return (
+      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
   }
   if (p > ph) {
     const q = Math.sqrt(-2 * Math.log(1 - p));
-    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    return (
+      -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
   }
-  const q = p - 0.5, r = q * q;
-  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
-         (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  const q = p - 0.5,
+    r = q * q;
+  return (
+    ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
+    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+  );
 }
 
 /** Vanilya vega / vanna / volga (ham birimler — ölçeklenmemiş). */
@@ -54,36 +66,50 @@ function vanillaRiskes(S: number, K: number, T: number, r: number, q: number, v:
   const g = gk(S, K, T, r, q, v);
   const { d1, d2, dfQ, nd1 } = g;
   const vega = S * dfQ * nd1 * Math.sqrt(T);
-  return { vega, vanna: -dfQ * nd1 * d2 / v, volga: vega * d1 * d2 / v };
+  return { vega, vanna: (-dfQ * nd1 * d2) / v, volga: (vega * d1 * d2) / v };
 }
 
 /**
  * Verilen deltaya sahip strike (mutlak delta, ör. 0.25). type='c' call, 'p' put.
  * d1'den ters çözülür: K = S·exp(−d1·σ√T + (r−q+σ²/2)T)
  */
-function strikeFromDelta(S: number, T: number, r: number, q: number, v: number,
-                         absDelta: number, type: 'c' | 'p'): number {
+function strikeFromDelta(
+  S: number,
+  T: number,
+  r: number,
+  q: number,
+  v: number,
+  absDelta: number,
+  type: 'c' | 'p',
+): number {
   const dfQ = Math.exp(-q * T);
   // call: Δ = e^{-qT} N(d1) ; put: Δ = e^{-qT}(N(d1) − 1)
   const nd1 = type === 'c' ? absDelta / dfQ : 1 - absDelta / dfQ;
   if (!(nd1 > 0 && nd1 < 1)) return NaN;
   const d1 = normInv(nd1);
-  return S * Math.exp(-d1 * v * Math.sqrt(T) + (r - q + v * v / 2) * T);
+  return S * Math.exp(-d1 * v * Math.sqrt(T) + (r - q + (v * v) / 2) * T);
 }
 
 /**
  * Hayatta kalma olasılığı — bariyere vade boyunca HİÇ değmeme olasılığı (sürekli izleme).
  * Yansıma ilkesi (reflection principle) kapalı formu; risk-nötr ölçüde.
  */
-export function survivalProbability(S: number, H: number, T: number, r: number, q: number,
-                                    v: number, isUp: boolean): number {
+export function survivalProbability(
+  S: number,
+  H: number,
+  T: number,
+  r: number,
+  q: number,
+  v: number,
+  isUp: boolean,
+): number {
   if (T <= 0 || v <= 0 || S <= 0 || H <= 0) return 0;
   if (isUp && S >= H) return 0;
   if (!isUp && S <= H) return 0;
-  const nu = r - q - v * v / 2;
+  const nu = r - q - (v * v) / 2;
   const sT = v * Math.sqrt(T);
   const h = Math.log(H / S);
-  const pow = Math.exp(2 * nu * h / (v * v));
+  const pow = Math.exp((2 * nu * h) / (v * v));
   // gk.ts'teki normCDF kullanılıyor. Burada eskiden yerel bir erf yaklaşımı vardı
   // (Abramowitz-Stegun 7.1.26, |hata| ~1.5e-7); gk'nınki (Hart/West) çok daha hassas ve
   // fiyatlamanın geri kalanı zaten onu kullanıyor — iki farklı normal CDF tutmanın anlamı yok.
@@ -111,10 +137,10 @@ function solve3(A: number[][], b: number[]): number[] | null {
 }
 
 export interface VVResult {
-  price: number;        // Vanna-Volga düzeltilmiş fiyat
-  bsPrice: number;      // düz ATM vol ile Black-Scholes fiyatı
-  correction: number;   // uygulanan düzeltme (p ile ölçeklenmiş)
-  survival: number;     // hayatta kalma olasılığı
+  price: number; // Vanna-Volga düzeltilmiş fiyat
+  bsPrice: number; // düz ATM vol ile Black-Scholes fiyatı
+  correction: number; // uygulanan düzeltme (p ile ölçeklenmiş)
+  survival: number; // hayatta kalma olasılığı
   atmVol: number;
   pillars: { K: number; vol: number }[]; // 25Δput / ATM / 25Δcall
 }
@@ -126,8 +152,15 @@ export interface VVResult {
  * düz BS'e düşer.
  */
 export function vannaVolgaBarrier(
-  S: number, K: number, H: number, R: number, T: number, r: number, q: number,
-  code: string, smileVol: (strike: number) => number | null,
+  S: number,
+  K: number,
+  H: number,
+  R: number,
+  T: number,
+  r: number,
+  q: number,
+  code: string,
+  smileVol: (strike: number) => number | null,
 ): VVResult | null {
   if (!(T > 0) || !(S > 0)) return null;
   const F = S * Math.exp((r - q) * T);
@@ -186,13 +219,14 @@ export function vannaVolgaBarrier(
   }
 
   // Egzotiğin vega/vanna/volga'sı (sonlu fark)
-  const dv = 0.005, dS = S * 0.002;
+  const dv = 0.005,
+    dS = S * 0.002;
   const P = (s: number, v: number) => barrierPrice(s, K, H, R, T, r, q, v, code);
   const p0 = P(S, atmVol);
   const vegaX = (P(S, atmVol + dv) - P(S, atmVol - dv)) / (2 * dv);
   const volgaX = (P(S, atmVol + dv) - 2 * p0 + P(S, atmVol - dv)) / (dv * dv);
-  const vannaX = (P(S + dS, atmVol + dv) - P(S + dS, atmVol - dv)
-                - P(S - dS, atmVol + dv) + P(S - dS, atmVol - dv)) / (4 * dS * dv);
+  const vannaX =
+    (P(S + dS, atmVol + dv) - P(S + dS, atmVol - dv) - P(S - dS, atmVol + dv) + P(S - dS, atmVol - dv)) / (4 * dS * dv);
 
   // Üç vanilyanın riskleri (hepsi ATM vol ile)
   const risks = pillars.map(p => vanillaRiskes(S, p.K, T, r, q, atmVol));
@@ -220,7 +254,10 @@ export function vannaVolgaBarrier(
 
   return {
     price: Math.max(p0 + correction, 0),
-    bsPrice: p0, correction, survival: surv, atmVol,
+    bsPrice: p0,
+    correction,
+    survival: surv,
+    atmVol,
     pillars: pillars.map((p, i) => ({ K: p.K, vol: vols[i] })),
   };
 }

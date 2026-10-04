@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import * as React from "react";
-import { createPortal } from "react-dom";
-import { Info } from "lucide-react";
-import { cn } from "@/lib/utils";
+import * as React from 'react';
+import { createPortal } from 'react-dom';
+import { Info } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /**
  * Küçük "i" bilgi baloncuğu — TIKLAMAYLA açılır/kapanır, sabit bir açıklama gösterir.
@@ -51,17 +51,19 @@ export function InfoHint({
       if (triggerRef.current?.contains(t) || bubbleRef.current?.contains(t)) return;
       setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
     const onMove = () => setOpen(false); // kaydırma/yeniden boyutlandırmada konum bozulmasın
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", onMove, true);
-    window.addEventListener("resize", onMove);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
     return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onMove, true);
-      window.removeEventListener("resize", onMove);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
     };
   }, [open, place]);
 
@@ -74,26 +76,35 @@ export function InfoHint({
         aria-expanded={open}
         onClick={() => setOpen(v => !v)}
         className={cn(
-          "inline-flex items-center justify-center align-middle text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:text-zinc-300 focus-visible:outline-none",
-          open && "text-zinc-200",
+          'inline-flex items-center justify-center align-middle text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:text-zinc-300 focus-visible:outline-none',
+          open && 'text-zinc-200',
           className,
         )}
       >
         <Info className="size-3.5" />
       </button>
 
-      {open && pos && typeof document !== "undefined" && createPortal(
-        <div
-          ref={bubbleRef}
-          role="tooltip"
-          data-slot="info-hint"
-          style={{ position: "fixed", top: pos.top, left: pos.left, width: BUBBLE_W, transform: "translateY(-100%) translateY(-8px)" }}
-          className="z-[100] rounded-md bg-zinc-100 px-3 py-2 text-xs leading-relaxed text-zinc-900 shadow-lg ring-1 ring-black/10 dark:bg-zinc-50"
-        >
-          {text}
-        </div>,
-        document.body,
-      )}
+      {open &&
+        pos &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            ref={bubbleRef}
+            role="tooltip"
+            data-slot="info-hint"
+            style={{
+              position: 'fixed',
+              top: pos.top,
+              left: pos.left,
+              width: BUBBLE_W,
+              transform: 'translateY(-100%) translateY(-8px)',
+            }}
+            className="z-[100] rounded-md bg-zinc-100 px-3 py-2 text-xs leading-relaxed text-zinc-900 shadow-lg ring-1 ring-black/10 dark:bg-zinc-50"
+          >
+            {text}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

@@ -33,6 +33,8 @@ export async function GET(request: Request) {
     surfaceSource: surfaceRes.surface ? 'cme' : null,
     snapshotISO: surfaceRes.surface?.fetchedISO ?? null,
     dataError: surfaceRes.dataError,
-    rateNote: surfaceRes.surface?.curves ? `Vade bazlı CME/SOFR endikatif proxy · ${surfaceRes.surface.curves.id.slice(0, 12)} · Manuel faiz kullanılmaz.` : null,
+    rateNote: surfaceRes.surface?.curves
+      ? `Vade bazlı CME/SOFR endikatif proxy · ${surfaceRes.surface.curves.id.slice(0, 12)} · Manuel faiz kullanılmaz.`
+      : null,
   });
 }

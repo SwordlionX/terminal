@@ -1,8 +1,12 @@
 /** Terminal display formats: Turkish numbers, "USD"/"TL" suffixes, %-prefix and DD.MM.YYYY dates. */
-export const formatNumber = (n: number, digits = 2) => Number.isFinite(n) ? n.toLocaleString('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '—';
+export const formatNumber = (n: number, digits = 2) =>
+  Number.isFinite(n)
+    ? n.toLocaleString('tr-TR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    : '—';
 export const formatMoney = (n: number, digits = 2) => `${formatNumber(n, digits)} USD`;
 /** Percent points (5 → "%5,00"); the sign leads the percent sign ("-%0,39"). */
-export const formatPercent = (n: number, digits = 2) => Number.isFinite(n) ? `${n < 0 ? '-' : ''}%${formatNumber(Math.abs(n), digits)}` : '—';
+export const formatPercent = (n: number, digits = 2) =>
+  Number.isFinite(n) ? `${n < 0 ? '-' : ''}%${formatNumber(Math.abs(n), digits)}` : '—';
 
 /** YYYY-MM-DD (or an ISO timestamp's calendar day) as DD.MM.YYYY, without time-zone shifts. */
 export function formatDate(value: string | null | undefined): string {
@@ -16,5 +20,12 @@ export function formatDate(value: string | null | undefined): string {
 export function formatDateTime(value: number | string | null | undefined): string {
   const at = typeof value === 'string' ? Date.parse(value) : value;
   if (at == null || !Number.isFinite(at)) return '—';
-  return new Date(at).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(at).toLocaleString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }

@@ -7,28 +7,26 @@
  */
 export function parseNumberInput(raw: string): number | null {
   const text = raw.trim();
-  if (text === "") return null;
+  if (text === '') return null;
 
   const exponentMatch = text.match(/([eE][+-]?\d+)$/);
   const mantissa = exponentMatch ? text.slice(0, -exponentMatch[0].length) : text;
-  const exponent = exponentMatch?.[0] ?? "";
+  const exponent = exponentMatch?.[0] ?? '';
   if (/[eE]/.test(mantissa)) return null;
 
   let normalized: string;
-  if (mantissa.includes(",")) {
-    const commaParts = mantissa.split(",");
+  if (mantissa.includes(',')) {
+    const commaParts = mantissa.split(',');
     if (commaParts.length !== 2) return null;
     const [integer, fraction] = commaParts;
-    if (fraction === "" || !/^\d+$/.test(fraction)) return null;
+    if (fraction === '' || !/^\d+$/.test(fraction)) return null;
 
-    const unsignedInteger = integer.replace(/^[+-]/, "");
+    const unsignedInteger = integer.replace(/^[+-]/, '');
     const sign = integer.slice(0, integer.length - unsignedInteger.length);
     const validInteger =
-      unsignedInteger === "" ||
-      /^\d+$/.test(unsignedInteger) ||
-      /^\d{1,3}(?:\.\d{3})+$/.test(unsignedInteger);
+      unsignedInteger === '' || /^\d+$/.test(unsignedInteger) || /^\d{1,3}(?:\.\d{3})+$/.test(unsignedInteger);
     if (!validInteger) return null;
-    normalized = `${sign}${unsignedInteger.replace(/\./g, "") || "0"}.${fraction}`;
+    normalized = `${sign}${unsignedInteger.replace(/\./g, '') || '0'}.${fraction}`;
   } else {
     if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(mantissa)) return null;
     normalized = mantissa;
