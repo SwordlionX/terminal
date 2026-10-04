@@ -482,6 +482,20 @@ test('selected barrier context is validated and cannot silently produce a vanill
   assert.equal(separate.quote.barrier, undefined);
 });
 
+test('target premium request solves missing strike and ignores the unrelated open silver ticket', async () => {
+  const artifacts = [], reads = [];
+  const execute = createToolExecutor({ ...context, product: 'XAG', strike: 999, contractSize: 250, manualVol: true }, 'Altın için müşteri 10 ons put satsın. 1 Nisan 2026 vadesine toplam 50 USD prim veren opsiyon bul.', {
+    market: async product => { reads.push(product); return market; }, artifact: a => artifacts.push(a),
+    research: async () => { throw new Error('Not used'); }, signal: new AbortController().signal,
+  });
+  const option = { product: 'XAU', type: 'Put', position: 'Short', contractSize: 10, expiryDate: '2026-04-01', tradeDate: '2026-01-01', basis: 365 };
+  const result = await execute('find_options', { option, target: 50, unit: 'total_usd', minStrike: 80, maxStrike: 120 });
+  assert.equal(result.reached, true); assert.deepEqual(reads, ['XAU']); assert.equal(artifacts.length, 1);
+  const found = result.candidates[0].quote;
+  assert.equal(found.product, 'XAU'); assert.equal(found.inputs.contractSize, 10); assert.notEqual(found.inputs.strike, 999);
+  assert.ok(Math.abs(found.premiumTotal - 50) <= result.tolerance);
+});
+
 test('selected-ticket pricing preserves the complete barrier ticket without model arguments', async () => {
   const screen = { ...context, type: 'Put', position: 'Short', barrier: { variant: 'do', level: 80, rebate: 0 } };
   const artifacts = []; let reads = 0;

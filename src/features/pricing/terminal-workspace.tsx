@@ -56,15 +56,16 @@ export function TerminalWorkspace() {
   }, [feed.spot, setBarrier]);
   const pricing = useMemo(() => {
     try {
-      if (feed.loading) return { quote: null, error: 'Terminal verisi yükleniyor…' };
+      if (feed.loading) return { quotes: null, error: 'Terminal verisi yükleniyor…' };
       const market: MarketSnapshot = { product: md.product as Product, spot: feed.spot?.price ?? null,
         spotAt: feed.spot ? new Date(feed.spot.quoteAt ?? feed.spot.at).toISOString() : null, spotSource: feed.spot?.source ?? '',
         spotStale: feed.spot?.stale, surface: feed.surface, surfaceSource: feed.surfaceSource };
-      const quote = quoteOption({ type, position, strike: md.strike, expiryDate: md.expiryDate, contractSize: md.contractSize, ...(barrier ? { barrier } : {}) }, { ...md, product: md.product as Product } as ScreenContext, market);
-      return { quote, error: null };
-    } catch (e) { return { quote: null, error: e instanceof Error ? e.message : 'Fiyatlama yapılamadı.' }; }
-  }, [md, feed, type, position, barrier]);
-  const q = pricing.quote, unit = ['XAU', 'XAG'].includes(md.product) ? 'ons' : 'adet';
+      const terms = { position, strike: md.strike, expiryDate: md.expiryDate, contractSize: md.contractSize, ...(barrier ? { barrier } : {}) };
+      const screen = { ...md, product: md.product as Product } as ScreenContext;
+      return { quotes: { Call: quoteOption({ ...terms, type: 'Call' }, screen, market), Put: quoteOption({ ...terms, type: 'Put' }, screen, market) }, error: null };
+    } catch (e) { return { quotes: null, error: e instanceof Error ? e.message : 'Fiyatlama yapılamadı.' }; }
+  }, [md, feed, position, barrier]);
+  const q = pricing.quotes?.[type] ?? null, unit = ['XAU', 'XAG'].includes(md.product) ? 'ons' : 'adet';
   const days = q ? (Date.parse(q.inputs.expiryDate) - Date.parse(q.inputs.tradeDate)) / 86400000 : 0;
   const fwd = q?.forward ?? (q ? q.inputs.spot * Math.exp((q.inputs.rate - q.inputs.lease) / 100 * days / q.inputs.basis) : 0);
   const limits = q && !q.barrier ? expiryPayoffLimits([q], [q.premiumPerUnit]) : null;
@@ -82,7 +83,16 @@ export function TerminalWorkspace() {
     {(md.manualSpot || md.manualVol) && <button className="desk-button" onClick={() => { md.setField('manualSpot', false); md.setField('manualVol', false); }}>Otomatik kaynağa dön</button>}
   </section>;
   const quote = <section className="desk-quote analysis-panel"><div className="analysis-panel-head"><p className="desk-eyebrow">{md.product} / MÜŞTERİ {position === 'Short' ? 'SATIŞI' : 'ALIŞI'} / {type.toUpperCase()}{barrier ? ' / BARİYER' : ''}</p><span className="desk-tag">ENDİKATİF</span></div>
-    <div className="desk-quote-values"><div><p>Müşterinin {position === 'Short' ? 'alacağı' : 'ödeyeceği'} toplam prim</p><strong>{q ? analysisNumber(q.premiumTotal) : '—'}<small> USD</small></strong><span>{q ? analysisNumber(q.premiumPerUnit, 4) : '—'} USD / {unit}</span></div><div><p>Spot nominalinin yüzdesi</p><strong>{q ? analysisNumber(q.premiumPctSpot) : '—'}<small> %</small></strong><span>Spot × miktar üzerinden</span></div></div>
+    <p className="desk-muted">Müşterinin {position === 'Short' ? 'alacağı' : 'ödeyeceği'} toplam prim</p>
+    <div className="desk-option-comparison">{(['Call', 'Put'] as const).map(optionType => {
+      const result = pricing.quotes?.[optionType];
+      return <button key={optionType} className="desk-option-quote" aria-label={`${optionType} fiyatını seç`} aria-pressed={type === optionType} onClick={() => setType(optionType)}>
+        <span className="desk-option-label">{optionType.toUpperCase()}<small>{type === optionType ? 'SEÇİLİ' : 'SEÇ'}</small></span>
+        <span className="desk-option-premiums"><strong>{result ? analysisNumber(result.premiumTotal) : '—'}<small> USD</small></strong><strong>{result ? analysisNumber(result.premiumPctSpot) : '—'}<small> %</small></strong></span>
+        <span className="desk-option-unit">{result ? analysisNumber(result.premiumPerUnit, 4) : '—'} USD / {unit} · % spot nominali</span>
+      </button>;
+    })}</div>
+    <p className="desk-muted">Risk ve kayıt: seçili {type} işlemi</p>
     {pricing.error && <p role="status" className="desk-policy">{pricing.error}</p>}
     <div className="desk-market-facts"><div><span>Terminal spotu</span><strong>{feed.spot ? analysisNumber(feed.spot.price) : '—'}</strong></div><div><span>Model forward</span><strong>{q ? analysisNumber(fwd) : '—'}</strong></div><div><span>Smile IV</span><strong>{q ? '%' + analysisNumber(q.effectiveVol) : '—'}</strong></div><div><span>Yüzey tarihi</span><strong>{feed.surface?.fetchedISO.slice(0, 10) ?? 'Veri yok'}</strong></div></div>
     {q && feed.surface?.curves && <p className="desk-muted">Seçili vade · USD faiz %{analysisNumber(q.inputs.rate * q.inputs.basis / 365, 4)} · Metal taşıması (proxy) %{analysisNumber(q.inputs.lease * q.inputs.basis / 365, 4)} · Sürekli yıllık oran / ACT {q.inputs.basis}</p>}

@@ -28,6 +28,8 @@ Bloomberg: grafit/siyah, amber sayılar, ince çizgiler, dikdörtgen kontroller.
 
 Faiz/taşıma/IV onaylanan **endikatif CME/SOFR proxy** paketinden gelir. Banka OIS veya metal kira kotasyonu iddiası yok; ayrıntılar `PRICING_CURVE_PROXY.md` içinde. Yapay sıfır/eski MTM yerine eksik sonuç ve gerekçesi gösterilir.
 
+Call ve put fiyatları ana fiyatlamada aynı koşullarla yan yanadır; seçilen kart risk ve kayıt işlemlerini belirler. Pozisyon ve müşteri işlemleri bugünkü eğriden prim hariç müşteri pozisyon değerini ve tarihî giriş primi dahil gerçekleşmemiş K/Z'yi gösterir. Müşteri özeti açık işlemlerin K/Z toplamını verir; eksik değerleme varsa toplamın eksik olduğu belirtilir. Spot ve yüzey tarihleri korunur. Vadesi gelen kayıt sonuç verisi olmadan yeniden fiyatlanmaz; bariyer geçmişi olmadan vanilya K/Z uygulanmaz.
+
 Üretim asistanı `GEMINI_API_KEY`, `GEMINI_MODEL`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ASSISTANT_ACCESS_CODE` sunucu ortam ayarları gerektirir. Hiçbiri kaynak koduna veya ekran bağlamına konmaz. Yerel ayarlar `.env.local` içinde ve Git dışında tutulur.
 
 ## Son karar — açık

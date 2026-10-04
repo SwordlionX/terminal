@@ -13,8 +13,11 @@ import { InfoHint } from "@/components/ui/info-hint";
 import { BREAKEVEN_INFO } from "@/lib/greeks-info";
 import { breakEvenSpot, profitSideOf, breakEvenLabel } from "@/lib/math/breakeven";
 import Link from "next/link";
+import { valuationTotal, type TradeValuations } from '@/lib/pricing/trade-valuation';
+import { TradeValue, ValuationDetails } from './trade-value';
+import { formatNumber } from '@/lib/format';
 
-export function TradeManagement({ customerId, trades }: { customerId: string, trades: Trade[] }) {
+export function TradeManagement({ customerId, trades, valuations = {} }: { customerId: string, trades: Trade[], valuations?: TradeValuations }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [settleTrade, setSettleTrade] = useState<Trade | null>(null);
   
@@ -48,6 +51,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
   const [search, setSearch] = useState('');
   const activeTrades = trades.filter(t => (statusFilter === 'all' || (statusFilter === 'closed' ? t.status === 'Closed' : t.status !== 'Closed')) && (t.id + ' ' + t.underlying + ' ' + t.type + ' ' + t.position).toLowerCase().includes(search.toLowerCase()));
   const cashflow = trades.filter(t=>t.status !== 'Closed').reduce((sum,t)=>sum+(t.position==='Short'?1:-1)*t.premium,0);
+  const total = valuationTotal(trades, valuations);
 
   const formatCurrency = (val: number | null) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) + ' USD';
 
@@ -103,7 +107,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
   };
 
   return (
-    <div className="customer-trade-register"><div className="workspace-metrics" style={{padding:'0 20px'}}><div><span>Açık işlem</span><strong>{trades.filter(t=>t.status!=='Closed').length}</strong></div><div><span>Geçmiş net prim · açık işlemler</span><strong>{formatCurrency(cashflow)}</strong></div><div><span>Vade sonuçları</span><strong>{trades.filter(t=>t.status==='Closed').length}</strong></div></div>
+    <div className="customer-trade-register"><div className="workspace-metrics" style={{padding:'0 20px'}}><div><span>Açık işlem</span><strong>{trades.filter(t=>t.status!=='Closed').length}</strong></div><div><span>Geçmiş net prim · açık işlemler</span><strong>{formatCurrency(cashflow)}</strong></div><div><span>Güncel K/Z · giriş primi dahil</span><strong>{total.pnl === null ? 'Eksik değerleme' : formatCurrency(total.pnl)}</strong><small>{total.valued} / {total.count} açık işlem değerlendi</small></div></div>
       <div className="workspace-heading">
         <h2>İşlem kayıtları</h2>
         <div className="flex items-center gap-2">
@@ -116,6 +120,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
           </Button>
         </div>
       </div><div className="workspace-toolbar" style={{padding:'0 20px'}}><div className="workspace-tabs" style={{margin:0}}>{[['open','Açık'],['closed','Sonuçlanmış'],['all','Tümü']].map(([key,label])=><button key={key} aria-pressed={statusFilter===key} onClick={()=>setStatusFilter(key)}>{label}</button>)}</div><input className="workspace-search" aria-label="Müşterinin işlemlerinde ara" placeholder="İşlem, ürün veya yön ara…" value={search} onChange={e=>setSearch(e.target.value)} /></div>
+      <ValuationDetails values={valuations} />
       <div className="workspace-table-scroll">
         <table className="workspace-table">
           <thead>
@@ -132,7 +137,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                 </span>
               </th>
               <th>Miktar</th>
-              <th className="number">Giriş primi · USD / %</th><th>Durum</th>
+              <th className="number">Giriş primi · USD / %</th><th className="number">Pozisyon değeri · prim hariç</th><th className="number">Güncel K/Z · prim dahil</th><th>Durum</th>
               <th>Vade sonucu K/Z</th>
               <th className="text-right">Aksiyon</th>
             </tr>
@@ -154,7 +159,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                 <td>
                   <span className={t.position === 'Long' ? 'text-emerald-500' : 'text-rose-500'}>{t.position}</span> {t.type}
                 </td>
-                <td>{t.strike}</td>
+                <td>{formatNumber(t.strike)}</td>
                 <td className="font-mono">
                   {(() => {
                     const be = breakEvenSpot(t.type, t.strike, t.premium, t.contractSize);
@@ -169,8 +174,10 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                     );
                   })()}
                 </td>
-                <td>{t.contractSize}</td>
+                <td title={`${t.contractSize} ons`}>{formatNumber(t.contractSize)}</td>
                 <td className="number">{formatCurrency(t.premium)}<small>{t.spot*t.contractSize>0 ? '%' + (t.premium/(t.spot*t.contractSize)*100).toLocaleString('tr-TR',{maximumFractionDigits:2}) : '—'} · giriş nominali</small></td>
+                <td className="number"><TradeValue value={valuations[t.id]} field="positionValue" /></td>
+                <td className="number"><TradeValue value={valuations[t.id]} field="pnl" /></td>
                 <td>
                   <Badge variant={t.status === 'Closed' ? 'secondary' : 'default'}>{t.status === 'Closed' ? 'Sonuçlandı' : t.expiryDate.slice(0,10)<=new Date().toISOString().slice(0,10) ? 'Vade sonucu bekleniyor' : 'Açık'}</Badge>
                 </td>
@@ -199,7 +206,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
             ))}
             {activeTrades.length === 0 && (
               <tr>
-                <td colSpan={11} className="text-center text-muted-foreground py-8">Müşteriye ait işlem bulunmamaktadır.</td>
+                <td colSpan={13} className="text-center text-muted-foreground py-8">Müşteriye ait işlem bulunmamaktadır.</td>
               </tr>
             )}
           </tbody>
