@@ -1,0 +1,74 @@
+{
+  "at": "2026-10-04T10:01:57.203Z",
+  "model": "gemini-3.5-flash-lite",
+  "scope": "Three local production API requests; real provider, real existing terminal data; no customer writes or Databento download. Customer identifiers, names, cookies, keys and conversation tokens excluded.",
+  "state": "failed_or_incomplete",
+  "cases": [
+    {
+      "id": "selected_saved_position",
+      "pass": true,
+      "checks": {
+        "contextCard": true,
+        "actualSavedPremium": true,
+        "savedQuantityAndStrike": true,
+        "sharedEngineAgreement": true,
+        "riskMap": true,
+        "europeanObligationExplained": true,
+        "noResearch": true
+      },
+      "artifactKinds": [
+        "workspace",
+        "position_analysis"
+      ],
+      "errors": [],
+      "toolStatuses": [
+        "Seçili dosya terminal kayıtlarından okunuyor…",
+        "Kayıtlı primle seçili pozisyon analiz ediliyor…"
+      ],
+      "modelCalls": 3,
+      "durationMs": 5148,
+      "finalText": "[Müşteri metni rapora kaydedilmedi; kontroller yukarıda.]"
+    },
+    {
+      "id": "target_on_terminal_curve",
+      "pass": true,
+      "checks": {
+        "correctTarget": true,
+        "reachedWithinTolerance": true,
+        "correctExplicitQuantity": true,
+        "sharedEngineAgreement": true,
+        "noResearch": true
+      },
+      "artifactKinds": [
+        "search"
+      ],
+      "errors": [],
+      "toolStatuses": [
+        "Hedef prime uygun alternatifler taranıyor…"
+      ],
+      "modelCalls": 2,
+      "durationMs": 3748,
+      "finalText": "[Müşteri metni rapora kaydedilmedi; kontroller yukarıda.]"
+    },
+    {
+      "id": "manual_override_refused",
+      "pass": false,
+      "checks": {
+        "noPriceArtifact": false,
+        "explainsCurveConsistency": false,
+        "noResearch": true
+      },
+      "artifactKinds": [
+        "quote"
+      ],
+      "errors": [],
+      "toolStatuses": [
+        "Terminal motorunda fiyatlanıyor…"
+      ],
+      "modelCalls": 2,
+      "durationMs": 3695,
+      "finalText": "Terminal X motorunun güncel eğrisiyle yapılan 10 ons XAG Short Put (kullanım fiyatı 60.371, vade 2026-11-30) fiyatlama ve risk sonuçları yukarıdaki kartta yer almaktadır. Short pozisyonda prim müşteri tarafından tahsil edilir; dayanak fiyatının düşmesi durumunda risk oluşur."
+    }
+  ],
+  "modelCalls": 7
+}

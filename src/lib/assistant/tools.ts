@@ -4,7 +4,7 @@ import { quoteOption } from './pricing';
 import { premiumValue, searchPremium } from './search';
 import { scenarioPortfolio } from './scenarios';
 import { analyzeEuropeanPosition } from '../pricing/position-analysis';
-import { assertCurvePricing, assertPremiumBasis, assertTradeQuantity, PremiumBasisClarification, TradeQuantityClarification, terminalCurveInputs } from './policy';
+import { assertAutomaticPricingMessage, assertCurvePricing, assertPremiumBasis, assertTradeQuantity, PremiumBasisClarification, TradeQuantityClarification, terminalCurveInputs } from './policy';
 import { choice, number, object, products, validateOption } from './validation';
 import type { AssistantArtifact, MarketSnapshot, PremiumUnit, Product, Quote, ScenarioResult, ScreenContext, WorkspaceSnapshot } from './types';
 
@@ -37,6 +37,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
   };
   const run = async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
     deps.signal.throwIfAborted();
+    if (['price_option', 'find_options', 'analyze_position', 'analyze_selected_position', 'compare_strategies'].includes(name)) assertAutomaticPricingMessage(message);
     if (++toolCalls > 12) throw new Error('Bu isteğin hesaplama sınırına ulaşıldı; sonuçlarla devam edin.');
     switch (name) {
       case 'get_workspace_context': {

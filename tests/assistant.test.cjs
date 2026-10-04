@@ -50,6 +50,18 @@ const market = { product: 'XAU', spot: 100, spotSource: 'Terminal test fixture',
 const near = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) <= tolerance, `${a} vs ${b}`);
 const quote = (o = {}, c = context, m = market) => quoteOption({ type: 'Put', position: 'Short', ...o }, c, m);
 
+test('explicit natural-language market overrides cannot become a silent automatic quote', async () => {
+  const { requestsManualPricing } = load('src/lib/assistant/policy.ts');
+  for (const text of ['10 ons put fiyatla ama spot 100, IV yüzde 30 olsun.', 'Faiz yüzde 2 ve kira yüzde 1 kullanarak fiyatla.', 'Manuel fiyatlama yap, kendi verilerimi kullan.']) assert.equal(requestsManualPricing(text), true);
+  for (const text of ['10 ons put için spot nominalinin yüzde 5 primini bul.', 'Manuel fiyatlama yapma; terminalin mevcut eğrisiyle fiyatla.', 'Faiz ve kira hesaplama mantığı doğru mu?', 'IV yüzde 30 ne demek?']) assert.equal(requestsManualPricing(text), false);
+  let reads = 0; const artifacts = [];
+  const execute = createToolExecutor(context, '10 ons put fiyatla; manuel spot 100, faiz yüzde 2 olsun.', {
+    market: async () => { reads++; return market; }, artifact: a => artifacts.push(a), research: async () => { throw new Error('no research'); }, signal: new AbortController().signal,
+  });
+  const result = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  assert.ok(result.error); assert.equal(artifacts.length, 0); assert.equal(reads, 0);
+});
+
 test('ETF requests and persisted ETF contexts cannot bypass the XAU/XAG terminal scope', () => {
   for (const product of ['GLD', 'SLV']) {
     assert.throws(() => validateOption({ type: 'Put', position: 'Short', product }), /XAU \/ XAG/);
@@ -301,13 +313,21 @@ function mockRunner(responses) {
     './market': { terminalMarket: async () => market }, './limits': { reserveModelCall: async () => { reservations++; } } },
     { GEMINI_API_KEY: 'test-only-key' })('src/lib/assistant/runner.ts');
   return { requests, events, reservations: () => reservations,
-    run: () => runner.runAssistant({ message: 'Put satışını fiyatla', context, contents: [], signal: new AbortController().signal,
+    run: (message = 'Put satışını fiyatla') => runner.runAssistant({ message, context, contents: [], signal: new AbortController().signal,
       emit: event => events.push(event) }) };
 }
 const toolReply = { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [
   { functionCall: { name: 'price_option', args: { type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }, thoughtSignature: 'keep-this-signature' },
 ] } }], functionCalls: [{ name: 'price_option', args: { type: 'Put', position: 'Short', contractSize: 10 }, id: 'call-1' }] };
 const finalReply = { candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ text: 'Motor kartı hazır.' }] } }], text: 'Motor kartı hazır.' };
+
+test('manual override refusal is deterministic, explicit and consumes no provider calls', async () => {
+  const fixture = mockRunner([toolReply, finalReply]);
+  const result = await fixture.run('10 ons put fiyatla; manuel spot 100, IV yüzde 30, faiz yüzde 2, kira yüzde 1 olsun.');
+  assert.equal(result.modelCalls, 0); assert.equal(fixture.requests.length, 0); assert.equal(fixture.reservations(), 0);
+  assert.equal(fixture.events.length, 1); assert.equal(fixture.events[0].type, 'text');
+  assert.match(fixture.events[0].text, /Manuel.*eğrisiyle.*tutarlılığını bozar/);
+});
 
 test('Gemini loop uses only terminal functions, preserves signatures and emits trusted cards before final text', async () => {
   const fixture = mockRunner([toolReply, finalReply]), result = await fixture.run();
