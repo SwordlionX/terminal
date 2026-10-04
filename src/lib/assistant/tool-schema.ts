@@ -1,4 +1,4 @@
-import type { FunctionDeclaration } from '@google/genai';
+import type { FunctionDeclaration, Schema } from '@google/genai';
 
 const numeric = (description: string) => ({ type: 'number', description });
 const optionProperties = {
@@ -9,14 +9,15 @@ const optionProperties = {
   contractSize: numeric('ZORUNLU. Kullanıcının belirttiği ons miktarı. Eksikse sor; ekran miktarını veya birim fiyat için 1 kullanma.'),
   tradeDate: { type: 'string', description: 'İstenen değerleme tarihi YYYY-MM-DD; belirtilmediyse bugün.' },
   expiryDate: { type: 'string', description: 'ZORUNLU. Kullanıcının belirttiği vade YYYY-MM-DD. Eksikse sor; ekrandan devralma.' },
-  basis: { type: 'integer', enum: [360, 365] },
+  // Runtime validation accepts only 360/365; omitted values use ACT/365.
+  basis: { type: 'integer', description: 'Gün bazı: yalnız 360 veya 365. Belirtilmediyse gönderme; terminal ACT/365 kullanır.' },
   barrier: { type: 'object', description: 'Yeni, sürekli gözlemli bariyer. Eski işlem değerlemesinde geçmiş gözlem olmadan kullanma.',
     properties: { variant: { type: 'string', enum: ['uo', 'do', 'ui', 'di'] }, level: numeric('Bariyer seviyesi'), rebate: numeric('Birim başına USD rebate') }, required: ['variant', 'level'] },
 };
 const option = { type: 'object', properties: optionProperties, required: ['product', 'type', 'position', 'contractSize', 'expiryDate', 'strike'], additionalProperties: false };
 const searchOption = { ...option, required: option.required.filter(k => k !== 'strike') };
 
-export const toolDeclarations: FunctionDeclaration[] = [
+const declarations: FunctionDeclaration[] = [
   { name: 'get_customer_file', description: 'Kullanıcının konuşmada adıyla istediği müşteriyi terminal kayıtlarında ara ve açık işlemleri/teminat özetini oku. Her sayfadan kullanılabilir. Birden çok eşleşme varsa dosya okunmaz; tam adı sor. Ekran seçimini veya rastgele müşteri adını query olarak kullanma.', parametersJsonSchema: { type: 'object', properties: { query: { type: 'string', minLength: 2, maxLength: 100, description: 'Kullanıcının mesajında veya bu konuşmada açıkça belirttiği müşteri adı.' } }, required: ['query'], additionalProperties: false } },
   { name: 'price_selected_option', description: 'YALNIZ kullanıcı açıkça ekrandaki/seçili yeni işlemi fiyatlamak istediğinde kullan. Sayfanın açık olması izin değildir. Bariyer dahil koşulları korur. Bağımsız fiyatlama isteğinde eksikleri sor ve price_option kullan. Kayıtlı işlemler için kullanma.', parametersJsonSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'get_workspace_context', description: 'Ekranda seçili müşteri/işlem veya risk özeti. Kimlikler sunucuda doğrulanır. Salt okunur; teminat prosedürü model MTM değildir. Sadece bu seçimi okur.', parametersJsonSchema: { type: 'object', properties: {}, additionalProperties: false } },
@@ -47,3 +48,24 @@ export const toolDeclarations: FunctionDeclaration[] = [
   { name: 'research_diagnostic', description: 'FİYATLAMA ARACI DEĞİL. Yalnız kaydedilmiş veri/motor hatası veya kullanıcının açık yöntem doğrulama isteği için kaynak araştır. Fiyat arama, piyasa kotasyonu, model girdisi bulma ve genel haber araması yasak. Sonuç fiyatlama araçlarına aktarılmaz.',
     parametersJsonSchema: { type: 'object', properties: { topic: { type: 'string', enum: ['european_model', 'volatility_surface', 'barrier_monitoring', 'units_and_dates'] } }, required: ['topic'], additionalProperties: false } },
 ];
+
+// Use Gemini's native function schema. Keep richer validation in the executor
+// rather than depending on the provider to enforce arbitrary JSON Schema fields.
+function nativeSchema(value: unknown): Schema {
+  const schema = value as Record<string, unknown>;
+  return {
+    type: String(schema.type).toUpperCase() as Schema['type'],
+    ...(schema.description ? { description: String(schema.description) } : {}),
+    ...(schema.enum ? { enum: schema.enum as string[] } : {}),
+    ...(schema.required ? { required: schema.required as string[] } : {}),
+    ...(schema.properties ? { properties: Object.fromEntries(Object.entries(schema.properties as Record<string, unknown>).map(([key, child]) => [key, nativeSchema(child)])) } : {}),
+    ...(schema.items ? { items: nativeSchema(schema.items) } : {}),
+    ...(schema.minItems !== undefined ? { minItems: String(schema.minItems) } : {}),
+    ...(schema.maxItems !== undefined ? { maxItems: String(schema.maxItems) } : {}),
+  };
+}
+export const toolDeclarations: FunctionDeclaration[] = declarations.map(({ parametersJsonSchema, ...declaration }) => ({
+  // No-argument tools omit parameters instead of declaring an empty OBJECT.
+  ...declaration, ...(parametersJsonSchema && Object.keys((parametersJsonSchema as { properties?: object }).properties ?? {}).length
+    ? { parameters: nativeSchema(parametersJsonSchema) } : {}),
+}));

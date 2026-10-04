@@ -342,6 +342,28 @@ test('Gemini loop uses only terminal functions, preserves signatures and emits t
   assert.ok(fixture.events.findIndex(e => e.type === 'artifact') < fixture.events.findIndex(e => e.type === 'text'));
 });
 
+test('provider declarations use native schemas without empty objects or numeric enums; target strike stays optional', async () => {
+  const fixture = mockRunner([finalReply]);
+  await fixture.run();
+  const declarations = fixture.requests[0].config.tools[0].functionDeclarations;
+  for (const declaration of declarations) {
+    assert.equal(declaration.parametersJsonSchema, undefined);
+    const visit = schema => {
+      if (!schema) return;
+      if (schema.enum) assert.ok(schema.enum.every(value => typeof value === 'string'));
+      if (schema.type === 'OBJECT') assert.ok(Object.keys(schema.properties).length > 0);
+      Object.values(schema.properties ?? {}).forEach(visit);
+      visit(schema.items);
+    };
+    visit(declaration.parameters);
+  }
+  assert.equal(declarations.find(d => d.name === 'price_selected_option').parameters, undefined);
+  const target = declarations.find(d => d.name === 'find_options').parameters;
+  assert.deepEqual(target.required, ['option', 'target', 'unit']);
+  assert.ok(!target.properties.option.required.includes('strike'));
+  assert.ok(declarations.find(d => d.name === 'price_option').parameters.required.includes('strike'));
+});
+
 test('repeated model tool calls reuse the snapshot and stop at the bounded fifth round', async () => {
   const fixture = mockRunner([toolReply]);
   await assert.rejects(fixture.run(), /hesaplama sınırına/);
@@ -382,7 +404,9 @@ test('malformed model calls execute nothing and share one bounded retry with pro
   assert.equal(result.modelCalls, 3); assert.equal(fixture.reservations(), 3);
   assert.equal(fixture.events.filter(e => e.type === 'artifact').length, 1);
   assert.equal(fixture.requests[1].contents.length, 1);
-  assert.equal(fixture.requests[1].config.toolConfig.functionCallingConfig.mode, 'ANY');
+  assert.equal(fixture.requests[1].config.toolConfig.functionCallingConfig.mode, 'VALIDATED');
+  assert.match(fixture.requests[1].config.systemInstruction, /hiçbir hesap çalışmadı.*find_options/s);
+  assert.doesNotMatch(fixture.requests[2].config.systemInstruction, /Önceki yanıtın araç çağrısı biçimi/);
   assert.equal(fixture.requests[2].config.toolConfig.functionCallingConfig.mode, 'VALIDATED');
   const repeated = mockRunner([malformed]);
   await assert.rejects(repeated.run(), e => e.modelFinishReason === 'MALFORMED_FUNCTION_CALL');

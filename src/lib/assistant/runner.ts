@@ -152,8 +152,9 @@ export async function runAssistant(input: RunInput): Promise<{ contents: Content
     input.emit({ type: 'status', text: round === 0 ? 'İsteğin değerlendiriliyor…' : 'Sonuçlar değerlendiriliyor…' });
     await countCall();
     const response = await generate({ model, contents,
-      config: { systemInstruction: ASSISTANT_SYSTEM, tools: [{ functionDeclarations: toolDeclarations }],
-        toolConfig: { functionCallingConfig: { mode: round === 4 ? FunctionCallingConfigMode.NONE : repairMalformedCall ? FunctionCallingConfigMode.ANY : FunctionCallingConfigMode.VALIDATED } },
+      config: { systemInstruction: ASSISTANT_SYSTEM + (repairMalformedCall
+        ? '\nÖnceki yanıtın araç çağrısı biçimi geçersizdi ve hiçbir hesap çalışmadı. İsteği mevcut araç şemasına tam uyarak yeniden değerlendir. Hedef prim için find_options kullan: işlem koşulları option nesnesinde, target sayı ve unit ayrı alanlardır; strike arama sonucudur. Eksik bilgi varsa soru sor; ekran koşulu veya piyasa sayısı ekleme.' : ''), tools: [{ functionDeclarations: toolDeclarations }],
+        toolConfig: { functionCallingConfig: { mode: round === 4 ? FunctionCallingConfigMode.NONE : FunctionCallingConfigMode.VALIDATED } },
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }, maxOutputTokens: 8192,
         abortSignal: input.signal, httpOptions: { timeout: 20000, retryOptions: { attempts: 1 } } },
     });
