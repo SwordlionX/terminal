@@ -1,0 +1,24 @@
+{
+  "at": "2026-10-04T10:06:32.589Z",
+  "model": "gemini-3.5-flash-lite",
+  "scope": "Three local production API requests; real provider, real existing terminal data; no customer writes or Databento download. Customer identifiers, names, cookies, keys and conversation tokens excluded.",
+  "state": "passed",
+  "cases": [
+    {
+      "id": "manual_override_refused",
+      "pass": true,
+      "checks": {
+        "noPriceArtifact": true,
+        "explainsCurveConsistency": true,
+        "noResearch": true
+      },
+      "artifactKinds": [],
+      "errors": [],
+      "toolStatuses": [],
+      "modelCalls": 0,
+      "durationMs": 101,
+      "finalText": "Manuel spot, volatilite, faiz veya kira varsayımları terminal eğrisiyle fiyatlama tutarlılığını bozar. Bu değerlerle fiyatlama yapamam. Yalnız terminalin mevcut eğrisiyle devam edebilirim; istersen mevcut eğriyle hesap iste."
+    }
+  ],
+  "modelCalls": 0
+}

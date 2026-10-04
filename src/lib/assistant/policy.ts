@@ -45,6 +45,21 @@ export function assertPremiumBasis(unit: PremiumUnit, message: string, priorUser
 }
 
 export const MANUAL_PRICING_BLOCKED = 'Manuel spot, volatilite, faiz veya kira varsayımı terminal eğrisiyle fiyatlama tutarlılığını bozar. Asistan manuel fiyatlama yapmaz; terminalin otomatik verisini ve mevcut eğrisini kullanır. Manuel spot/IV modunu kapatın.';
+export const MANUAL_OVERRIDE_REFUSAL = 'Manuel spot, volatilite, faiz veya kira varsayımları terminal eğrisiyle fiyatlama tutarlılığını bozar. Bu değerlerle fiyatlama yapamam. Yalnız terminalin mevcut eğrisiyle devam edebilirim; istersen mevcut eğriyle hesap iste.';
+
+/** Explicit market overrides are refused before the model can silently ignore them. */
+export function requestsManualPricing(message: string): boolean {
+  const text = message.normalize('NFKC').toLocaleLowerCase('tr-TR');
+  if (!/(?:fiyatla|hesapla|hesap\s+ist|kullan|olsun|varsay|override|price\b|calculate)/u.test(text)) return false;
+  // Retain concept questions and the user's explicit request for automatic pricing.
+  if (/manuel[^.;\n]{0,70}(?:yapma|kullanma|alma|istemi|olmasın)/u.test(text)) return false;
+  const numericOverride = /(?:spot|iv|volatilite|vol|faiz|kira|taşıma|interest rate|lease rate)\s*(?:oranı\s*)?(?:[=:]\s*)?(?:yüzde\s*|%\s*)?\d+(?:[.,]\d+)?/u.test(text);
+  const manualIntent = /manuel[^.;\n]{0,80}(?:fiyatla|hesapla|hesap\s+ist|değer|girdi|spot|iv|faiz|kira|volatilite)/u.test(text);
+  return numericOverride || manualIntent;
+}
+export function assertAutomaticPricingMessage(message: string) {
+  if (requestsManualPricing(message)) throw new Error(MANUAL_OVERRIDE_REFUSAL);
+}
 const marketOverrides = ['spot', 'vol', 'manualVol', 'manualSpot', 'rate', 'lease'];
 
 /** Checked again at the pricing boundary, even when bypassing JSON validation. */

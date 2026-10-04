@@ -5,6 +5,7 @@ import { terminalMarket } from './market';
 import { reserveModelCall } from './limits';
 import { toolDeclarations } from './tool-schema';
 import type { AssistantEvent, ScreenContext, WorkspaceSnapshot } from './types';
+import { MANUAL_OVERRIDE_REFUSAL, requestsManualPricing } from './policy';
 
 export const ASSISTANT_SYSTEM = `Sen Terminal X'in Türkçe konuşan banka çalışanı asistanısın. Kısa, açık ve gerekçeli yanıt ver.
 İşlem yapılabilen ürünler yalnız XAU (altın) ve XAG (gümüş); miktarlar ons cinsindedir. GLD/SLV işlem alternatifi sunma.
@@ -63,6 +64,10 @@ const labels: Record<string, string> = {
 export async function runAssistant(input: RunInput): Promise<{ contents: Content[]; modelCalls: number }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Gemini bağlantısı henüz hazırlanmadı.');
+  if (requestsManualPricing(input.message)) {
+    input.emit({ type: 'text', text: MANUAL_OVERRIDE_REFUSAL });
+    return { contents: [], modelCalls: 0 };
+  }
   const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
   if (!/^gemini-[a-z0-9.-]+$/.test(model)) throw new Error('Asistan modeli yapılandırması geçersiz.');
   const ai = new GoogleGenAI({ apiKey });
