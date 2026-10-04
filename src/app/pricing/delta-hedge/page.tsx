@@ -1,7 +1,9 @@
 "use client";
+import { TradeConditions } from '@/features/pricing/trade-conditions';
 import { FeedStatus } from "@/features/pricing/feed-status";
 
-import { useState } from "react";
+import { useAnalysisDraft } from '@/store/analysis-draft';
+import { AskAssistant } from '@/components/workspace-context';
 import { usePricingModel } from "@/features/pricing/use-pricing-model";
 import { PricingContextBar } from "@/features/pricing/pricing-context-bar";
 import { HedgePanel } from "@/features/pricing/hedge-panel";
@@ -12,8 +14,9 @@ export default function DeltaHedgePricingPage() {
   const { md, feed, daysToExpiry, effVol, gr, priceable, unpriceableReason } = usePricingModel();
 
   // Müşterinin pozisyonu (fiyatlanan opsiyon üzerinden): tip + yön. Miktar = pricing kontrat büyüklüğü.
-  const [optionType, setOptionType] = useState<"call" | "put">("call");
-  const [direction, setDirection] = useState<"long" | "short">("long");
+  const quoteType = useAnalysisDraft(s => s.quoteType), quotePosition = useAnalysisDraft(s => s.quotePosition);
+  const optionType = quoteType === 'Call' ? 'call' : 'put';
+  const direction = quotePosition === 'Long' ? 'long' : 'short';
 
   // Kote strike/vade aralığı dışında (smile yok, manuel vol de kapalı) delta ÜRETİLMEZ — ana
   // fiyatlama sayfasıyla aynı kural: ekstrapolasyon yok, fallback vol ile hedge gösterilmez.
@@ -28,11 +31,12 @@ export default function DeltaHedgePricingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="workspace-heading"><div>
         <h1 className="text-3xl font-bold tracking-tight">Delta Hedge</h1>
         <p className="text-sm text-muted-foreground mt-1">Müşteri pozisyonunu girin — deltasını ve onu nötrleyecek hedge büyüklüğünü gösterir</p>
-      </div>
+      </div><AskAssistant text="Ekranda seçili opsiyon tipi, müşteri yönü, miktar ve vade ile delta hedge gereksinimini terminal motorunda hesapla. Hedge, mevcut Avrupa tipi sözleşmeyi sona erdirmez; spot hareketinde hedge ihtiyacının nasıl değiştiğini açıkla." /></div>
 
+      <TradeConditions />
       <PricingContextBar
         product={md.product}
         spot={md.spot}
@@ -52,7 +56,7 @@ export default function DeltaHedgePricingPage() {
           <Select
             value={optionType}
             items={{ call: 'Alış (Call)', put: 'Satış (Put)' }}
-            onValueChange={(v) => setOptionType(v === "put" ? "put" : "call")}
+            onValueChange={(v) => useAnalysisDraft.getState().selectQuote(v === 'put' ? 'Put' : 'Call', quotePosition)}
           >
             <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -66,7 +70,7 @@ export default function DeltaHedgePricingPage() {
           <Select
             value={direction}
             items={{ long: 'Long (Alış / müşteri aldı)', short: 'Short (Satış / müşteri yazdı)' }}
-            onValueChange={(v) => setDirection(v === "short" ? "short" : "long")}
+            onValueChange={(v) => useAnalysisDraft.getState().selectQuote(quoteType, v === 'short' ? 'Short' : 'Long')}
           >
             <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-200"><SelectValue /></SelectTrigger>
             <SelectContent>

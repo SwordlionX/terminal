@@ -46,7 +46,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
   const [addError, setAddError] = useState<string | null>(null);
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
-  const activeTrades = trades.filter((trade) => trade.status !== "Closed");
+  const activeTrades = trades;
 
   const formatCurrency = (val: number | null) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
@@ -95,7 +95,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
       await settleTradeAction(customerId, settleTrade.id, Number(settleSpot));
       setSettleTrade(null);
     } catch (err) {
-      setSettleError(err instanceof Error ? err.message : "İşlem kapatılamadı.");
+      setSettleError(err instanceof Error ? err.message : "Vade sonucu kaydedilemedi.");
     } finally {
       setSettling(false);
     }
@@ -111,7 +111,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
           </Link>
           <Button onClick={() => { setAddError(null); setIsAddOpen(true); }} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
             <Plus className="w-4 h-4 mr-2" />
-            Yeni İşlem Ekle
+            Geçmiş işlem kaydı ekle
           </Button>
         </div>
       </CardHeader>
@@ -132,7 +132,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
               </TableHead>
               <TableHead>Miktar</TableHead>
               <TableHead>Durum</TableHead>
-              <TableHead>PnL</TableHead>
+              <TableHead>Vade sonucu K/Z</TableHead>
               <TableHead className="text-right">Aksiyon</TableHead>
             </TableRow>
           </TableHeader>
@@ -173,12 +173,12 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                   <Badge variant={t.status === 'Closed' ? 'secondary' : 'default'}>{t.status}</Badge>
                 </TableCell>
                 <TableCell className={t.pnl && t.pnl >= 0 ? "text-emerald-500" : t.pnl && t.pnl < 0 ? "text-rose-500" : ""}>
-                  {formatCurrency(t.pnl)}
+                  {t.status === 'Closed' && t.pnl !== null ? formatCurrency(t.pnl) : '—'}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    {t.status !== 'Closed' && (
-                      <Button size="icon" variant="outline" className="h-8 w-8 text-zinc-300" onClick={() => { setSettleError(null); setSettleSpot(""); setSettleTrade(t); }} title="Vadeyi Kapat">
+                    {t.status !== 'Closed' && t.expiryDate.slice(0, 10) <= new Date().toISOString().slice(0, 10) && (
+                      <Button size="icon" variant="outline" className="h-8 w-8 text-zinc-300" onClick={() => { setSettleError(null); setSettleSpot(""); setSettleTrade(t); }} title="Vade sonucunu kaydet">
                         <CheckCircle className="h-4 w-4" />
                       </Button>
                     )}
@@ -187,7 +187,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                       variant="outline" 
                       className="h-8 w-8 text-rose-500" 
                       onClick={() => deleteTradeAction(customerId, t.id)}
-                      title="Sil"
+                      title="Sil" disabled={t.status === 'Closed'}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -353,14 +353,14 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
       <Dialog open={settleTrade !== null} onOpenChange={(o) => { if (!o) setSettleTrade(null); }}>
         <DialogContent className="sm:max-w-sm">
             <DialogHeader className="mb-4">
-              <DialogTitle>Vade Sonu Kapat</DialogTitle>
+              <DialogTitle>Vade sonucunu kaydet</DialogTitle>
               <DialogDescription>
                 {settleTrade && `${settleTrade.underlying} ${settleTrade.position} ${settleTrade.type} Strike: ${settleTrade.strike}`}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSettleTrade} className="space-y-4">
               <div>
-                <label className="text-xs text-zinc-400">Kapanış Spot Fiyatı (Vade Sonu)</label>
+                <label className="text-xs text-zinc-400">Gerçekleşen vade sonu spotu</label>
                 <input 
                   type="number" 
                   step="any" 
@@ -375,7 +375,7 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
               <div className="flex justify-end gap-3 mt-6">
                 <Button type="button" variant="outline" onClick={() => setSettleTrade(null)} disabled={settling}>İptal</Button>
                 <Button type="submit" className="bg-zinc-700 hover:bg-zinc-600" disabled={settling}>
-                  {settling ? "Kapatılıyor..." : "Kapat ve Arşivle"}
+                  {settling ? "Kaydediliyor…" : "Sonucu kaydet ve arşivle"}
                 </Button>
               </div>
             </form>

@@ -37,15 +37,15 @@ export function sameOrigin(request: Request): boolean {
 }
 
 /** Authenticated encryption preserves tool history/thought signatures without trusting client text. */
-export function sealConversation(contents: Content[]): string {
-  const bytes = Buffer.from(JSON.stringify({ version: 1, expiry: Date.now() + 30 * 60 * 1000, contents }));
+export function sealConversation(contents: Content[], scope?: string): string {
+  const bytes = Buffer.from(JSON.stringify({ version: 1, expiry: Date.now() + 30 * 60 * 1000, scope, contents }));
   if (bytes.length > 100_000) throw new Error('Bu sohbet uzadı. Yeni sohbet açarak devam edin.');
   const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', secret(), iv);
   cipher.setAAD(Buffer.from('terminal-assistant-conversation-v1'));
   const encrypted = Buffer.concat([cipher.update(bytes), cipher.final()]);
   return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64url');
 }
-export function openConversation(token: unknown): Content[] {
+export function openConversation(token: unknown, scope?: string): Content[] {
   if (token === undefined || token === null || token === '') return [];
   if (typeof token !== 'string' || token.length > 140_000) throw new Error('Sohbet bilgisi geçersiz. Yeni sohbet açın.');
   try {
@@ -55,6 +55,7 @@ export function openConversation(token: unknown): Content[] {
     decipher.setAuthTag(bytes.subarray(12, 28));
     const payload = JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString('utf8'));
     if (payload.version !== 1 || payload.expiry < Date.now() || !Array.isArray(payload.contents)) throw new Error('expired');
+    if (scope !== undefined && payload.scope !== scope) return [];
     return payload.contents;
   } catch { throw new Error('Sohbet süresi dolmuş veya bilgisi geçersiz. Yeni sohbet açın.'); }
 }

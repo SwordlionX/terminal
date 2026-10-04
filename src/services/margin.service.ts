@@ -16,17 +16,19 @@ export async function revalueCollaterals(items: CollateralItem[]): Promise<Colla
   const metals = [...new Set(
     items.map(i => i.currency.toUpperCase()).filter(c => c === 'XAU' || c === 'XAG')
   )];
-  const spotMap: Record<string, number> = {};
+  const spotMap: Record<string, number> = {}, valuationWarnings: Record<string, string | undefined> = {};
   await Promise.all(metals.map(async (m) => {
     const live = await getSpot(m);
     if (live?.price) spotMap[m] = live.price;
+    valuationWarnings[m] = !live?.price ? 'Metal teminat fiyatı alınamadı; kayıtlı teminat değeri kullanıldı.'
+      : live.stale || !live.quoteAt || Date.now() - live.quoteAt > 86400000 ? 'Metal teminatın spot gözlemi eski veya tarihi doğrulanamıyor.' : undefined;
   }));
 
   return items.map(i => {
     const cur = i.currency.toUpperCase();
     if (cur === 'USD') return { ...i, marketValueUsd: i.nominalQuantity };
     if (cur === 'XAU' || cur === 'XAG') {
-      return { ...i, marketValueUsd: spotMap[cur] ? i.nominalQuantity * spotMap[cur] : i.marketValueUsd };
+      return { ...i, marketValueUsd: spotMap[cur] ? i.nominalQuantity * spotMap[cur] : i.marketValueUsd, valuationWarning: valuationWarnings[cur] };
     }
     return i; // beklenmeyen tip — dokunma, snapshot kalsın
   });
@@ -47,6 +49,7 @@ function intrinsicLossFor(t: Trade, currentSpot: number): number {
 }
 
 export interface TradeCollateral {
+  dataWarning?: string;
   tradeId: string;
   customerId: string;
   currentSpot: number;
@@ -62,10 +65,14 @@ export interface TradeCollateral {
 async function buildTradeCollaterals(trades: Trade[]): Promise<TradeCollateral[]> {
   const open = trades.filter(t => t.status === 'Open' || t.status === 'Near Expiry');
   const products = [...new Set(open.map(t => t.underlying.toUpperCase()))];
-  const spotMap: Record<string, number> = {};
+  const spotMap: Record<string, number> = {}, warningMap: Record<string, string | undefined> = {};
   await Promise.all(products.map(async (p) => {
     const live = await getSpot(p);
     spotMap[p] = live?.price ?? 0; // 0 ise aşağıda giriş spotuna düşülür
+    warningMap[p] = !live?.price ? 'Spot alınamadı; giriş spotu kullanıldı. Risk durumu güncel veriyle doğrulanmalı.'
+      : live.stale ? 'Eski spot kaydı kullanılıyor; risk durumu güncel veriyle doğrulanmalı.'
+      : live.quoteAt && Date.now() - live.quoteAt > 86400000 ? 'Spot gözlemi 24 saatten eski; veri tarihi kontrol edilmeli.'
+      : !live.quoteAt ? 'Spotun piyasa gözlem zamanı doğrulanamıyor; kayıt okuma zamanı canlılığı kanıtlamaz.' : undefined;
   }));
 
   return open.map(t => {
@@ -79,6 +86,7 @@ async function buildTradeCollaterals(trades: Trade[]): Promise<TradeCollateral[]
       currentSpot,
       spotIsLive: live,
       intrinsicLoss: intrinsicLossFor(t, currentSpot),
+      dataWarning: warningMap[prod],
     };
   });
 }
@@ -113,7 +121,9 @@ export class MarginService {
       haircut: c.haircut
     }));
 
-    return MarginEngine.calculatePortfolioMargin(positions, collaterals, rate);
+    const margin = MarginEngine.calculatePortfolioMargin(positions, collaterals, rate);
+    const warnings = [...new Set([...tradeCollaterals.flatMap(t => t.dataWarning ? [t.dataWarning] : []), ...collateralItems.flatMap(c => c.valuationWarning ? [c.valuationWarning] : [])])];
+    return { ...margin, ...(warnings.length ? { dataWarning: warnings.join(' ') } : {}) };
   }
 
   /**
@@ -123,14 +133,28 @@ export class MarginService {
    */
   async evaluateAllCustomers(usdTryRate?: number) {
     const rate = usdTryRate ?? await getUsdTryRate();
-    const customers = await db.customers.findMany();
-    const results = await Promise.all(
-      customers.map(async (c) => {
-        const margin = await this.evaluateCustomerMargin(c.id, rate);
-        return { customer: c, margin };
-      })
-    );
-    return results;
+    const [customers, trades, rawCollateral] = await Promise.all([
+      db.customers.findMany(), db.trades.findMany(), collateralRepository.findAll(),
+    ]);
+    const [tradeValues, collaterals] = await Promise.all([buildTradeCollaterals(trades), revalueCollaterals(rawCollateral)]);
+    const lossByTrade = new Map(tradeValues.map(t => [t.tradeId, t.intrinsicLoss]));
+    const positionsByCustomer = new Map<string, TradePosition[]>(), collateralByCustomer = new Map<string, CollateralAsset[]>();
+    for (const t of trades) {
+      if (t.status !== 'Open' && t.status !== 'Near Expiry') continue;
+      const positions = positionsByCustomer.get(t.customerId) ?? [];
+      positions.push({ position: t.position, intrinsicLoss: lossByTrade.get(t.id) ?? 0, premium: t.premium });
+      positionsByCustomer.set(t.customerId, positions);
+    }
+    for (const c of collaterals) {
+      const items = collateralByCustomer.get(c.customerId) ?? [];
+      items.push({ id: c.id, assetCode: c.assetCode, currency: c.currency, marketValueUsd: c.marketValueUsd, haircut: c.haircut });
+      collateralByCustomer.set(c.customerId, items);
+    }
+    return customers.map(customer => {
+      const warnings = [...new Set([...tradeValues.filter(t => t.customerId === customer.id).flatMap(t => t.dataWarning ? [t.dataWarning] : []), ...collaterals.filter(c => c.customerId === customer.id).flatMap(c => c.valuationWarning ? [c.valuationWarning] : [])])];
+      const margin = MarginEngine.calculatePortfolioMargin(positionsByCustomer.get(customer.id) ?? [], collateralByCustomer.get(customer.id) ?? [], rate);
+      return { customer, margin: { ...margin, ...(warnings.length ? { dataWarning: warnings.join(' ') } : {}) } };
+    });
   }
 
   /**

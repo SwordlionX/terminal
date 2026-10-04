@@ -1,46 +1,35 @@
-# Bloomberg ekran yapısı — 4 Ekim 2026 önerisi
+# Terminal X çalışma alanları — 4 Ekim 2026
 
-Kullanıcı referansı: `tasarim-demolari/01-islem-terminali.png` / `terminal.html`. Yeni çalışma eski sayfa/card hiyerarşisine bağlı olmadan tasarlanacak. Bu belge plan; aşağıdaki sayfa birleşimleri ve asistan yerleşimi henüz uygulanmadı. Bu turdaki ürün düzeltmesi uygulandı: işlem seçenekleri ve asistan araçlarında yalnız XAU/XAG.
+Pozisyonlar ve Risk/Teminat görselleri kullanıcı tarafından onaylandı; aşağıdaki düzen gerçek uygulamaya geçirildi. Bloomberg ve Meridian aynı işlevleri, motoru ve doğrulanmış veri paketini kullanır. `src/lib/terminal-design.ts` tema seçiminde branch'ler arasındaki tek farktır.
 
-## Referansla mevcut uygulamanın farkı
+| Alan | Uygulanan davranış |
+| --- | --- |
+| Fiyatlama | Sol işlem koşulları, eşit önemle USD ve spot nominali yüzdesi, merkezde prim altında geniş smile, sağda müşteri Greeks özeti. Hedef prim, bariyer ve delta hedge ortak ürün/strike/miktar/vadeyi korur. Hedef prim mevcut eğride strike arar; IV uydurmaz. |
+| Pozisyonlar | Arama, açık/yaklaşan/arşiv filtreleri; sekiz kayda kadar seçim, kayıtlı giriş primiyle birleşik K/Z, fiyat×tarih ve delta/gamma haritası. Geçersiz, bariyer geçmişi eksik, vadesi geçmiş veya farklı metal kayıtları sessizce modele alınmaz. |
+| Müşteriler | Sol müşteri listesi + sağ dosya; özet, işlemler, teminat, notlar/hareketler. Mevcut kayıt ve teminat işlemleri korunur; açık pozisyonun saklanan sıfır K/Z'si güncel model değeri gibi gösterilmez. |
+| Risk ve Teminat | Gerekli ek teminat, öncelikli müşteri dosyaları, yaklaşan/geçmiş vadeler, ayrıntılı risk listesi. Şube teminat prosedürü ve model MTM ayrıdır. Eksik/eski kaynak görünür; fallback sonucu yeşil güvenli etiketiyle gizlenmez. |
+| Eğriler ve Veri | Geniş smile/vade görünümü; USD iskonto, metal taşıma oranı ve model forward tablosu/grafiği. Spot ve yüzeyin ayrı zamanları, final seans ve yöntem sınırları görünür. Veri yönetimi ayrı bağlantıyla erişilir. |
 
-Referansta üst marka/sekme şeridi, solda işlem formu, ortada yan yana USD/yüzde prim ve hemen altında smile, sağda dar risk sütunu var. Uygulama eski Sidebar/Header kabuğunu korudu, smile'ı ayrı alt bölüme taşıdı ve asistanı eski bağımsız panel/yuvarlak butonla bıraktı. Sonuç örneğin bilgi yerleşiminden ayrılıyor. Bunu zorunlu kılan bir teknik engel yok; eski kabuğun yeniden kullanılması uygulama tercihiymiş.
+## Asistan bağlantısı
 
-## Önerilen beş çalışma alanı
+Tek sağ üst düğme; masaüstünde alan ayıran sağ panel, dar ekranda tam ekran panel. Konuşma panel kapatılınca kaybolmaz. Ekrandaki soru düğmeleri mesajı hazırlar; kullanıcının gönderimi olmadan Gemini çağrısı yapılmaz.
 
-| Alan | Yeni düzen ve birleşim | Mevcut ekranlar |
-| --- | --- | --- |
-| Fiyatlama | Ana işlem formu; hedef prim, bariyer ve hedge araçları aynı işleme ait sekmeler/çekmeceler. Araç değiştirince ürün, yön, miktar ve vade bağlamı korunur. | `/`, reverse-engineering, barrier, delta-hedge |
-| Pozisyonlar | Üstte aranabilir müşteri/işlem tablosu; açık, yaklaşan vade ve vade sonunda sonuçlanmış işlemler filtreleri. Seçili pozisyon alt alanda birleşik K/Z, fiyat×tarih haritası, delta/gamma ve koruma karşılaştırmasıyla açılır. | trades, archive, position-analysis |
-| Müşteriler | Sol liste + sağ müşteri dosyası. Özet, işlemler, teminat ve notlar dosya içi sekmeler; müşteri seçimini sayfa geçişleri kaybettirmez. | customers, customer detail, customer margin |
-| Risk ve Teminat | Gerekli ek teminat, yaklaşan vadeler ve işlem gerektiren müşteriler önce; ayrıntılı risk listesi aşağıda. Şube teminat kontrolleri, model Greeks senaryolarıyla karıştırılmaz. | dashboard + margin |
-| Eğriler ve Veri | Geniş smile + vade tablosu, seçili strike/vade; spotun ve yüzeyin ayrı kaynak/tarih/durumu, yayınlanan seans ve final bilgisi. Veri eksikliği grafik üzerindeki ilgili bölgede görünür. Yönetim ayarları ayrı çekmece. | settings içindeki veri yönetimi + ana sayfa eğri araçları |
+İstemci yalnız seçili müşteri/işlem kimliklerini gönderir. Sunucu kayıtların varlığını ve müşteri sahipliğini denetleyip geçmiş primi ve işlem koşullarını veritabanından okur. `get_workspace_context` dosya ve kaynak uyarılarını getirir; `analyze_selected_position` gerçek giriş primini koruyan ortak analiz motorunu çalıştırır. Sohbet devamı seçim ve işlem koşullarına bağlanır; başka müşteri seçilince eski model bağlamı taşınmaz. Asistan kayıt/emir/teminat çağrısı yazamaz.
 
-`stock-tracker` BIST hisse takibi olduğundan metal çalışma alanının ana menüsünde yer almayacak. Mevcut veri silinmeyecek; metal arayüzü dışında erişim/koruma kararı uygulama sırasında verilecek. Arşiv bir işlem durumudur; Avrupa tipi işlemin vade öncesi kapatılması olarak sunulmaz. Ters işlem/hedge eski sözleşmeyi feshetmez. Kotasyon geçmişi ile kaydedilmiş müşteri işlemleri farklı veri türleridir; saklanan kotasyon geçmişi altyapısı yokken varmış gibi sekme gösterilmez.
+Yalnız XAU/XAG. Her fiyat, prim, Greeks ve senaryo Terminal X motorundan gelir. Manuel spot/faiz/kira/IV ile hesap yapılmaz: manuel varsayımlar eğri–fiyat tutarlılığını bozar. Araştırma yalnız yöntem/veri tutarsızlığı içindir; fiyat kaynağı olamaz.
 
-## Görsel kurallar
+## Avrupa tipi işlemler
 
-- Referanstaki grafit/siyah, amber vurgu, ince ayırıcı çizgiler, küçük dikdörtgen kontrol ve hizalı sayısal sütunlar bütün sayfalara uygulanacak. Ayrı renkli dashboard/card kimliği olmayacak.
-- Metin hiyerarşisi sakin: büyük sloganlar yerine ekran işlevi; genişlik grafik ve tablolara ayrılacak. USD ve nominal yüzde aynı önemle yan yana görünecek.
-- Smile merkezde primin altında, risk sağda; birleştirilmiş tablolardan grafiklere açılan ayrıntı paneli. Boşluk ve yükseklik, bileşenlerin birbirinden bağımsız eski ölçülerinden alınmayacak.
-- Pozitif/negatif risk renkleri değerlerin anlamını gösterir. Bekleyen/eski/eksik veri, yeşil "canlı" etiketiyle gösterilmez.
-- Dar ekranda liste → ayrıntı; asistan tam ekran açılır. Masaüstünde sağa bağlı yaklaşık 380px panel; grafik çalışma alanını örtmek yerine alan paylaşır.
+Vade öncesi kullanım veya otomatik kapatma yoktur. Hedge/ters işlem/yeni vade yeni bacaklardır, eski sözleşme yükümlülüğünü kaldırmaz. Vade sonucunun kaydedilmesi hem arayüzde hem sunucuda vade tarihine bağlıdır. Eski `/archive`, `/dashboard` ve müşteri teminat URL'leri gerçek alanlara bağlanır. BIST ekranı korunur, metal ana menüsüne eklenmez.
 
-## Asistan
+## Tasarım ve kaynaklar
 
-Örnekteki sağ üst `Asistan ↗` düğmesi ve aynı terminal stilindeki sağ panel kullanılacak. Tek düğme; ikinci yüzen giriş olmayacak. Konuşma, seçili müşteri/pozisyon/fiyatlama bağlamını gösterir. Sonuçlar kısa açıklama + USD/yüzde + ilgili grafik/karşılaştırma kartı olarak görünür. Ekrana uygulama ve pozisyon analizine geçiş açık eylemler olur. Ses/bas-konuş daha sonra; bu tasarım çalışmasında gerçek Gemini çağrısı yapılmaz.
+Bloomberg: grafit/siyah, amber sayılar, ince çizgiler, dikdörtgen kontroller. Meridian: açık zemin ve mor vurgu; aynı sayfa akışı. Grafikler ve müşteri tabloları asistan açıkken dar alana uyarlanır; mobilde menü yatay kayar, içerik tek sütuna iner.
 
-## Uygulama sırası
+Faiz/taşıma/IV onaylanan **endikatif CME/SOFR proxy** paketinden gelir. Banka OIS veya metal kira kotasyonu iddiası yok; ayrıntılar `PRICING_CURVE_PROXY.md` içinde. Yapay sıfır/eski MTM yerine eksik sonuç ve gerekçesi gösterilir.
 
-1. Bu sayfa haritasını temel alıp Pozisyonlar ve Risk ekranlarının kısa görsel örneklerini üret; referansla aynı kabuğu kullan. Tam sayfa dönüşümlerinden önce yerleşimi göster.
-2. Bloomberg kabuğu/asistan görünümü; sonra pozisyon/arşiv birleşimi, müşteri dosyası, risk/dashboard birleşimi ve eğri/veri alanı. Eski URL'lere erişim bozulmayacak.
-3. Temel akışları ve dar ekranı doğrula; asistan kabul testlerini bütün diğer işler tamamlandıktan sonra sınırlı sayıda yap.
+Üretim asistanı `GEMINI_API_KEY`, `GEMINI_MODEL`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ASSISTANT_ACCESS_CODE` sunucu ortam ayarları gerektirir. Hiçbiri kaynak koduna veya ekran bağlamına konmaz. Yerel ayarlar `.env.local` içinde ve Git dışında tutulur.
 
-## Son karar listesi — açık kalacak
+## Son karar — açık
 
-- Faiz/taşıma/IV entegrasyonu onaylanan **endikatif CME/SOFR proxy** kapsamında tamamlandı ve 1 Ekim final paketi doğrulanıp etkinleştirildi. Ham `pricingReady=false` girdi snapshot'ı tek başına fiyatlama girdisi olmaz. Banka OIS/kira eğrisi iddiası yok; yöntem ve sınırlar `docs/PRICING_CURVE_PROXY.md` içinde.
-- Bloomberg/Meridian hangi branch'in sunum/ana sürüm olacağına en son karar verilecek. GitHub default branch geçişi/merge ve final settlement workflow'un otomatik çalışması bu karara bağlı. Kullanıcı "en son karar verelim" dedi: bu turda main merge veya default branch değişimi yapılmayacak.
-
-İlgili veri durumu: `docs/DATABENTO_FINAL_CARRY_INPUTS.md`.
-
-4 Ekim kısa görsel önerileri: `tasarim-demolari/positions.html` ve `risk.html`. Aynı siyah/amber kabuk, beş çalışma alanı, sağa bağlı asistan; sayılar ve müşteri adları temsilidir. Bu iki ikincil ekran henüz gerçek uygulamanın yerine geçirilmedi; kullanıcı tasarım kararı bekleniyor.
+İki tasarım ayrı branch'lere pushlanır. Sunum/ana sürüm seçimi, main merge/default branch değişimi ve final settlement workflow'un otomatik etkinleşmesi en son kullanıcıyla kararlaştırılacak. Bu geliştirme main/default branch'i değiştirmez. Ses ve bas-konuş daha sonraki aşamadır.

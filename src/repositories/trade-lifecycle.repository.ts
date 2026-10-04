@@ -95,6 +95,8 @@ export async function settleTradeOwned(customerId: string, id: string, expirySpo
     if (!result.rows.length) throw new Error("Bu müşteriye ait işlem bulunamadı.");
     const trade = rowToTrade(result.rows[0]);
     if (trade.status === "Closed") throw new Error("İşlem zaten kapatılmış ve arşivlenmiş.");
+    const expiryDay = trade.expiryDate.slice(0, 10);
+    if (!Number.isFinite(Date.parse(expiryDay)) || expiryDay > new Date().toISOString().slice(0, 10)) throw new Error('Avrupa tipi işlem vade öncesi sonuçlandırılamaz. Ters işlem veya hedge, mevcut sözleşmeyi sona erdirmez.');
     const intrinsic = Math.max(0, trade.type === "Call" ? expirySpot - trade.strike : trade.strike - expirySpot) * trade.contractSize;
     const pnl = (trade.position === "Long" ? 1 : -1) * (intrinsic - trade.premium);
     if (!Number.isFinite(pnl)) throw new Error("Kapanış tutarı hesaplanamıyor.");

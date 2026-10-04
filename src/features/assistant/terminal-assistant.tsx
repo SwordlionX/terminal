@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowUp, Sparkles, Square, RotateCcw, Maximize2, Minimize2, LockKeyhole, X, ChevronRight } from 'lucide-react';
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { ArrowUp, Sparkles, Square, RotateCcw, LockKeyhole, X, ChevronRight } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { useWorkspace } from '@/store/workspace';
+import { useAnalysisDraft } from '@/store/analysis-draft';
+import { areaLabels, workspaceArea } from '@/lib/workspace';
 import { useMarketData } from '@/store/marketData';
 import type { AssistantArtifact, AssistantEvent, ScreenContext } from '@/lib/assistant/types';
 import { MANUAL_PRICING_BLOCKED } from '@/lib/assistant/policy';
@@ -16,16 +19,47 @@ const ResultCard = dynamic(() => import('./result-cards').then(mod => mod.Result
 });
 const iconButton = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white/5 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300';
 const suggestions = [
-  { title: 'Pozisyonun haritasını gör', text: 'Ekrandaki koşullarla müşteri put satışının fiyat ve tarih kâr zarar haritasını, delta ve gamma riskini göster. Avrupa tipi opsiyon için vade öncesi kullanım varsayma.' },
-  { title: 'Bir fiyat al', text: 'Ekrandaki girdilerle müşteri için put satışını fiyatla.' },
-  { title: 'Hedef primi bul', text: 'Ekrandaki ürün ve vade için spot nominalinin %5’i kadar prim sağlayan müşteri put satışını bul.' },
+  { title: 'Pozisyonun haritasını gör', text: 'Ekranda seçili opsiyon ve müşteri yönünü koruyarak fiyat ve tarih kâr zarar haritasını, delta ve gamma riskini göster. Avrupa tipi opsiyon için vade öncesi kullanım varsayma.' },
+  { title: 'Bir fiyat al', text: 'Ekrandaki ürün, opsiyon tipi, müşteri yönü, miktar ve vade ile fiyatla.' },
+  { title: 'Hedef primi bul', text: 'Ekrandaki ürün, opsiyon tipi, müşteri yönü, miktar ve vade için spot nominalinin %5’i kadar prim sağlayan strike’ı bul.' },
   { title: 'Alternatifleri karşılaştır', text: 'Ekrandaki strike ile müşteri put satışı ve aynı vadede daha düşük strike put alımı eklenmiş yapıyı karşılaştır. Maliyet ve vade sonu grafiğini göster.' },
 ];
 
 export function TerminalAssistant({ open, onOpenChange, onApplied }: {
   open: boolean; onOpenChange: (open: boolean) => void; onApplied?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const pathname = usePathname();
+  const selection = useWorkspace(s => s.selection);
+  const prompt = useWorkspace(s => s.prompt);
+  const active = selection?.pathname === pathname ? selection : null;
+  const area = workspaceArea(pathname);
+  const scope = JSON.stringify({ area, customerId: active?.customerId, tradeIds: active?.tradeIds });
+  const lastScope = useRef(scope);
+  const lastPrompt = useRef<number | null>(null);
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!prompt || lastPrompt.current === prompt.id) return;
+    lastPrompt.current = prompt.id;
+    const frame = requestAnimationFrame(() => { setDraft(prompt.text); composer.current?.focus(); });
+    return () => cancelAnimationFrame(frame);
+  }, [prompt]);
+  useEffect(() => {
+    if (!open) return;
+    const returnFocus = document.activeElement as HTMLElement | null;
+    const mobile = window.matchMedia('(max-width: 900px)').matches;
+    if (mobile) panel.current?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { onOpenChange(false); document.getElementById('terminal-assistant-launcher')?.focus(); }
+      if (event.key !== 'Tab' || !mobile || !panel.current) return;
+      const items = Array.from(panel.current.querySelectorAll<HTMLElement>('button:not(:disabled), input, textarea, a[href]')).filter(e => e.getClientRects().length);
+      const first = items[0], last = items.at(-1);
+      if (!first) return;
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('keydown', key); if (mobile && returnFocus?.isConnected) returnFocus.focus(); };
+  }, [open, onOpenChange]);
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
@@ -89,6 +123,7 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
   };
   const send = async () => {
     const text = draft.trim();
+
     if (!text || busy || !availability?.ready || availability.accessRequired) return;
     const userId = ++nextId.current, assistantId = ++nextId.current;
     setMessages(prev => [...prev, { id: userId, role: 'user', text, artifacts: [] }, { id: assistantId, role: 'assistant', text: '', artifacts: [] }]);
@@ -99,9 +134,13 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
     let complete = false, failed = false;
     try {
       const { product, spot, strike, rate, lease, vol, manualVol, manualSpot, contractSize, basis, tradeDate, expiryDate } = useMarketData.getState();
+      const requestScope = JSON.stringify([scope, product, strike, contractSize, basis, tradeDate, expiryDate, useAnalysisDraft.getState().quoteType, useAnalysisDraft.getState().quotePosition]);
+      if (lastScope.current !== requestScope) { conversation.current = undefined; lastScope.current = requestScope; }
       const context = { product, spot, strike, rate, lease, vol, manualVol, manualSpot, contractSize, basis, tradeDate, expiryDate } as ScreenContext;
+      context.type = useAnalysisDraft.getState().quoteType;
+      context.position = useAnalysisDraft.getState().quotePosition;
       const res = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, context, conversation: conversation.current }), signal: controller.signal });
+        body: JSON.stringify({ message: text, context, workspace: { area, customerId: active?.customerId, tradeIds: active?.tradeIds }, conversation: conversation.current }), signal: controller.signal });
       if (!res.ok) {
         const body = await res.json();
         if (res.status === 401) setAvailability(v => v ? { ...v, accessRequired: true } : { ready: true, accessRequired: true });
@@ -143,22 +182,21 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
   const days = Math.round((Date.parse(md.expiryDate) - Date.parse(md.tradeDate)) / 86400000);
 
   return <>
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent showCloseButton={false} finalFocus={() => document.getElementById('terminal-assistant-launcher')} className={`gap-0 border-border bg-background p-0 text-foreground motion-reduce:transition-none ${expanded ? '!w-full sm:!max-w-[900px]' : '!w-full sm:!max-w-[560px]'}`}>
+    <aside ref={panel} tabIndex={-1} id="terminal-assistant-panel" aria-label="Terminal asistanı" hidden={!open} className="assistant-dock">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
           <div className="flex min-w-0 gap-3"><span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-200/10 min-[380px]:flex"><Sparkles size={19} className="text-cyan-200" /></span>
-            <div className="min-w-0"><SheetTitle className="text-base text-white">Terminal Asistanı</SheetTitle><SheetDescription className="mt-1 text-xs text-slate-400">Fiyatla, karşılaştır, birlikte değerlendir.</SheetDescription></div></div>
+            <div className="min-w-0"><h2 className="text-base font-semibold">Terminal Asistanı</h2><p className="mt-1 text-xs text-muted-foreground">Seçili bağlamı birlikte değerlendir.</p></div></div>
           <div className="flex gap-1">
             <button onClick={reset} disabled={busy} aria-label="Yeni sohbet" title="Yeni sohbet" className={iconButton}><RotateCcw size={18} /></button>
-            <button onClick={() => setExpanded(v => !v)} aria-label={expanded ? 'Paneli küçült' : 'Paneli genişlet'} className={`${iconButton} hidden sm:flex`}>{expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
             <button onClick={() => onOpenChange(false)} aria-label="Asistanı kapat" className={iconButton}><X size={19} /></button>
           </div>
         </header>
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 bg-white/[0.025] px-5 py-2.5 text-xs text-slate-400">
           <span className="flex items-center gap-1.5 text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />{md.product}</span>
-          <span>{Number.isFinite(days) && days > 0 ? `${days} gün` : 'Vade kontrol edilmeli'}</span><span>{md.contractSize.toLocaleString('tr-TR')} {md.product === 'XAU' || md.product === 'XAG' ? 'ons' : 'adet'}</span>
-          <span className="ml-auto text-slate-400">Aktif ekran bağlamı</span>
+          {!active?.customerId && <><span>{Number.isFinite(days) && days > 0 ? `${days} gün` : 'Vade kontrol edilmeli'}</span><span>{md.contractSize.toLocaleString('tr-TR')} {md.product === 'XAU' || md.product === 'XAG' ? 'ons' : 'adet'}</span>
+          <span className="ml-auto text-slate-400">Aktif fiyatlama koşulları</span></>}
         </div>
+        <div className="assistant-context"><span>SEÇİLİ BAĞLAM</span><strong>{active?.label ?? areaLabels[area]}</strong><small>{active?.tradeIds?.length ? `${active.tradeIds.length} kayıt · sunucudan doğrulanır` : active?.customerId ? "Müşteri dosyası · kayıtlı işlemler" : "Güncel işlem koşulları"}</small></div>
         <p className="shrink-0 border-b border-white/5 px-5 py-2 text-xs leading-relaxed text-slate-400">Yalnız terminal eğrisiyle fiyatlama. Manuel piyasa varsayımları eğriyle tutarlılığı bozar.</p>
         {(md.manualSpot || md.manualVol) && <p role="alert" className="shrink-0 border-b border-amber-300/15 bg-amber-300/5 px-5 py-2 text-xs leading-relaxed text-amber-200">{MANUAL_PRICING_BLOCKED}</p>}
         <div ref={scrollArea} onScroll={e => {
@@ -169,9 +207,13 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
           <div ref={scrollContent}>
           {!messages.length && <div className="py-7">
             <p className="text-xs font-semibold tracking-[0.2em] text-cyan-200">TERMINAL X</p>
-            <h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">Bugün neyi<br />değerlendirelim?</h2>
+            <h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">Birlikte değerlendirelim.</h2>
             <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-400">Hedefini veya pozisyonunu anlat. Terminal verileriyle fiyatları ve alternatifleri birlikte inceleyelim.</p>
-            <div className="mt-7 space-y-2">{suggestions.map(s => <button key={s.title} onClick={() => { setDraft(s.text); composer.current?.focus(); }} className="flex min-h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left transition motion-reduce:transition-none hover:border-cyan-200/30 hover:bg-cyan-200/5 focus-visible:outline-2 focus-visible:outline-cyan-300">
+            <div className="mt-7 space-y-2">{(active?.customerId ? [
+              { title: 'Seçili dosyayı özetle', text: 'Seçili müşteri dosyasını terminal kayıtlarından oku. Açık işlemler, yaklaşan vadeler ve teminat durumunu özetle. Teminat prosedürünü model K/Z ile karıştırma.' },
+              ...(active.tradeIds?.length ? [{ title: 'Seçili pozisyonu analiz et', text: 'Seçili kayıtlı pozisyonun geçmiş primini kullanarak fiyat ve tarih K/Z haritasını, delta ve gamma riskini göster.' }] : []),
+              { title: 'Koruma alternatiflerini incele', text: 'Seçili dosyayı oku ve korunması gereken pozisyon için hedge alternatiflerini değerlendir. Avrupa tipi sözleşme sona ermiş sayılmaz.' },
+            ] : suggestions).map(s => <button key={s.title} onClick={() => { setDraft(s.text); composer.current?.focus(); }} className="flex min-h-11 w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3.5 text-left transition motion-reduce:transition-none hover:border-cyan-200/30 hover:bg-cyan-200/5 focus-visible:outline-2 focus-visible:outline-cyan-300">
               <span className="text-xs font-medium text-slate-200">{s.title}</span><ChevronRight size={15} className="text-slate-400" /></button>)}</div>
             <p className="mt-5 text-xs leading-relaxed text-slate-400">Bu örneklerin dışında da sorabilirsin. Bütün fiyatlar Terminal X motorundan gelir.</p>
           </div>}
@@ -210,7 +252,6 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
             <p className="mt-2 text-center text-xs text-slate-400">Endikatif sonuçlar · Hesap anındaki veri ve varsayımlar</p>
           </>}
         </footer>
-      </SheetContent>
-    </Sheet>
+    </aside>
   </>;
 }

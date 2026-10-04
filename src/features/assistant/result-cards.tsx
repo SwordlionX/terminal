@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { PositionAnalysisView } from '@/features/pricing/position-analysis-view';
 import { ArrowUpRight, ChevronDown, ChevronUp, Check, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useMarketData } from '@/store/marketData';
 import { useAnalysisDraft } from '@/store/analysis-draft';
 import type { AssistantArtifact, Quote, ScenarioResult } from '@/lib/assistant/types';
@@ -126,6 +127,10 @@ export function ScenarioChart({ results, onApply }: { results: ScenarioResult[];
 }
 
 export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact; onApply?: () => void }) {
+  if (artifact.kind === 'workspace') {
+    const w = artifact.snapshot;
+    return <section className="workspace-panel"><p className="desk-eyebrow">TERMİNAL KAYITLARI / SALT OKUNUR</p><h3 className="mt-2 text-sm font-semibold">{w.customer?.name ?? 'Risk masası özeti'}</h3><p className="workspace-muted">{w.trades.length} seçili işlem{w.truncated ? ` · ${w.totalTrades} kaydın ilk ${w.trades.length} tanesi; tam portföy değildir` : ''}</p>{w.margin && <><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="workspace-muted">Ek teminat</p><strong>{money(w.margin.cureAmount)}</strong></div><div><p className="workspace-muted">Prosedür brüt zararı</p><strong>{money(w.margin.totalMtmLoss)}</strong></div></div><p className="workspace-muted mt-3">{w.margin.method}</p>{w.margin.dataWarning && <p className="desk-policy mt-3">{w.margin.dataWarning}</p>}</>}{w.riskSummary && <><p className="mt-3 text-sm">{w.riskSummary.customerCount} müşteri · {w.riskSummary.openTrades} açık işlem</p><p className="mt-2 text-sm">Gerekli ek teminat: {money(w.riskSummary.cureAmount)}</p>{w.riskSummary.priorities.map(r => <Link key={r.customerId} className="desk-link block mt-3" href={`/customers/${r.customerId}?tab=collateral`}>{r.name} · {money(r.cureAmount)} ↗</Link>)}</>}{w.trades.map(t => <Link key={t.id} className="block border-t border-border py-3 mt-3 text-xs" href={`/trades?trade=${t.id}`}><strong>{t.underlying} · {t.position} {t.type}</strong><p className="workspace-muted">{fmt(t.contractSize)} ons · {t.expiryDate} · {money(t.premiumTotal)} geçmiş prim</p><span className="desk-link">Pozisyonu ekranda aç ↗</span></Link>)}{w.customer && <Link className="desk-link block mt-3" href={`/customers/${w.customer.id}`}>Müşteri dosyasını aç ↗</Link>}</section>;
+  }
   if (artifact.kind === 'position_analysis') return <section className="min-w-0"><p className="mb-3 text-sm font-semibold">{artifact.result.label}</p><PositionAnalysisView result={artifact.result} compact /></section>;
   if (artifact.kind === 'quote') return <QuoteCard quote={artifact.quote} onApply={onApply} />;
   if (artifact.kind === 'scenarios') return <ScenarioChart results={artifact.results} onApply={onApply} />;

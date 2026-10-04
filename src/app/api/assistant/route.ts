@@ -24,7 +24,11 @@ export async function POST(request: Request) {
     if (Buffer.byteLength(raw) > 160_000) throw new Error('İstek çok uzun. Daha kısa bir mesaj kullanın.');
     const body = object(JSON.parse(raw));
     if (typeof body.message !== 'string' || !body.message.trim() || body.message.length > 4000) throw new Error('Bir ila dört bin karakterlik mesaj gerekli.');
-    const context = validateContext(body.context), contents = openConversation(body.conversation);
+    let context = validateContext(body.context);
+    const workspace = body.workspace === undefined ? undefined : await (await import('@/lib/assistant/workspace-context')).resolveWorkspace(body.workspace, context);
+    if (workspace) context = workspace.screen;
+    const scope = JSON.stringify([workspace?.selection ?? null, context.product, context.strike, context.contractSize, context.tradeDate, context.expiryDate, context.basis, context.type, context.position]);
+    const contents = openConversation(body.conversation, scope);
     await reserveRequest();
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, request.signal, AbortSignal.timeout(55000)]);
@@ -39,8 +43,8 @@ export async function POST(request: Request) {
           }
         };
         try {
-          const result = await runAssistant({ message: (body.message as string).trim(), context, contents, signal, emit });
-          emit({ type: 'conversation', token: sealConversation(result.contents) });
+          const result = await runAssistant({ message: (body.message as string).trim(), context, workspace: workspace?.snapshot, contents, signal, emit });
+          emit({ type: 'conversation', token: sealConversation(result.contents, scope) });
           emit({ type: 'done', modelCalls: result.modelCalls, durationMs: Date.now() - started });
         } catch (e) {
           const error = e as { status?: number; message?: string };

@@ -69,7 +69,7 @@ async function fixture() {
 
 function trade(overrides = {}) {
   return {
-    customerId: 'c1', tradeDate: '2026-10-02', expiryDate: '2026-12-31', underlying: 'XAU',
+    customerId: 'c1', tradeDate: '2000-01-01', expiryDate: '2000-03-31', underlying: 'XAU',
     type: 'Call', position: 'Long', spot: 4000, strike: 4100, volatility: 0.15,
     contractSize: 10, premium: 1000, currentPremium: 100, mtm: 0, pnl: 0,
     delta: 0, gamma: 0, vega: 0, theta: 0, marginRate: 0.1, status: 'Open',
@@ -249,4 +249,14 @@ test('concurrent attempts to close one trade produce at most one settlement and 
   assert.equal(saved.status, 'Closed');
   assert.equal((await rows(client, 'SELECT k FROM kv WHERE k = ?', [`trade_settlement:${id}`])).length, 1);
   assert.equal((await rows(client, "SELECT id FROM activity_log WHERE type = 'Trade Closed'")).length, 1);
+});
+
+
+test('European settlement before expiry leaves trade, metadata and activity untouched', async t => {
+  const { client, repository } = await fixture(); t.after(() => client.close());
+  const id = await repository.bookTrade(trade({ tradeDate: '2099-01-01', expiryDate: '2099-03-31' }));
+  await assert.rejects(repository.settleTradeOwned('c1', id, 4400), /vade öncesi/);
+  assert.equal((await rows(client, 'SELECT status FROM trades WHERE id = ?', [id]))[0].status, 'Open');
+  assert.equal((await rows(client, "SELECT k FROM kv WHERE k LIKE 'trade_settlement:%'")).length, 0);
+  assert.equal((await rows(client, "SELECT id FROM activity_log WHERE type = 'Trade Closed'")).length, 0);
 });

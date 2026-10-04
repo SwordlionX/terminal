@@ -34,7 +34,7 @@ export function PricingContextBar({ product, spot, strike, daysToExpiry, effVol,
         </Badge>
       )}
       <Link href="/" className="ml-auto text-emerald-500 hover:underline font-medium">
-        Piyasa verilerini düzenle →
+        İşlem koşullarına dön →
       </Link>
     </div>
   );
