@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { Trade } from "@/types";
 import { BarrierHistoryCheck } from "@/features/crm/barrier-history-check";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -46,9 +44,12 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
   const [addError, setAddError] = useState<string | null>(null);
   const [settling, setSettling] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
-  const activeTrades = trades;
+  const [statusFilter, setStatusFilter] = useState('open');
+  const [search, setSearch] = useState('');
+  const activeTrades = trades.filter(t => (statusFilter === 'all' || (statusFilter === 'closed' ? t.status === 'Closed' : t.status !== 'Closed')) && (t.id + ' ' + t.underlying + ' ' + t.type + ' ' + t.position).toLowerCase().includes(search.toLowerCase()));
+  const cashflow = trades.filter(t=>t.status !== 'Closed').reduce((sum,t)=>sum+(t.position==='Short'?1:-1)*t.premium,0);
 
-  const formatCurrency = (val: number | null) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+  const formatCurrency = (val: number | null) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) + ' USD';
 
   // Dinamik Teminat Hesaplama
   const requiredMarginCalc = () => {
@@ -102,46 +103,46 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
   };
 
   return (
-    <Card className="mt-6">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Müşteri İşlemleri (Opsiyonlar)</CardTitle>
+    <div className="customer-trade-register"><div className="workspace-metrics" style={{padding:'0 20px'}}><div><span>Açık işlem</span><strong>{trades.filter(t=>t.status!=='Closed').length}</strong></div><div><span>Geçmiş net prim · açık işlemler</span><strong>{formatCurrency(cashflow)}</strong></div><div><span>Vade sonuçları</span><strong>{trades.filter(t=>t.status==='Closed').length}</strong></div></div>
+      <div className="workspace-heading">
+        <h2>İşlem kayıtları</h2>
         <div className="flex items-center gap-2">
           <Link href={`/archive?customer=${encodeURIComponent(customerId)}`} className="rounded-md border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800">
             İşlem Arşivi
           </Link>
-          <Button onClick={() => { setAddError(null); setIsAddOpen(true); }} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+          <Button onClick={() => { setAddError(null); setIsAddOpen(true); }} size="sm" className="desk-button desk-button-primary">
             <Plus className="w-4 h-4 mr-2" />
             Geçmiş işlem kaydı ekle
           </Button>
         </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>İşlem Tarihi</TableHead>
-              <TableHead>Vade</TableHead>
-              <TableHead>Ürün</TableHead>
-              <TableHead>Pozisyon</TableHead>
-              <TableHead>Strike</TableHead>
-              <TableHead>
+      </div><div className="workspace-toolbar" style={{padding:'0 20px'}}><div className="workspace-tabs" style={{margin:0}}>{[['open','Açık'],['closed','Sonuçlanmış'],['all','Tümü']].map(([key,label])=><button key={key} aria-pressed={statusFilter===key} onClick={()=>setStatusFilter(key)}>{label}</button>)}</div><input className="workspace-search" aria-label="Müşterinin işlemlerinde ara" placeholder="İşlem, ürün veya yön ara…" value={search} onChange={e=>setSearch(e.target.value)} /></div>
+      <div className="workspace-table-scroll">
+        <table className="workspace-table">
+          <thead>
+            <tr>
+              <th>İşlem Tarihi</th>
+              <th>Vade</th>
+              <th>Ürün</th>
+              <th>Pozisyon</th>
+              <th>Strike</th>
+              <th>
                 <span className="inline-flex items-center gap-1.5">
                   Başabaş
                   <InfoHint label="Başabaş nedir" text={BREAKEVEN_INFO} />
                 </span>
-              </TableHead>
-              <TableHead>Miktar</TableHead>
-              <TableHead>Durum</TableHead>
-              <TableHead>Vade sonucu K/Z</TableHead>
-              <TableHead className="text-right">Aksiyon</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+              </th>
+              <th>Miktar</th>
+              <th className="number">Giriş primi · USD / %</th><th>Durum</th>
+              <th>Vade sonucu K/Z</th>
+              <th className="text-right">Aksiyon</th>
+            </tr>
+          </thead>
+          <tbody>
             {activeTrades.map(t => (
-              <TableRow key={t.id}>
-                <TableCell>{new Date(t.tradeDate).toLocaleDateString()}</TableCell>
-                <TableCell>{new Date(t.expiryDate).toLocaleDateString()}</TableCell>
-                <TableCell className="font-bold">
+              <tr key={t.id}>
+                <td>{new Date(t.tradeDate).toLocaleDateString()}</td>
+                <td>{new Date(t.expiryDate).toLocaleDateString()}</td>
+                <td className="font-bold">
                   {t.underlying}
                   {t.barrierType && (
                     <Badge variant="outline" className="ml-2 h-5 text-[10px] px-1.5 border-zinc-700 text-zinc-400 font-normal" title={`${t.barrierType} @ ${t.barrierLevel} (${t.barrierStyle})`}>
@@ -149,12 +150,12 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                     </Badge>
                   )}
                   {t.barrierType && <BarrierHistoryCheck customerId={customerId} tradeId={t.id} />}
-                </TableCell>
-                <TableCell>
+                </td>
+                <td>
                   <span className={t.position === 'Long' ? 'text-emerald-500' : 'text-rose-500'}>{t.position}</span> {t.type}
-                </TableCell>
-                <TableCell>{t.strike}</TableCell>
-                <TableCell className="font-mono">
+                </td>
+                <td>{t.strike}</td>
+                <td className="font-mono">
                   {(() => {
                     const be = breakEvenSpot(t.type, t.strike, t.premium, t.contractSize);
                     if (be == null) return <span className="text-zinc-600">-</span>;
@@ -167,16 +168,17 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                       </span>
                     );
                   })()}
-                </TableCell>
-                <TableCell>{t.contractSize}</TableCell>
-                <TableCell>
-                  <Badge variant={t.status === 'Closed' ? 'secondary' : 'default'}>{t.status}</Badge>
-                </TableCell>
-                <TableCell className={t.pnl && t.pnl >= 0 ? "text-emerald-500" : t.pnl && t.pnl < 0 ? "text-rose-500" : ""}>
+                </td>
+                <td>{t.contractSize}</td>
+                <td className="number">{formatCurrency(t.premium)}<small>{t.spot*t.contractSize>0 ? '%' + (t.premium/(t.spot*t.contractSize)*100).toLocaleString('tr-TR',{maximumFractionDigits:2}) : '—'} · giriş nominali</small></td>
+                <td>
+                  <Badge variant={t.status === 'Closed' ? 'secondary' : 'default'}>{t.status === 'Closed' ? 'Sonuçlandı' : t.expiryDate.slice(0,10)<=new Date().toISOString().slice(0,10) ? 'Vade sonucu bekleniyor' : 'Açık'}</Badge>
+                </td>
+                <td className={t.pnl && t.pnl >= 0 ? "text-emerald-500" : t.pnl && t.pnl < 0 ? "text-rose-500" : ""}>
                   {t.status === 'Closed' && t.pnl !== null ? formatCurrency(t.pnl) : '—'}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
+                </td>
+                <td className="text-right">
+                  <div className="flex justify-end gap-2"><Link className="desk-link" href={`/trades?trade=${encodeURIComponent(t.id)}`} title="Pozisyon masasında incele">İncele ↗</Link>
                     {t.status !== 'Closed' && t.expiryDate.slice(0, 10) <= new Date().toISOString().slice(0, 10) && (
                       <Button size="icon" variant="outline" className="h-8 w-8 text-zinc-300" onClick={() => { setSettleError(null); setSettleSpot(""); setSettleTrade(t); }} title="Vade sonucunu kaydet">
                         <CheckCircle className="h-4 w-4" />
@@ -192,23 +194,23 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             ))}
             {activeTrades.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">Müşteriye ait işlem bulunmamaktadır.</TableCell>
-              </TableRow>
+              <tr>
+                <td colSpan={11} className="text-center text-muted-foreground py-8">Müşteriye ait işlem bulunmamaktadır.</td>
+              </tr>
             )}
-          </TableBody>
-        </Table>
-      </CardContent>
+          </tbody>
+        </table>
+      </div>
 
       {/* Add Trade Modal — erişilebilir Dialog (Escape/dışa tıklama/odak tuzağı base-ui'den gelir) */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader className="mb-4">
-              <DialogTitle>Manuel İşlem (Opsiyon) Ekle</DialogTitle>
+              <DialogTitle>Geçmiş işlem kaydı ekle</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleAddTrade} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -381,6 +383,6 @@ export function TradeManagement({ customerId, trades }: { customerId: string, tr
             </form>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

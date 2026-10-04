@@ -457,3 +457,24 @@ test('sealed conversations cannot carry a previous customer or pricing scope int
   assert.equal(security.openConversation(token, 'customer-b/trade-2').length, 0);
   assert.equal(security.openConversation(security.sealConversation(history), 'customer-a/trade-1').length, 0);
 });
+
+test('selected barrier context is validated and cannot silently produce a vanilla quote', async () => {
+  const barrier = { variant: 'do', level: 80, rebate: 0 };
+  const screen = validateContext({ ...context, type: 'Put', position: 'Short', barrier });
+  assert.equal(screen.barrier.variant, 'do'); assert.equal(screen.barrier.level, 80);
+  for (const invalid of [{ ...barrier, level: -1 }, { ...barrier, variant: 'unknown' }, { ...barrier, vol: 50 }])
+    assert.throws(() => validateContext({ ...context, type: 'Put', position: 'Short', barrier: invalid }));
+  const artifacts = [];
+  const execute = createToolExecutor(screen, 'Ekrandaki 10 ons işlemi fiyatla.', {
+    market: async () => market, artifact: a => artifacts.push(a), research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
+  });
+  const omitted = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  assert.match(omitted.error, /bariyerli işlem/); assert.equal(artifacts.length, 0);
+  const correct = await execute('price_option', { type: 'Put', position: 'Short', contractSize: 10, barrier });
+  assert.equal(correct.quote.barrier.level, 80); near(correct.quote.premiumTotal, quote({ barrier, contractSize: 10 }).premiumTotal);
+  const vanilla = createToolExecutor(screen, '10 ons bariyersiz vanilya fiyatını da göster.', {
+    market: async () => market, artifact: () => {}, research: async () => { throw new Error('No research'); }, signal: new AbortController().signal,
+  });
+  const separate = await vanilla('price_option', { type: 'Put', position: 'Short', contractSize: 10 });
+  assert.equal(separate.quote.barrier, undefined);
+});

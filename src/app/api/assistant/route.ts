@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     let context = validateContext(body.context);
     const workspace = body.workspace === undefined ? undefined : await (await import('@/lib/assistant/workspace-context')).resolveWorkspace(body.workspace, context);
     if (workspace) context = workspace.screen;
-    const scope = JSON.stringify([workspace?.selection ?? null, context.product, context.strike, context.contractSize, context.tradeDate, context.expiryDate, context.basis, context.type, context.position]);
+    const scope = JSON.stringify([workspace?.selection ?? null, context.product, context.strike, context.contractSize, context.tradeDate, context.expiryDate, context.basis, context.type, context.position, context.barrier]);
     const contents = openConversation(body.conversation, scope);
     await reserveRequest();
     const controller = new AbortController();

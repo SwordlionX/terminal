@@ -134,11 +134,12 @@ export function TerminalAssistant({ open, onOpenChange, onApplied }: {
     let complete = false, failed = false;
     try {
       const { product, spot, strike, rate, lease, vol, manualVol, manualSpot, contractSize, basis, tradeDate, expiryDate } = useMarketData.getState();
-      const requestScope = JSON.stringify([scope, product, strike, contractSize, basis, tradeDate, expiryDate, useAnalysisDraft.getState().quoteType, useAnalysisDraft.getState().quotePosition]);
+      const requestScope = JSON.stringify([scope, product, strike, contractSize, basis, tradeDate, expiryDate, useAnalysisDraft.getState().quoteType, useAnalysisDraft.getState().quotePosition, area === 'pricing' ? useAnalysisDraft.getState().quoteBarrier : null]);
       if (lastScope.current !== requestScope) { conversation.current = undefined; lastScope.current = requestScope; }
       const context = { product, spot, strike, rate, lease, vol, manualVol, manualSpot, contractSize, basis, tradeDate, expiryDate } as ScreenContext;
       context.type = useAnalysisDraft.getState().quoteType;
       context.position = useAnalysisDraft.getState().quotePosition;
+      if (area === 'pricing' && useAnalysisDraft.getState().quoteBarrier) context.barrier = useAnalysisDraft.getState().quoteBarrier!;
       const res = await fetch('/api/assistant', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, context, workspace: { area, customerId: active?.customerId, tradeIds: active?.tradeIds }, conversation: conversation.current }), signal: controller.signal });
       if (!res.ok) {

@@ -96,6 +96,8 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
           smile, notes: m.surface?.notes, error: m.error, onlyTerminalData: true };
       }
       case 'price_option': {
+        if (screen.barrier && !args.barrier && (!args.product || args.product === screen.product) && !/vanilya|vanilla|bariyersiz/i.test(message))
+          throw new Error('Ekranda bariyerli işlem seçili. Fiyat aracına seçili bariyer yapısını aktar; vanilya fiyatını bu işlemin fiyatı gibi sunma.');
         const quote = await price(args);
         deps.artifact({ kind: 'quote', quote });
         return { quote };

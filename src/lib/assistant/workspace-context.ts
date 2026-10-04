@@ -30,6 +30,6 @@ export async function resolveWorkspace(value: unknown, screen: ScreenContext): P
       priorities: [...results].filter(r => r.margin.status !== 'SAFE' || r.margin.dataWarning).sort((a, b) => b.margin.cureAmount - a.margin.cureAmount).slice(0, 8).map(r => ({ customerId: r.customer.id, name: r.customer.companyName, cureAmount: r.margin.cureAmount, status: r.margin.status, dataWarning: r.margin.dataWarning })) };
   }
   const first = trades.length === 1 ? trades[0] : null;
-  const currentScreen = trades.length ? { ...screen, tradeDate: observedAt.slice(0, 10) } : screen;
+  const currentScreen = trades.length ? { ...screen, barrier: undefined, tradeDate: observedAt.slice(0, 10) } : selection.area !== 'pricing' ? { ...screen, barrier: undefined } : screen;
   return { selection, snapshot, screen: first?.product ? { ...currentScreen, product: first.product, type: first.type, position: first.position, strike: first.strike, contractSize: first.contractSize, expiryDate: first.expiryDate } : currentScreen };
 }

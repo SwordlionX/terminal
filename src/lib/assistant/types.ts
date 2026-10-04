@@ -5,7 +5,7 @@ import type { PositionAnalysis } from '../pricing/position-analysis';
 export type Product = 'XAU' | 'XAG';
 export type OptionType = 'Call' | 'Put';
 export type Position = 'Long' | 'Short';
-export interface ScreenContext extends PricingInputs { product: Product; manualSpot: boolean; type?: OptionType; position?: Position }
+export interface ScreenContext extends PricingInputs { product: Product; manualSpot: boolean; type?: OptionType; position?: Position; barrier?: OptionRequest['barrier'] }
 export interface MarketSnapshot {
   product: Product;
   spot: number | null;

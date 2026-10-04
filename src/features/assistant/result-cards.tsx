@@ -27,6 +27,7 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
   const apply = () => {
     const md = useMarketData.getState();
     useAnalysisDraft.getState().selectQuote(q.type, q.position);
+    useAnalysisDraft.getState().setQuoteBarrier(q.barrier ?? null);
     md.setProduct(q.product, q.inputs.spot, q.inputs.lease, q.effectiveVol);
     const fields = { ...q.inputs, vol: q.effectiveVol, manualVol: false, manualSpot: false };
     for (const [key, value] of Object.entries(fields)) {
