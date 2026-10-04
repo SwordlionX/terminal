@@ -1356,3 +1356,10 @@ html[data-terminal-design='terminal'] .terminal-shell.sidebar-shell .desk-main-g
 .barrier-history-check .desk-policy p {
   margin-top: 4px;
 }
+
+/* Assistant replies: light Markdown rendered as elements. */
+.assistant-text { display:grid; gap:8px; }
+.assistant-text strong { color:var(--foreground); font-weight:600; }
+.assistant-text-heading { font-weight:600; color:var(--primary); margin-top:4px; }
+.assistant-text-list { padding-left:18px; display:grid; gap:4px; }
+.assistant-text-rule { border:0; border-top:1px solid var(--border); margin:4px 0; }

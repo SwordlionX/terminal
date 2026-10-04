@@ -33,7 +33,7 @@ export function genericPricingQuestion(message: string): string | undefined {
     )
   )
     return;
-  return 'Hangi işlemi fiyatlayalım? Altın mı gümüş mü, call mu put mu, müşteri alacak mı satacak mı? Ons miktarını, kullanım fiyatını ve vadeyi de belirtir misin?';
+  return 'Hangi işlemi fiyatlayalım? Altın mı gümüş mü, call mu put mu, müşteri alacak mı satacak mı? Ons miktarını, kullanım fiyatını ve vadeyi de belirtir misiniz?';
 }
 
 /** Reject omissions and conflicts with a single explicit quantity; do not infer hedge ratios. */
@@ -108,7 +108,7 @@ export function assertPremiumBasis(unit: PremiumUnit, message: string, priorUser
 export const MANUAL_PRICING_BLOCKED =
   'Manuel spot, volatilite, faiz veya kira varsayımı terminal eğrisiyle fiyatlama tutarlılığını bozar. Asistan manuel fiyatlama yapmaz; terminalin otomatik verisini ve mevcut eğrisini kullanır. Manuel spot/IV modunu kapatın.';
 export const MANUAL_OVERRIDE_REFUSAL =
-  'Manuel spot, volatilite, faiz veya kira varsayımları terminal eğrisiyle fiyatlama tutarlılığını bozar. Bu değerlerle fiyatlama yapamam. Yalnız terminalin mevcut eğrisiyle devam edebilirim; istersen mevcut eğriyle hesap iste.';
+  'Manuel spot, volatilite, faiz veya kira varsayımları terminal eğrisiyle fiyatlama tutarlılığını bozar. Bu değerlerle fiyatlama yapamam. Yalnız terminalin mevcut eğrisiyle devam edebilirim; isterseniz mevcut eğriyle hesaplayayım.';
 
 /** Explicit market overrides are refused before the model can silently ignore them. */
 export function requestsManualPricing(message: string): boolean {
@@ -168,4 +168,34 @@ export function terminalCurveInputs(screen: ScreenContext, market: MarketSnapsho
     vol: 0,
     manualVol: false as const,
   };
+}
+
+/** Amounts the user actually wrote: "100 bin", "1,5 milyon", "100.000", "250 ons". Ambiguous separators yield both readings. */
+export function userAmounts(message: string): number[] {
+  const out = new Set<number>();
+  const text = message.normalize('NFKC').toLocaleLowerCase('tr-TR');
+  for (const m of text.matchAll(/(?<![\d.,])(\d+(?:[.,]\d+)*)\s*(milyon|bin|k)?(?!\p{L})/gu)) {
+    const raw = m[1],
+      scale = m[2] === 'milyon' ? 1e6 : m[2] === 'bin' || m[2] === 'k' ? 1e3 : 1;
+    const readings: string[] = [];
+    if (raw.includes('.') && raw.includes(',')) readings.push(raw.replace(/\./g, '').replace(',', '.'));
+    else if (raw.includes('.')) readings.push(/^\d{1,3}(\.\d{3})+$/.test(raw) ? raw.replace(/\./g, '') : raw);
+    else if (raw.includes(',')) {
+      readings.push(raw.replace(',', '.'));
+      if (/^\d{1,3}(,\d{3})+$/.test(raw)) readings.push(raw.replace(/,/g, ''));
+    } else readings.push(raw);
+    for (const r of readings) {
+      const value = Number(r) * scale;
+      if (Number.isFinite(value) && value > 0) out.add(Math.round(value * 1e6) / 1e6);
+    }
+  }
+  return [...out];
+}
+
+/** Only an explicit instruction in the current message may add collateral. */
+export function requestsCollateralAdd(message: string): boolean {
+  const text = message.normalize('NFKC').toLocaleLowerCase('tr-TR');
+  if (!/teminat/u.test(text)) return false;
+  if (/(eklemeyin|eklemeyelim|eklenmesin|ekleme\s+yapma|istemiyorum|iptal|sil)/u.test(text)) return false;
+  return /(ekle|eklen|kaydet|işle|gir\b|girin|yatır|aldık|alındı|verdi)/u.test(text);
 }

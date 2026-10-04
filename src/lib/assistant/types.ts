@@ -92,6 +92,14 @@ export type AssistantArtifact =
   | { kind: 'quote'; quote: Quote }
   | { kind: 'search'; result: SearchResult }
   | { kind: 'scenarios'; results: ScenarioResult[] }
+  | {
+      kind: 'collateral_added';
+      customer: string;
+      asset: 'USD' | 'XAU' | 'XAG';
+      amount: number;
+      marketValueUsd: number;
+      at: string;
+    }
   | { kind: 'research'; text: string; sources: { title: string; url: string }[]; searchEntryHtml?: string };
 export type AssistantEvent =
   | { type: 'status'; text: string }

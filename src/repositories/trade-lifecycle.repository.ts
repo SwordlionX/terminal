@@ -141,10 +141,12 @@ export async function bookTrade(data: Omit<Trade, 'id'>, collateral?: NewCollate
   });
 }
 
-export async function addCollateralAtomically(data: NewCollateral): Promise<void> {
+/** `activity` records who added it (for example an assistant instruction) in the customer history. */
+export async function addCollateralAtomically(data: NewCollateral, activity?: string): Promise<void> {
   await writeTransaction(async tx => {
     await requireCustomer(tx, data.customerId);
     await insertCollateral(tx, data);
+    if (activity) await log(tx, data.customerId, 'Margin Updated', activity);
   });
 }
 

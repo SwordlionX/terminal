@@ -18,6 +18,7 @@ export async function addCustomerCollateral(
     currency: string;
     nominalQuantity: number;
   },
+  activity?: string,
 ) {
   validateId(customerId);
   const collateral = validateCollateral(data);
@@ -30,12 +31,16 @@ export async function addCustomerCollateral(
     marketValueUsd = finiteNumber(collateral.nominalQuantity * price, 'Teminat değeri');
   }
 
-  await addCollateralAtomically({
-    customerId,
-    ...collateral,
-    marketValueUsd,
-    haircut: 0,
-  });
+  await addCollateralAtomically(
+    {
+      customerId,
+      ...collateral,
+      marketValueUsd,
+      haircut: 0,
+    },
+    activity,
+  );
+  return { ...collateral, marketValueUsd };
 
   revalidatePath(`/customers/${customerId}/margin`);
   revalidatePath(`/customers/${customerId}`);

@@ -202,6 +202,25 @@ const declarations: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'add_collateral',
+    description:
+      'Asistanın yapabildiği TEK kayıt işlemi: kullanıcı bu mesajda açıkça istediğinde, adıyla belirttiği müşteriye USD nakit veya XAU/XAG (ons) teminat EKLER. Bir mesajda bir kez çağır. Silme, değiştirme, işlem kaydı veya emir yapmaz. Tutarı kullanıcının yazdığı gibi gönder; kur veya birim dönüştürme yapma.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        customer: { type: 'string', description: 'Kullanıcının mesajında yazdığı müşteri adı.' },
+        asset: {
+          type: 'string',
+          enum: ['USD', 'XAU', 'XAG'],
+          description: 'USD nakit veya ons cinsinden altın/gümüş.',
+        },
+        amount: numeric('USD için tutar, XAU/XAG için ons. Kullanıcının yazdığı sayı (100 bin = 100000).'),
+      },
+      required: ['customer', 'asset', 'amount'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'research_diagnostic',
     description:
       'FİYATLAMA ARACI DEĞİL. Yalnız kaydedilmiş veri/motor hatası veya kullanıcının açık yöntem doğrulama isteği için kaynak araştır. Fiyat arama, piyasa kotasyonu, model girdisi bulma ve genel haber araması yasak. Sonuç fiyatlama araçlarına aktarılmaz.',

@@ -434,6 +434,21 @@ export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact;
     );
   if (artifact.kind === 'quote') return <QuoteCard quote={artifact.quote} onApply={onApply} />;
   if (artifact.kind === 'scenarios') return <ScenarioChart results={artifact.results} onApply={onApply} />;
+  if (artifact.kind === 'collateral_added')
+    return (
+      <section role="status" className="rounded-2xl border border-emerald-300/20 bg-emerald-300/5 p-4">
+        <p className="text-xs font-semibold text-emerald-200">Teminat eklendi</p>
+        <p className="mt-2 text-sm text-slate-200">
+          {artifact.customer} · {fmt(artifact.amount)}{' '}
+          {artifact.asset === 'USD' ? 'USD nakit' : `ons ${artifact.asset}`}
+        </p>
+        <p className="mt-1 text-xs text-slate-400">
+          Kayıt anı değeri {money(artifact.marketValueUsd)} ·{' '}
+          {new Date(artifact.at).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}
+          {' · '}müşteri hareketlerine işlendi
+        </p>
+      </section>
+    );
   if (artifact.kind === 'research')
     return (
       <section className="rounded-2xl border border-indigo-300/20 bg-indigo-300/5 p-4">

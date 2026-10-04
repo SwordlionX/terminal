@@ -1197,3 +1197,101 @@ test('named customer access works from pricing but cannot choose an unsolicited 
   assert.equal(reads, 1);
   assert.equal(artifacts[0].kind, 'workspace');
 });
+
+test('user amounts read Turkish thousands, decimals and scale words', () => {
+  const { userAmounts, requestsCollateralAdd } = load('src/lib/assistant/policy.ts');
+  const has = (text, value) => userAmounts(text).includes(value);
+  assert.ok(has('Sevil’den 100 bin dolar teminat aldık, ekle', 100000));
+  assert.ok(has('1,5 milyon USD teminat ekleyin', 1500000));
+  assert.ok(has('100.000 USD teminat ekle', 100000));
+  assert.ok(has('12,5 ons altın teminat gir', 12.5));
+  assert.ok(has('100,000 teminat ekle', 100000) && has('100,000 teminat ekle', 100));
+  assert.equal(requestsCollateralAdd('Sevil için 100 bin dolar teminat ekle'), true);
+  assert.equal(requestsCollateralAdd('Müşteriden 50 ons altın teminat aldık'), true);
+  assert.equal(requestsCollateralAdd('Teminat durumunu özetler misin?'), false);
+  assert.equal(requestsCollateralAdd('100 bin dolar teminat eklemeyin'), false);
+  assert.equal(requestsCollateralAdd('100 bin dolar ekle'), false);
+});
+
+function collateralExecutor(message, { matches = [{ id: 'c1', name: 'SEVİL PARFÜMERİ' }], prior = [] } = {}) {
+  const writes = [],
+    artifacts = [];
+  const execute = createToolExecutor(context, message, {
+    market: async () => market,
+    artifact: a => artifacts.push(a),
+    research: async () => {
+      throw new Error('not used');
+    },
+    signal: new AbortController().signal,
+    priorUserMessages: prior,
+    customerFile: async () => ({
+      matches,
+      truncated: false,
+      ...(matches.length === 1
+        ? { snapshot: { area: 'customers', observedAt: 'now', customer: matches[0], trades: [] } }
+        : {}),
+    }),
+    addCollateral: async (customerId, data, activity) => {
+      writes.push({ customerId, data, activity });
+      return { marketValueUsd: data.nominalQuantity };
+    },
+  });
+  return { execute, writes, artifacts };
+}
+
+test('assistant adds collateral exactly once, only on an explicit instruction with the user amount', async () => {
+  const ok = collateralExecutor('Sevil müşterisinden 100 bin dolar teminat aldık, ekle');
+  const result = await ok.execute('add_collateral', { customer: 'Sevil', asset: 'USD', amount: 100000 });
+  assert.equal(result.added, true);
+  assert.equal(ok.writes.length, 1);
+  assert.equal(
+    JSON.stringify(ok.writes[0].data),
+    JSON.stringify({ assetCode: 'Nakit-USD', currency: 'USD', nominalQuantity: 100000 }),
+  );
+  assert.match(ok.writes[0].activity, /Asistan talimatıyla/);
+  assert.equal(ok.artifacts.filter(a => a.kind === 'collateral_added').length, 1);
+  // A second call in the same message, even with different wording, never adds again.
+  const again = await ok.execute('add_collateral', { customer: 'Sevil', asset: 'USD', amount: 100000.0 });
+  assert.equal(ok.writes.length, 1);
+  assert.ok(again.added === true || again.error);
+  const other = await ok.execute('add_collateral', { customer: 'sevil', asset: 'USD', amount: 100000 });
+  assert.match(other.error, /zaten eklendi/);
+  assert.equal(ok.writes.length, 1);
+
+  for (const [message, args, pattern] of [
+    ['Sevil teminat durumu nedir?', { customer: 'Sevil', asset: 'USD', amount: 100000 }, /açık ekleme talimatıyla/],
+    ['Sevil için 100 bin dolar teminat ekle', { customer: 'Sevil', asset: 'USD', amount: 1000000 }, /eşleşmiyor/],
+    ['Sevil için 100 bin dolar teminat ekle', { customer: 'Plaspak', asset: 'USD', amount: 100000 }, /belirtilmedi/],
+    ['Sevil için 100 bin dolar teminat ekle', { customer: 'Sevil', asset: 'EUR', amount: 100000 }, /./],
+  ]) {
+    const f = collateralExecutor(message);
+    const r = await f.execute('add_collateral', args);
+    assert.match(r.error, pattern, message);
+    assert.equal(f.writes.length, 0);
+  }
+  const ambiguous = collateralExecutor('S için 5 ons altın teminat ekle', {
+    matches: [
+      { id: 'a', name: 'S A' },
+      { id: 'b', name: 'S B' },
+    ],
+  });
+  const r = await ambiguous.execute('add_collateral', { customer: 'S ', asset: 'XAU', amount: 5 });
+  assert.ok(r.clarificationRequired || r.error);
+  assert.equal(ambiguous.writes.length, 0);
+});
+
+test('market context exposes curve rates and the option-implied view from the same surface', async () => {
+  const execute = createToolExecutor(context, 'Altında 3 aylık faiz ve taşıma ne, piyasa ne fiyatlıyor?', {
+    market: async () => market,
+    artifact: () => {},
+    research: async () => {
+      throw new Error('not used');
+    },
+    signal: new AbortController().signal,
+  });
+  const result = await execute('get_market_context', { product: 'XAU' });
+  assert.equal(result.termStructure.length, 5);
+  const row = result.termStructure.find(t => t.days === 90);
+  assert.ok('usdRatePctAct365' in row && 'oneSigmaRange' in row && 'riskNeutralProbAboveSpotPct' in row);
+  assert.match(result.impliedViewNote, /risk-nötr/);
+});

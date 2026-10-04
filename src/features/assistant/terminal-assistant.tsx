@@ -9,6 +9,7 @@ import { useAnalysisDraft } from '@/store/analysis-draft';
 import { areaLabels, workspaceArea } from '@/lib/workspace';
 import { useMarketData } from '@/store/marketData';
 import type { AssistantArtifact, AssistantEvent, ScreenContext } from '@/lib/assistant/types';
+import { AssistantText } from './assistant-text';
 
 interface Message {
   id: number;
@@ -441,7 +442,13 @@ export function TerminalAssistant({
                     </p>
                   )}
                   {m.text && (
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-200">{m.text}</p>
+                    <div className="break-words text-sm leading-relaxed text-slate-200">
+                      {m.role === 'assistant' ? (
+                        <AssistantText text={m.text} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">{m.text}</p>
+                      )}
+                    </div>
                   )}
                   {m.artifacts.map((artifact, i) => (
                     <ResultCard
