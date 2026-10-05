@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { createClient } = require('@libsql/client');
+const { createSqliteClient } = require('./support/sqlite-client.cjs');
 const ts = require('typescript');
 const test = require('node:test');
 
@@ -74,9 +74,9 @@ const numericTradeFields = new Set([
 ]);
 
 async function fixture() {
-  // Deliberately bypass production dbc/init. Shared in-memory SQLite keeps libsql's
-  // transaction connection on the same isolated database as the fixture client.
-  const client = createClient({ url: 'file::memory:?cache=shared' });
+  // Deliberately bypass production dbc/init. Node's built-in SQLite behind the libsql
+  // interface: the native libsql driver can crash at process exit (see support/sqlite-client).
+  const client = createSqliteClient();
   // This libsql memory URI is process-shared, so reset its tables before each fixture.
   await client.batch([
     'DROP TRIGGER IF EXISTS fail_collateral',

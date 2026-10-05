@@ -13,31 +13,52 @@ export interface PricingCurves {
   warnings: string[];
 }
 
+interface ParsedNodes {
+  length: number;
+  times: number[];
+  logs: number[];
+}
+// Curves are immutable once built; parse and validate each node array once instead of per lookup.
+const parsedNodes = new WeakMap<FactorNode[], ParsedNodes | null>();
+
+function parse(nodes: FactorNode[]): ParsedNodes | null {
+  const cached = parsedNodes.get(nodes);
+  if (cached !== undefined && (cached === null || cached.length === nodes.length)) return cached;
+  const times: number[] = [],
+    logs: number[] = [];
+  let valid = true;
+  for (let i = 0; i < nodes.length; i++) {
+    const t = Date.parse(nodes[i].at),
+      v = nodes[i].value;
+    if (!Number.isFinite(t) || !Number.isFinite(v) || v <= 0 || (i > 0 && t <= times[i - 1])) {
+      valid = false;
+      break;
+    }
+    times.push(t);
+    logs.push(Math.log(v));
+  }
+  const result = valid ? { length: nodes.length, times, logs } : null;
+  parsedNodes.set(nodes, result);
+  return result;
+}
+
 /** Positive factors, log interpolation, strictly bounded source coverage. */
 export function factorAt(nodes: FactorNode[], at: number): number | null {
   if (!Number.isFinite(at) || nodes.length < 2) return null;
-  if (
-    nodes.some(
-      (n, i) =>
-        !Number.isFinite(Date.parse(n.at)) ||
-        !Number.isFinite(n.value) ||
-        n.value <= 0 ||
-        (i > 0 && Date.parse(n.at) <= Date.parse(nodes[i - 1].at)),
-    )
-  )
-    return null;
-  for (let i = 0; i < nodes.length; i++) {
-    const a = nodes[i],
-      ta = Date.parse(a.at);
-    if (!Number.isFinite(ta) || !(a.value > 0) || !Number.isFinite(a.value)) return null;
-    if (at === ta) return a.value;
-    const b = nodes[i + 1];
-    if (!b) continue;
-    const tb = Date.parse(b.at);
-    if (!(tb > ta) || !(b.value > 0) || !Number.isFinite(b.value)) return null;
-    if (at > ta && at < tb) return Math.exp(Math.log(a.value) + ((at - ta) / (tb - ta)) * Math.log(b.value / a.value));
+  const parsed = parse(nodes);
+  if (!parsed) return null;
+  const { times, logs } = parsed;
+  if (at < times[0] || at > times[times.length - 1]) return null;
+  let lo = 0,
+    hi = times.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= at) lo = mid;
+    else hi = mid;
   }
-  return null;
+  if (at === times[lo]) return nodes[lo].value;
+  if (at === times[hi]) return nodes[hi].value;
+  return Math.exp(logs[lo] + ((at - times[lo]) / (times[hi] - times[lo])) * (logs[hi] - logs[lo]));
 }
 
 export function curveFactors(curve: PricingCurves, from: number, to: number) {

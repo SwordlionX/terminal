@@ -1,4 +1,4 @@
-import { isAuthorized, openConversation, sameOrigin, sealConversation } from '@/lib/assistant/security';
+import { openConversation, sameOrigin, sealConversation } from '@/lib/assistant/security';
 import { reserveRequest } from '@/lib/assistant/limits';
 import { runAssistant } from '@/lib/assistant/runner';
 import { object, validateContext } from '@/lib/assistant/validation';
@@ -11,21 +11,15 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 const privateHeaders = { 'Cache-Control': 'no-store' };
 
-export async function GET(request: Request) {
+export async function GET() {
   const ready =
     Boolean(process.env.GEMINI_API_KEY) &&
-    (process.env.NODE_ENV !== 'production' ||
-      Boolean(process.env.ASSISTANT_ACCESS_CODE && process.env.TURSO_DATABASE_URL));
-  return Response.json(
-    { ready, accessRequired: Boolean(process.env.ASSISTANT_ACCESS_CODE) && !isAuthorized(request) },
-    { headers: privateHeaders },
-  );
+    (process.env.NODE_ENV !== 'production' || Boolean(process.env.TURSO_DATABASE_URL));
+  return Response.json({ ready }, { headers: privateHeaders });
 }
 
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return Response.json({ error: 'Bu istek kaynağına izin verilmiyor.' }, { status: 403 });
-  if (!isAuthorized(request))
-    return Response.json({ error: 'Asistan erişim koduyla giriş yapın.' }, { status: 401, headers: privateHeaders });
   if (!process.env.GEMINI_API_KEY)
     return Response.json(
       { error: 'Gemini bağlantısı henüz hazırlanmadı. Bağlantı tamamlandığında buradan konuşabileceksiniz.' },

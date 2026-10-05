@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ArrowUp, Sparkles, Square, RotateCcw, LockKeyhole, X, ChevronRight } from 'lucide-react';
+import { ArrowUp, Sparkles, Square, RotateCcw, X, ChevronRight } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useWorkspace } from '@/store/workspace';
 import { useAnalysisDraft } from '@/store/analysis-draft';
@@ -22,7 +22,6 @@ interface Message {
 }
 interface Availability {
   ready: boolean;
-  accessRequired: boolean;
 }
 const ResultCard = dynamic(() => import('./result-cards').then(mod => mod.ResultCard), {
   loading: () => (
@@ -110,9 +109,6 @@ export function TerminalAssistant({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [availability, setAvailability] = useState<Availability | null>(null);
-  const [code, setCode] = useState('');
-  const [accessError, setAccessError] = useState('');
-  const [accessBusy, setAccessBusy] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const [hasNewResponse, setHasNewResponse] = useState(false);
   const conversation = useRef<string | undefined>(undefined);
@@ -164,34 +160,16 @@ export function TerminalAssistant({
       if (!res.ok) throw new Error('status');
       setAvailability(await res.json());
     } catch {
-      setAvailability({ ready: false, accessRequired: false });
+      setAvailability({ ready: false });
     }
   }, []);
   useEffect(() => {
     if (open) void checkAvailability();
   }, [open, checkAvailability]);
-  const unlock = async () => {
-    setAccessBusy(true);
-    setAccessError('');
-    try {
-      const res = await fetch('/api/assistant/access', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
-      if (!res.ok) throw new Error('Erişim sağlanamadı. Kodu kontrol edin.');
-      setCode('');
-      await checkAvailability();
-    } catch (e) {
-      setAccessError(e instanceof Error ? e.message : 'Erişim sağlanamadı.');
-    } finally {
-      setAccessBusy(false);
-    }
-  };
   const send = async () => {
     const text = draft.trim();
 
-    if (!text || busy || !availability?.ready || availability.accessRequired) return;
+    if (!text || busy || !availability?.ready) return;
     const userId = ++nextId.current,
       assistantId = ++nextId.current;
     setMessages(prev => [
@@ -257,8 +235,6 @@ export function TerminalAssistant({
       });
       if (!res.ok) {
         const body = await res.json();
-        if (res.status === 401)
-          setAvailability(v => (v ? { ...v, accessRequired: true } : { ready: true, accessRequired: true }));
         throw new Error(body.error || 'Asistan isteği tamamlayamadı.');
       }
       if (!res.body) throw new Error('Asistan yanıtı alınamadı.');
@@ -501,100 +477,64 @@ export function TerminalAssistant({
               Yeni yanıtı göster ↓
             </button>
           )}
-          {availability?.accessRequired ? (
+          <>
+            {!availability?.ready && (
+              <p role="status" className="mb-3 rounded-lg bg-white/5 px-3 py-2 text-xs text-slate-300">
+                {availability
+                  ? 'Asistan bağlantısı hazır değil. Fiyatlama ekranını kullanmaya devam edebilirsin.'
+                  : 'Asistan bağlantısı kontrol ediliyor…'}
+              </p>
+            )}
             <form
               onSubmit={e => {
                 e.preventDefault();
-                void unlock();
+                void send();
               }}
-              className="space-y-2"
+              className="rounded-2xl border border-white/15 bg-white/[0.04] p-3 focus-within:border-cyan-200/40"
             >
-              <label htmlFor="assistant-access" className="flex items-center gap-2 text-xs text-slate-400">
-                <LockKeyhole size={13} />
-                Asistan erişim kodu
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="assistant-access"
-                  type="password"
-                  autoComplete="off"
-                  value={code}
-                  onChange={e => setCode(e.target.value)}
-                  className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-cyan-300/40"
-                />
-                <button
-                  disabled={accessBusy || !code}
-                  className="min-h-11 rounded-xl bg-cyan-300 px-4 text-xs font-semibold text-slate-950 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
-                >
-                  Giriş
-                </button>
-              </div>
-              {accessError && (
-                <p role="alert" className="text-xs text-amber-200">
-                  {accessError}
-                </p>
-              )}
-            </form>
-          ) : (
-            <>
-              {!availability?.ready && (
-                <p role="status" className="mb-3 rounded-lg bg-white/5 px-3 py-2 text-xs text-slate-300">
-                  {availability
-                    ? 'Asistan bağlantısı hazır değil. Fiyatlama ekranını kullanmaya devam edebilirsin.'
-                    : 'Asistan bağlantısı kontrol ediliyor…'}
-                </p>
-              )}
-              <form
-                onSubmit={e => {
-                  e.preventDefault();
-                  void send();
+              <textarea
+                ref={composer}
+                aria-label="Asistana mesaj"
+                placeholder="Hedefini veya sorunu yaz…"
+                value={draft}
+                maxLength={4000}
+                rows={2}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void send();
+                  }
                 }}
-                className="rounded-2xl border border-white/15 bg-white/[0.04] p-3 focus-within:border-cyan-200/40"
-              >
-                <textarea
-                  ref={composer}
-                  aria-label="Asistana mesaj"
-                  placeholder="Hedefini veya sorunu yaz…"
-                  value={draft}
-                  maxLength={4000}
-                  rows={2}
-                  onChange={e => setDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      void send();
-                    }
-                  }}
-                  className="max-h-40 min-h-14 w-full resize-none bg-transparent text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-400"
-                />
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <span className="text-xs text-slate-400">Enter ile gönder · Shift + Enter ile yeni satır</span>
-                  {busy ? (
-                    <button
-                      type="button"
-                      onClick={() => abort.current?.abort()}
-                      aria-label="İsteği durdur"
-                      className={`${iconButton} border border-white/15`}
-                    >
-                      <Square size={17} />
-                    </button>
-                  ) : (
-                    <button
-                      type="submit"
-                      disabled={!draft.trim() || !availability?.ready || availability.accessRequired}
-                      aria-label="Mesajı gönder"
-                      className={`${iconButton} bg-cyan-300 !text-slate-950 hover:bg-cyan-200 disabled:bg-white/10 disabled:!text-slate-400`}
-                    >
-                      <ArrowUp size={19} />
-                    </button>
-                  )}
-                </div>
-              </form>
-              <p className="mt-2 text-center text-xs text-slate-400">
-                Endikatif sonuçlar · Hesap anındaki veri ve varsayımlar
-              </p>
-            </>
-          )}
+                className="max-h-40 min-h-14 w-full resize-none bg-transparent text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-400"
+              />
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-xs text-slate-400">Enter ile gönder · Shift + Enter ile yeni satır</span>
+                {busy ? (
+                  <button
+                    type="button"
+                    onClick={() => abort.current?.abort()}
+                    aria-label="İsteği durdur"
+                    className={`${iconButton} border border-white/15`}
+                  >
+                    <Square size={17} />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!draft.trim() || !availability?.ready}
+                    aria-label="Mesajı gönder"
+                    className={`${iconButton} bg-cyan-300 !text-slate-950 hover:bg-cyan-200 disabled:bg-white/10 disabled:!text-slate-400`}
+                  >
+                    <ArrowUp size={19} />
+                  </button>
+                )}
+              </div>
+            </form>
+            <p className="mt-2 text-center text-xs text-slate-400">
+              Endikatif sonuçlar · Hesap anındaki veri ve varsayımlar
+            </p>
+          </>
         </footer>
       </aside>
     </>

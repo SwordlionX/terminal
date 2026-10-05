@@ -26,6 +26,14 @@ async function reserve(key: string, limit: number): Promise<void> {
       }
     })();
     if (!result.rows.length) throw new Error('Asistan kullanım sınırına ulaşıldı. Daha sonra tekrar deneyin.');
+    // Counters are per minute/day; drop earlier windows of the same counter so kv does not grow forever.
+    try {
+      const db = await dbc();
+      const prefix = key.slice(0, key.lastIndexOf(':') + 1);
+      await db.execute({ sql: 'DELETE FROM kv WHERE k LIKE ? AND k < ?', args: [`${prefix}%`, key] });
+    } catch {
+      // Pruning is housekeeping only; the reservation already succeeded.
+    }
   } else {
     if (localCounts.size > 500) localCounts.clear();
     const count = localCounts.get(key) ?? 0;

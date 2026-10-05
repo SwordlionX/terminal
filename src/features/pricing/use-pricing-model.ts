@@ -69,9 +69,11 @@ export function usePricingModel() {
   // Barrier closed form uses maturity-equivalent constants: explicitly an approximation.
   const barrierSpot = md.spot;
   const barrierLease = resolved.effectiveLease;
-  const effectiveMd = feed.surface?.curves
-    ? { ...md, rate: resolved.effectiveRate, lease: resolved.effectiveLease }
-    : md;
+  const hasCurves = Boolean(feed.surface?.curves);
+  const effectiveMd = useMemo(
+    () => (hasCurves ? { ...md, rate: resolved.effectiveRate, lease: resolved.effectiveLease } : md),
+    [hasCurves, md, resolved.effectiveRate, resolved.effectiveLease],
+  );
 
   return {
     md: effectiveMd,

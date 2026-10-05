@@ -1,38 +1,10 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import type { Content } from '@google/genai';
 
-const COOKIE_NAME = 'terminal_assistant';
 function secret(): Buffer {
-  const value = process.env.ASSISTANT_SESSION_SECRET || process.env.ASSISTANT_ACCESS_CODE || process.env.GEMINI_API_KEY;
+  const value = process.env.ASSISTANT_SESSION_SECRET || process.env.GEMINI_API_KEY;
   if (!value) throw new Error('Asistan bağlantısı henüz hazırlanmadı.');
   return createHash('sha256').update(`terminal-assistant-v1:${value}`).digest();
-}
-function equal(a: string, b: string): boolean {
-  const x = createHash('sha256').update(a).digest(),
-    y = createHash('sha256').update(b).digest();
-  return timingSafeEqual(x, y);
-}
-export function isAuthorized(request: Request): boolean {
-  if (!process.env.ASSISTANT_ACCESS_CODE) return process.env.NODE_ENV !== 'production';
-  const cookie = request.headers
-    .get('cookie')
-    ?.split(';')
-    .map(c => c.trim())
-    .find(c => c.startsWith(`${COOKIE_NAME}=`))
-    ?.slice(COOKIE_NAME.length + 1);
-  if (!cookie) return false;
-  const [expiry, nonce, signature] = cookie.split('.');
-  if (!expiry || !nonce || !signature || !Number.isFinite(Number(expiry)) || Number(expiry) < Date.now()) return false;
-  const expected = createHmac('sha256', secret()).update(`${expiry}.${nonce}`).digest('base64url');
-  return equal(signature, expected);
-}
-export function issueCookie(code: string): string {
-  const expected = process.env.ASSISTANT_ACCESS_CODE;
-  if (!expected || !equal(code, expected)) throw new Error('Erişim kodu doğru değil.');
-  const expiry = Date.now() + 8 * 3600 * 1000,
-    nonce = randomBytes(12).toString('base64url');
-  const value = `${expiry}.${nonce}.${createHmac('sha256', secret()).update(`${expiry}.${nonce}`).digest('base64url')}`;
-  return `${COOKIE_NAME}=${value}; HttpOnly; SameSite=Strict; Path=/api/assistant; Max-Age=28800${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
 }
 export function sameOrigin(request: Request): boolean {
   const origin = request.headers.get('origin');

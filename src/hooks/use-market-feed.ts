@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { VolSurface } from '@/lib/vol/surface';
 import { MarketFeedSnapshot, mergeMarketFeed, markMarketFeedUnavailable } from '@/lib/market-feed-state';
 import { cmeStatusText, refreshCme, type CmeRefreshStatus } from '@/lib/market-refresh';
@@ -136,18 +136,23 @@ export function useMarketFeed(product: string): MarketFeed {
   const activeError = error && error.product === product.toUpperCase() ? error.message : null;
   const quoteError = fresh?.quoteError ?? activeError;
 
-  return {
-    spot: fresh?.spot ?? null,
-    surface: fresh?.surface ?? null,
-    surfaceSource: fresh?.surfaceSource ?? null,
-    snapshotISO: fresh?.snapshotISO ?? null,
-    rateNote: fresh?.rateNote ?? null,
-    loading: !fresh && !activeError,
-    refreshing,
-    error: activeError ?? fresh?.dataError ?? null,
-    quoteError,
-    refreshStatus: refreshStatus?.product === product.toUpperCase() ? refreshStatus.text : null,
-    refetch: fetchFeed,
-    refreshChains,
-  };
+  const status = refreshStatus?.product === product.toUpperCase() ? refreshStatus.text : null;
+  // A stable object lets screens memoize heavy pricing on the feed instead of every render.
+  return useMemo(
+    () => ({
+      spot: fresh?.spot ?? null,
+      surface: fresh?.surface ?? null,
+      surfaceSource: fresh?.surfaceSource ?? null,
+      snapshotISO: fresh?.snapshotISO ?? null,
+      rateNote: fresh?.rateNote ?? null,
+      loading: !fresh && !activeError,
+      refreshing,
+      error: activeError ?? fresh?.dataError ?? null,
+      quoteError,
+      refreshStatus: status,
+      refetch: fetchFeed,
+      refreshChains,
+    }),
+    [fresh, activeError, refreshing, quoteError, status, fetchFeed, refreshChains],
+  );
 }

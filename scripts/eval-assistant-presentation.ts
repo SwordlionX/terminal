@@ -36,13 +36,7 @@ async function main() {
     manualSpot: false,
     manualVol: false,
   };
-  const access = await fetch(`${origin}/api/assistant/access`, {
-    method: 'POST',
-    headers: { Origin: origin, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: process.env.ASSISTANT_ACCESS_CODE }),
-  });
-  const cookie = access.headers.get('set-cookie')?.split(';')[0];
-  if (!access.ok || !cookie) throw new Error('Erişim doğrulanamadı.');
+  const cookie = ''; // The assistant has no access code; same-origin and usage limits still apply.
   const cases = [
     {
       id: 'customer_current_pnl_from_other_screen',

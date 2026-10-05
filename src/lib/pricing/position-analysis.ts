@@ -222,14 +222,15 @@ export function analyzeEuropeanPosition(
     const pnlAt = (spot: number) => cellAt(spot, date).pnl;
     let prevSpot = base * 0.6,
       prev = pnlAt(prevSpot);
-    for (let step = 1; step <= 80; step++) {
-      const spot = base * (0.6 + step * 0.01),
+    // 2% scan steps; bisection then pins each crossing to well below a cent.
+    for (let step = 1; step <= 40; step++) {
+      const spot = base * (0.6 + step * 0.02),
         value = pnlAt(spot);
       if (prev !== null && value !== null && prev !== 0 && Math.sign(prev) !== Math.sign(value)) {
         let lo = prevSpot,
           hi = spot,
           flo = prev;
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < 32; i++) {
           const mid = (lo + hi) / 2,
             fm = pnlAt(mid);
           if (fm === null) break;

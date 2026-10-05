@@ -52,13 +52,7 @@ async function main() {
       entryPremiumPerUnit: saved.premium / saved.contractSize,
     },
   ]);
-  const access = await fetch(`${origin}/api/assistant/access`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: origin },
-    body: JSON.stringify({ code: process.env.ASSISTANT_ACCESS_CODE }),
-  });
-  const cookie = access.headers.get('set-cookie')?.split(';')[0];
-  if (!access.ok || !cookie) throw new Error('Yerel asistan erişimi doğrulanamadı.');
+  const cookie = ''; // The assistant has no access code; same-origin and usage limits still apply.
   const selectedCases = process.argv
     .find(a => a.startsWith('--cases='))
     ?.slice(8)

@@ -513,10 +513,10 @@ test('diagnostic research remains isolated from pricing inputs and model convers
   assert.equal(artifacts[0].kind, 'research');
 });
 
-test('conversation encryption detects tampering and access cookies expire/require correct codes', () => {
+test('conversation encryption detects tampering', () => {
   const security = modules(
     {},
-    { NODE_ENV: 'production', GEMINI_API_KEY: 'test-only-key', ASSISTANT_ACCESS_CODE: 'test-only-code' },
+    { NODE_ENV: 'production', GEMINI_API_KEY: 'test-only-key' },
   )('src/lib/assistant/security.ts');
   const history = [
     { role: 'model', parts: [{ functionCall: { name: 'price_option', args: {} }, thoughtSignature: 'preserved' }] },
@@ -526,13 +526,7 @@ test('conversation encryption detects tampering and access cookies expire/requir
   const bytes = Buffer.from(token, 'base64url');
   bytes[30] ^= 1;
   assert.throws(() => security.openConversation(bytes.toString('base64url')), /geçersiz/);
-  assert.throws(() => security.issueCookie('wrong'));
-  const cookie = security.issueCookie('test-only-code').split(';')[0];
-  assert.equal(
-    security.isAuthorized(new Request('https://terminal.test/api/assistant', { headers: { cookie } })),
-    true,
-  );
-  assert.equal(security.isAuthorized(new Request('https://terminal.test/api/assistant')), false);
+  assert.equal(security.isAuthorized, undefined);
 });
 
 test('production usage counters enforce the shared limit atomically under concurrency', async () => {
@@ -768,7 +762,7 @@ test('malformed model calls execute nothing and share one bounded retry with pro
   assert.equal(mixed.requests.length, 3);
 });
 
-test('API fails closed without production access and refuses foreign origins before model execution', async () => {
+test('API needs production storage, refuses foreign origins and rejects malformed bodies before model execution', async () => {
   let calls = 0;
   const route = modules(
     {
@@ -783,9 +777,10 @@ test('API fails closed without production access and refuses foreign origins bef
   )('src/app/api/assistant/route.ts');
   assert.equal((await route.GET(new Request('https://terminal.test/api/assistant'))).status, 200);
   assert.equal((await (await route.GET(new Request('https://terminal.test/api/assistant'))).json()).ready, false);
+  // No access code: a same-origin request is parsed, and an empty body never reaches the model.
   assert.equal(
     (await route.POST(new Request('https://terminal.test/api/assistant', { method: 'POST', body: '{}' }))).status,
-    401,
+    400,
   );
   assert.equal(
     (
