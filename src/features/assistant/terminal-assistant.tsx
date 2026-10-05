@@ -335,7 +335,7 @@ export function TerminalAssistant({
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 bg-white/[0.025] px-5 py-2.5 text-xs text-slate-400">
           <span className="flex items-center gap-1.5 text-cyan-200">
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-            Senin talebinle
+            Sizin talebinizle
           </span>
           <span className="ml-auto text-slate-400">XAU / XAG</span>
         </div>
@@ -362,7 +362,7 @@ export function TerminalAssistant({
                 <p className="text-xs font-semibold tracking-[0.2em] text-cyan-200">TERMINAL X</p>
                 <h2 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">Birlikte değerlendirelim.</h2>
                 <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-400">
-                  Ne yapmak istediğini yaz. Eksik işlem bilgilerini sana sorarım.
+                  Ne yapmak istediğinizi yazın. Eksik işlem bilgilerini size sorarım.
                 </p>
                 <div className="mt-7 space-y-2">
                   {(active?.customerId
@@ -495,7 +495,7 @@ export function TerminalAssistant({
               <textarea
                 ref={composer}
                 aria-label="Asistana mesaj"
-                placeholder="Hedefini veya sorunu yaz…"
+                placeholder="Hedefinizi veya sorunuzu yazın…"
                 value={draft}
                 maxLength={4000}
                 rows={2}

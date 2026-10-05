@@ -43,7 +43,7 @@ async function log(tx: Transaction, customerId: string, type: string, descriptio
   });
 }
 
-async function insertCollateral(tx: Transaction, data: NewCollateral) {
+async function insertCollateral(tx: Transaction, data: NewCollateral, activity?: string) {
   await tx.execute({
     sql: 'INSERT INTO collaterals (id,customerId,assetCode,currency,nominalQuantity,marketValueUsd,haircut,addedAt) VALUES (?,?,?,?,?,?,?,?)',
     args: [
@@ -61,7 +61,8 @@ async function insertCollateral(tx: Transaction, data: NewCollateral) {
     tx,
     data.customerId,
     'Margin Updated',
-    `Teminat eklendi: ${data.nominalQuantity} ${data.currency === 'USD' ? 'USD' : 'ons'} (${data.assetCode})`,
+    activity ??
+      `Teminat eklendi: ${data.nominalQuantity} ${data.currency === 'USD' ? 'USD' : 'ons'} (${data.assetCode})`,
   );
 }
 
@@ -145,8 +146,7 @@ export async function bookTrade(data: Omit<Trade, 'id'>, collateral?: NewCollate
 export async function addCollateralAtomically(data: NewCollateral, activity?: string): Promise<void> {
   await writeTransaction(async tx => {
     await requireCustomer(tx, data.customerId);
-    await insertCollateral(tx, data);
-    if (activity) await log(tx, data.customerId, 'Margin Updated', activity);
+    await insertCollateral(tx, data, activity);
   });
 }
 
