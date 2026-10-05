@@ -57,11 +57,12 @@ export function reserveModelCall(): Promise<void> {
   return reserve(`assistant:calls:${day}`, configuredLimit('ASSISTANT_DAILY_MODEL_CALL_LIMIT', 300, 10000));
 }
 
-/** Models that recently hit quota or overload, shared across serverless instances in production. */
+/** Models that recently hit quota or overload, shared across serverless instances. */
 const MODEL_BLOCKS_KEY = 'assistant:model-blocks';
 let localBlocks: Record<string, number> = {};
+// Shared whenever Turso is configured: local and deployed runs use the same Gemini project quota.
 export async function readModelBlocks(): Promise<Record<string, number>> {
-  if (process.env.NODE_ENV !== 'production' || !process.env.TURSO_DATABASE_URL) return { ...localBlocks };
+  if (!process.env.TURSO_DATABASE_URL) return { ...localBlocks };
   try {
     const db = await dbc();
     const result = await db.execute({ sql: 'SELECT v FROM kv WHERE k = ?', args: [MODEL_BLOCKS_KEY] });
@@ -76,7 +77,7 @@ export async function blockModel(model: string, until: number): Promise<void> {
   const blocks = Object.fromEntries(Object.entries(await readModelBlocks()).filter(([, at]) => at > now));
   blocks[model] = Math.max(blocks[model] ?? 0, until);
   localBlocks = blocks;
-  if (process.env.NODE_ENV !== 'production' || !process.env.TURSO_DATABASE_URL) return;
+  if (!process.env.TURSO_DATABASE_URL) return;
   try {
     const db = await dbc();
     await db.execute({

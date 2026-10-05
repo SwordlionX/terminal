@@ -9,7 +9,7 @@ export class TradeTermsClarification extends Error {}
 export function requestsScreenContext(message: string): boolean {
   const text = message.normalize('NFKC').toLocaleLowerCase('tr-TR');
   if (/(?:ekran|seçili)[^.;\n]{0,65}(?:kullanma|alma|okuma|bakma|devralma|istemiyorum)/u.test(text)) return false;
-  return /ekrandaki|ekrandan|ekranı\s+(?:oku|incele)|ekranda\s+(?:seçili|açık|görünen|gördüğün)|(?:bu|o|mevcut|açık)\s+ekran|seçili\s+(?:müşteri|dosya|kayıt|pozisyon|işlem|opsiyon)/u.test(
+  return /ekrandaki|ekrandan|ekranı\s+(?:oku|incele)|ekranda\s+(?:seçili|açık|görünen|gördüğün)|(?:bu|o|mevcut|açık)\s+ekran|seçili(?:\s+[^\s.;,?!]+){0,2}?\s+(?:müşteri|dosya|kayıt|pozisyon|işlem|opsiyon|put|call|bilet)/u.test(
     text,
   );
 }

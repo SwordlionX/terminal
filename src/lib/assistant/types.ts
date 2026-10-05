@@ -50,7 +50,8 @@ export interface Quote {
   gamma: number;
   vega: number;
   theta: number;
-  hedgeUnits: number;
+  /** What the bank (the customer's counterparty) trades in the metal to be delta neutral. */
+  bankHedge: BankHedge;
   effectiveVol: number;
   volMode: string;
   model: string;
@@ -79,7 +80,7 @@ export interface ScenarioResult {
   gamma: number;
   vega: number;
   theta: number;
-  hedgeUnits: number;
+  bankHedge: BankHedge;
   points: { movePct: number; spot: number; pnl: number }[];
   product: Product;
   horizon: 'expiry' | 'now';
@@ -140,4 +141,12 @@ export interface WorkspaceSnapshot {
     cureAmount: number;
     priorities: { customerId: string; name: string; cureAmount: number; status: string; dataWarning?: string }[];
   };
+}
+
+/** Explicit direction so no reader has to infer it from a signed number. */
+export interface BankHedge {
+  side: 'AL' | 'SAT' | 'NÖTR';
+  units: number;
+  /** How the bank adjusts the hedge as spot moves, from the customer's gamma. */
+  rebalance: string;
 }

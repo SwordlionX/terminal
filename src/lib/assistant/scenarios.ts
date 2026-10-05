@@ -2,6 +2,7 @@ import { gk } from '../math';
 import { calculatePricing } from '../pricing/engine';
 import type { VolSurface } from '../vol/surface';
 import type { Quote, ScenarioResult } from './types';
+import { bankHedgeFor } from './pricing';
 
 export function scenarioPortfolio(
   label: string,
@@ -60,7 +61,7 @@ export function scenarioPortfolio(
     gamma: sum('gamma'),
     vega: sum('vega'),
     theta: sum('theta'),
-    hedgeUnits: -sum('delta'),
+    bankHedge: bankHedgeFor(sum('delta'), sum('gamma')),
     points,
     note:
       (horizon === 'expiry'

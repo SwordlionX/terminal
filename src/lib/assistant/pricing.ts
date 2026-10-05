@@ -2,7 +2,24 @@ import { calculatePricing, dateDay, type PricingInputs } from '../pricing/engine
 import { priceBarrier } from '../pricing/barrier';
 import { surfaceVolEstimate } from '../vol/surface';
 import { assertCurvePricing, terminalCurveInputs } from './policy';
-import type { MarketSnapshot, OptionRequest, Quote, ScreenContext } from './types';
+import type { BankHedge, MarketSnapshot, OptionRequest, Quote, ScreenContext } from './types';
+
+/**
+ * The bank is the customer's counterparty: its delta is minus the customer's, so it buys the
+ * metal when the customer's delta is positive and sells when it is negative. The customer's delta
+ * moves with spot by the customer's gamma, so a short-option customer (negative gamma) leaves the
+ * bank buying on dips and selling on rallies, and a long-option customer the reverse.
+ */
+export function bankHedgeFor(customerDelta: number, customerGamma: number): BankHedge {
+  const units = Math.abs(customerDelta);
+  const rebalance =
+    Math.abs(customerGamma) < 1e-12
+      ? 'Gamma yok; spot değişince hedge miktarı değişmez.'
+      : customerGamma < 0
+        ? 'Spot düştükçe banka hedge alımını artırır (daha fazla AL), spot yükseldikçe azaltır (SAT).'
+        : 'Spot yükseldikçe banka daha fazla AL, spot düştükçe SAT yaparak hedge eder.';
+  return { side: units < 1e-9 ? 'NÖTR' : customerDelta > 0 ? 'AL' : 'SAT', units, rebalance };
+}
 
 /** No HTTP, browser, research, customer database or external price arguments here. */
 export function quoteOption(request: OptionRequest, screen: ScreenContext, market: MarketSnapshot): Quote {
@@ -112,7 +129,7 @@ export function quoteOption(request: OptionRequest, screen: ScreenContext, marke
     gamma: sign * gr.gamma * inputs.contractSize,
     vega: sign * gr.vega * inputs.contractSize,
     theta: sign * gr.theta * inputs.contractSize,
-    hedgeUnits: -delta,
+    bankHedge: bankHedgeFor(delta, sign * gr.gamma * inputs.contractSize),
     effectiveVol: p.effVol,
     volMode: p.smileEstimate.mode,
     model,

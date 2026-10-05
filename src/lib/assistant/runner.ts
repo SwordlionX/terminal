@@ -148,13 +148,16 @@ export async function runAssistant(
           blocks[current] = until;
           await blockModel(current, until);
           const next = pick(kind);
-          if (next && switches < 4 && modelCalls < 6) {
+          // Failed attempts are not answers: they do not use the per-question call budget, so a busy
+          // spell can fall through to the Lite models. The daily counter still records them.
+          if (next && switches < chains[kind].length - 1) {
             switches++;
             input.emit({ type: 'status', text: `${current} şu anda yoğun; ${next} ile yanıtlanıyor…` });
             // Thought signatures belong to the model that produced them.
             request = { ...request, contents: portableHistory(request.contents) };
             current = next;
-            await countCall();
+            input.signal.throwIfAborted();
+            await reserveModelCall();
             continue;
           }
         }

@@ -144,8 +144,10 @@ export function QuoteCard({ quote, caption, onApply }: { quote: Quote; caption?:
               {money(q.theta)} / gün
             </p>
             <p>
-              Banka hedge&apos;i (karşı taraf, delta nötr): {q.hedgeUnits >= 0 ? 'Sat' : 'Al'}{' '}
-              {fmt(Math.abs(q.hedgeUnits), 4)} {unit}
+              Banka hedge&apos;i (karşı taraf, delta nötr):{' '}
+              {q.bankHedge
+                ? `${q.bankHedge.side === 'AL' ? 'Al' : q.bankHedge.side === 'SAT' ? 'Sat' : 'Nötr'} ${fmt(q.bankHedge.units, 4)} ${unit}`
+                : '—'}
             </p>
             <p>
               Spot kaynağı: {q.spotSource}

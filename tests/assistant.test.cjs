@@ -62,7 +62,7 @@ function modules(overrides = {}, env = {}) {
 const load = modules();
 const { gk } = load('src/lib/math/gk.ts');
 const { calculatePricing } = load('src/lib/pricing/engine.ts');
-const { quoteOption } = load('src/lib/assistant/pricing.ts');
+const { quoteOption, bankHedgeFor } = load('src/lib/assistant/pricing.ts');
 const { searchPremium } = load('src/lib/assistant/search.ts');
 const { scenarioPortfolio } = load('src/lib/assistant/scenarios.ts');
 const { validateOption, validateContext } = load('src/lib/assistant/validation.ts');
@@ -688,8 +688,8 @@ test('an overloaded model hands over to the next one, SDK retries are disabled a
   const transient = Object.assign(new Error('temporary'), { status: 503 });
   const fixture = mockRunner([transient, toolReply, finalReply]);
   const result = await fixture.run();
-  assert.equal(result.modelCalls, 3);
-  assert.equal(fixture.reservations(), 3);
+  assert.equal(result.modelCalls, 2); // the failed attempt is not an answer
+  assert.equal(fixture.reservations(), 3); // but the daily counter records it
   assert.ok(fixture.requests.every(r => r.config.httpOptions.retryOptions.attempts === 1));
   assert.equal(fixture.events.filter(e => e.type === 'artifact').length, 1);
   assert.equal(fixture.requests[0].model, 'gemini-3.8-flash');
@@ -697,8 +697,8 @@ test('an overloaded model hands over to the next one, SDK retries are disabled a
   assert.equal(fixture.requests[2].model, 'gemini-3.7-flash');
   const failed = mockRunner([transient]);
   await assert.rejects(failed.run(), error => error.status === 503);
-  assert.equal(failed.requests.length, 5); // first model + four switches
-  assert.equal(failed.reservations(), 5);
+  assert.equal(failed.requests.length, 7); // every model in the chain once, then stop
+  assert.equal(failed.reservations(), 7);
 });
 
 test('a quota-exhausted model is skipped and history signatures stay valid for the next model', async () => {
@@ -712,6 +712,18 @@ test('a quota-exhausted model is skipped and history signatures stay valid for t
   assert.equal(fixture.requests[2].model, 'gemini-3.7-flash');
   assert.equal(fixture.requests[2].contents[1].parts[0].thoughtSignature, 'skip_thought_signature_validator');
   assert.equal(fixture.events.filter(e => e.type === 'done' || e.type === 'artifact').length, 1);
+});
+
+test('bank hedge is stated as an explicit side: a customer short put (positive delta) means the bank buys', () => {
+  const shortPut = bankHedgeFor(44.95, -0.09);
+  assert.equal(shortPut.side, 'AL');
+  assert.equal(shortPut.units, 44.95);
+  assert.match(shortPut.rebalance, /^Spot düştükçe banka hedge alımını artırır/);
+  const longPut = bankHedgeFor(-12.5, 0.2);
+  assert.equal(longPut.side, 'SAT');
+  assert.equal(longPut.units, 12.5);
+  assert.match(longPut.rebalance, /^Spot yükseldikçe banka daha fazla AL/);
+  assert.equal(bankHedgeFor(0, 0).side, 'NÖTR');
 });
 
 test('model cascade helpers classify daily quota, transient overload and unrecoverable errors', () => {
@@ -1118,13 +1130,23 @@ test('independent pricing ignores the page product, barrier, dates and manual ma
 
 test('screen access is explicit and excludes negated requests', () => {
   const { requestsScreenContext } = load('src/lib/assistant/policy.ts');
-  for (const s of ['Ekrandaki işlemi fiyatla.', 'Seçili müşteri dosyasını oku.', 'Bu ekranı incele.', 'Ekranı oku.'])
+  for (const s of [
+    'Ekrandaki işlemi fiyatla.',
+    'Seçili müşteri dosyasını oku.',
+    'Bu ekranı incele.',
+    'Ekranı oku.',
+    'Seçili put işleminin deltası ne anlama geliyor? Kısaca.',
+    'Seçili altın call için theta nedir?',
+    'Seçili XAU put opsiyonunun riskini anlat.',
+  ])
     assert.equal(requestsScreenContext(s), true, s);
   for (const s of [
     'Bir fiyat al.',
     'Altın fiyatla.',
     'Müşteri dosyası istiyorum.',
     'Ekrandaki değerleri kullanma; başka işlem istiyorum.',
+    'Seçili put işlemini kullanma, yeni bir call fiyatla.',
+    'Put opsiyonunda delta ne anlama gelir?',
   ])
     assert.equal(requestsScreenContext(s), false, s);
 });
