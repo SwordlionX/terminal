@@ -12,12 +12,14 @@ export function premiumValue(q: Quote, unit: PremiumUnit): number {
 
 /** Multiple brackets, no monotonicity assumption; unavailable gaps never bridged. */
 export function searchPremium(
-  price: (strike: number) => Quote,
+  price: (value: number) => Quote,
   target: number,
   unit: PremiumUnit,
   minStrike: number,
   maxStrike: number,
   tolerance: number,
+  /** The searched variable as read back from a quote: the strike, or the barrier level. */
+  variableOf: (quote: Quote) => number = q => q.inputs.strike,
 ): SearchResult {
   if (
     ![target, minStrike, maxStrike, tolerance].every(Number.isFinite) ||
@@ -50,7 +52,7 @@ export function searchPremium(
     if (
       Math.abs(v.error) <= tolerance &&
       !candidates.some(
-        c => Math.abs(c.quote.inputs.strike - v.quote.inputs.strike) < Math.max(1e-8, v.quote.inputs.strike * 1e-6),
+        c => Math.abs(variableOf(c.quote) - variableOf(v.quote)) < Math.max(1e-8, variableOf(v.quote) * 1e-6),
       )
     )
       candidates.push(v);
@@ -61,8 +63,8 @@ export function searchPremium(
     const a = grid[i - 1],
       b = grid[i];
     if (!a || !b || a.error * b.error >= 0) continue;
-    let lo = a.quote.inputs.strike,
-      hi = b.quote.inputs.strike,
+    let lo = variableOf(a.quote),
+      hi = variableOf(b.quote),
       loError = a.error;
     for (let j = 0; j < 40; j++) {
       const mid = (lo + hi) / 2,

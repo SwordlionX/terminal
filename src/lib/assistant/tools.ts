@@ -29,6 +29,7 @@ import type {
   Quote,
   ScenarioResult,
   ScreenContext,
+  SearchResult,
   WorkspaceSnapshot,
 } from './types';
 
@@ -425,7 +426,24 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
       }
       case 'find_options': {
         assertCurvePricing(args, { ...screen, manualSpot: false, manualVol: false });
-        const r = optionTerms(args.option, true);
+        const solveFor =
+          args.solveFor === undefined
+            ? 'strike'
+            : choice(args.solveFor, ['strike', 'barrier'] as const, 'Aranan değişken');
+        const ladder = args.barrierLevels;
+        if (ladder !== undefined && solveFor === 'barrier')
+          throw new Error('barrierLevels yalnız strike aramasında kullanılır.');
+        const scansBarrier = ladder !== undefined || solveFor === 'barrier';
+        const rawOption = object(args.option);
+        if (scansBarrier && rawOption.barrier === undefined)
+          throw new TradeTermsClarification(
+            'Bariyer türü gerekli: yukarı mı aşağı mı, sönmeli (out) mi doğmalı (in) mi? Kullanıcıya sor.',
+          );
+        // The searched level is set per evaluation; a placeholder keeps the shared validation unchanged.
+        const r = optionTerms(
+          scansBarrier ? { ...rawOption, barrier: { ...object(rawOption.barrier), level: 1 } } : rawOption,
+          solveFor === 'strike',
+        );
         assertTradeQuantity(r.contractSize, message, deps.priorUserMessages);
         const unit = choice(
           args.unit,
@@ -443,25 +461,101 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
         const target = number(args.target, 'Hedef prim', 0, 1e12);
         const ref = curve.spot;
         if (!ref) throw new Error('Arama için terminal spotu gerekli.');
-        const min =
-          args.minStrike === undefined ? ref * 0.65 : number(args.minStrike, 'Alt strike', ref * 0.05, ref * 5);
-        const max =
-          args.maxStrike === undefined ? ref * 1.35 : number(args.maxStrike, 'Üst strike', ref * 0.05, ref * 5);
         const tolerance =
           args.tolerance === undefined
             ? Math.max(0.00001, target * 0.0001)
             : number(args.tolerance, 'Tolerans', 0.0000001, Math.max(1, target * 0.1));
-        const result = searchPremium(
-          k => {
-            deps.signal.throwIfAborted();
-            return quoteOption({ ...r, strike: k }, pricingScreen, m);
-          },
-          target,
-          unit,
-          min,
-          max,
-          tolerance,
-        );
+        const quoteAt = (strike: number | undefined, level?: number) => {
+          deps.signal.throwIfAborted();
+          const request = {
+            ...r,
+            strike,
+            barrier: level === undefined ? r.barrier : { ...r.barrier!, level },
+          };
+          return quoteOption(request, independentScreen(request), m);
+        };
+        const summary = (result: SearchResult) => ({
+          reached: result.reached,
+          candidates: result.candidates.map(c => ({
+            strike: c.quote.inputs.strike,
+            barrier: c.quote.barrier?.level ?? null,
+            premium: c.actual,
+            premiumTotalUsd: c.quote.premiumTotal,
+          })),
+          nearest: result.nearest
+            ? {
+                strike: result.nearest.quote.inputs.strike,
+                barrier: result.nearest.quote.barrier?.level ?? null,
+                premium: result.nearest.actual,
+              }
+            : null,
+        });
+        if (solveFor === 'barrier') {
+          if (r.strike === undefined) throw new TradeTermsClarification('Bariyer araması için sabit strike gerekli.');
+          const up = r.barrier!.variant === 'uo' || r.barrier!.variant === 'ui';
+          const lo =
+            args.minBarrier === undefined
+              ? up
+                ? ref * 1.002
+                : ref * 0.4
+              : number(args.minBarrier, 'Alt bariyer', ref * 0.05, ref * 5);
+          const hi =
+            args.maxBarrier === undefined
+              ? up
+                ? ref * 1.6
+                : ref * 0.998
+              : number(args.maxBarrier, 'Üst bariyer', ref * 0.05, ref * 5);
+          const result: SearchResult = {
+            ...searchPremium(
+              h => quoteAt(r.strike, h),
+              target,
+              unit,
+              lo,
+              hi,
+              tolerance,
+              q => q.barrier!.level,
+            ),
+            solvedFor: 'barrier',
+          };
+          if (!result.reached && result.unavailable === result.evaluations) issues.add('terminal_data_unavailable');
+          deps.artifact({ kind: 'search', result });
+          return {
+            solvedFor: 'barrier',
+            target,
+            unit,
+            searchedRange: [lo, hi],
+            ...summary(result),
+            explanation:
+              'Strike sabit, bariyer seviyesi arandı. Birden fazla seviye hedefi sağlayabilir; hiçbiri sağlamıyorsa bu strike ile hedef bu bariyer türünde yoktur.',
+          };
+        }
+        const min =
+          args.minStrike === undefined ? ref * 0.65 : number(args.minStrike, 'Alt strike', ref * 0.05, ref * 5);
+        const max =
+          args.maxStrike === undefined ? ref * 1.35 : number(args.maxStrike, 'Üst strike', ref * 0.05, ref * 5);
+        const strikeSearch = (level?: number): SearchResult => ({
+          ...searchPremium(k => quoteAt(k, level), target, unit, min, max, tolerance),
+          solvedFor: 'strike',
+        });
+        if (ladder !== undefined) {
+          if (!Array.isArray(ladder) || ladder.length < 2 || ladder.length > 6)
+            throw new Error('İki ile altı bariyer seviyesi gerekli.');
+          const levels = [...new Set(ladder.map(v => number(v, 'Bariyer', ref * 0.05, ref * 5)))].sort((a, b) => a - b);
+          const rows = levels.map(level => ({ level, result: strikeSearch(level) }));
+          if (rows.every(row => !row.result.reached && row.result.unavailable === row.result.evaluations))
+            issues.add('terminal_data_unavailable');
+          deps.artifact({ kind: 'barrier_ladder', variant: r.barrier!.variant, rows });
+          return {
+            solvedFor: 'strike',
+            target,
+            unit,
+            variant: r.barrier!.variant,
+            rows: rows.map(row => ({ level: row.level, ...summary(row.result) })),
+            explanation:
+              'Her bariyer seviyesi için hedefi sağlayan strike ayrı arandı; tablo kartta gösterildi. Seçimi kullanıcıya bırakın.',
+          };
+        }
+        const result = strikeSearch();
         if (!result.reached && result.unavailable === result.evaluations) issues.add('terminal_data_unavailable');
         deps.artifact({ kind: 'search', result });
         return {

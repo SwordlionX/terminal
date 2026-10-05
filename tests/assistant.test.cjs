@@ -900,6 +900,45 @@ test('target search remains available when the active strike is outside the curv
   assert.equal(artifacts.length, 1);
 });
 
+test('barrier target search: a level ladder solves strikes, a fixed strike solves the level', async () => {
+  const artifacts = [];
+  const execute = createToolExecutor(context, 'Spot nominalinin yüzde 5 primi', {
+    market: async () => market,
+    artifact: a => artifacts.push(a),
+    research: async () => {
+      throw new Error('not used');
+    },
+    signal: new AbortController().signal,
+  });
+  const option = { ...terms, type: 'Put', position: 'Short', contractSize: 10 };
+  const target = quote({ strike: 104, barrier: { variant: 'uo', level: 110 } }).premiumPctSpot;
+  const ladder = await execute('find_options', {
+    option: { ...option, strike: undefined, barrier: { variant: 'uo', level: 0 } },
+    target,
+    unit: 'pct_spot',
+    barrierLevels: [120, 110],
+    minStrike: 80,
+    maxStrike: 120,
+  });
+  assert.equal(JSON.stringify(ladder.rows.map(r => r.level)), JSON.stringify([110, 120]));
+  assert.equal(ladder.rows[0].reached, true);
+  near(ladder.rows[0].candidates[0].strike, 104, 1e-3);
+  // A farther knock-out barrier is worth more to the put, so the same premium needs a lower strike.
+  assert.ok(ladder.rows[1].candidates[0].strike < 104);
+  assert.equal(artifacts.at(-1).kind, 'barrier_ladder');
+  const solved = await execute('find_options', {
+    option: { ...option, strike: 104, barrier: { variant: 'uo', level: 0 } },
+    target,
+    unit: 'pct_spot',
+    solveFor: 'barrier',
+  });
+  assert.equal(solved.reached, true);
+  near(solved.candidates[0].barrier, 110, 1e-2);
+  assert.equal(artifacts.at(-1).result.solvedFor, 'barrier');
+  const noType = await execute('find_options', { option, target, unit: 'pct_spot', solveFor: 'barrier' });
+  assert.equal(noType.clarificationRequired, true);
+});
+
 test('sealed conversations cannot carry a previous customer or pricing scope into a new selection', () => {
   const security = modules({}, { ASSISTANT_SESSION_SECRET: 'fixture-only' })('src/lib/assistant/security.ts');
   const history = [{ role: 'user', parts: [{ text: 'Customer A details' }] }];

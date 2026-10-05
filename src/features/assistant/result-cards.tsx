@@ -349,6 +349,93 @@ export function ScenarioChart({ results, onApply }: { results: ScenarioResult[];
   );
 }
 
+const barrierLabels: Record<string, string> = {
+  uo: 'Yukarı sönmeli (up-and-out)',
+  do: 'Aşağı sönmeli (down-and-out)',
+  ui: 'Yukarı doğmalı (up-and-in)',
+  di: 'Aşağı doğmalı (down-and-in)',
+};
+
+/** One row per barrier level: the strike that meets the target premium at that level. */
+function BarrierLadderCard({
+  artifact,
+  onApply,
+}: {
+  artifact: Extract<AssistantArtifact, { kind: 'barrier_ladder' }>;
+  onApply?: () => void;
+}) {
+  const [open, setOpen] = useState<number | null>(null);
+  const first = artifact.rows.find(row => row.result.candidates.length || row.result.nearest)?.result;
+  const target = artifact.rows[0]?.result;
+  const selected = open === null ? null : artifact.rows[open];
+  const selectedQuote = selected ? (selected.result.candidates[0] ?? selected.result.nearest)?.quote : undefined;
+  return (
+    <section className="space-y-3">
+      <div className="rounded-xl border border-primary/20 bg-card p-3">
+        <p className="text-xs font-semibold text-primary">Bariyer seviyesine göre strike</p>
+        <p className="mt-1 text-xs text-slate-400">
+          {barrierLabels[artifact.variant]} · Hedef{' '}
+          {target ? `${fmt(target.target, 4)} ${unitLabels[target.unit]}` : '—'}
+          {first ? ` · Tolerans ±${fmt(first.tolerance, 5)}` : ''}
+        </p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-slate-400">
+              <tr>
+                <th className="py-1 text-left font-normal">Bariyer</th>
+                <th className="py-1 text-right font-normal">Strike</th>
+                <th className="py-1 text-right font-normal">Prim</th>
+                <th className="py-1 text-right font-normal">Toplam</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {artifact.rows.map((row, i) => {
+                const best = row.result.candidates[0];
+                const shown = best ?? row.result.nearest;
+                return (
+                  <tr key={row.level} className="border-t border-white/5">
+                    <td className="py-1.5">{fmt(row.level, 4)}</td>
+                    <td className="py-1.5 text-right">
+                      {shown ? fmt(shown.quote.inputs.strike, 4) : '—'}
+                      {!best && shown ? ' *' : ''}
+                    </td>
+                    <td className="py-1.5 text-right">{shown ? fmt(shown.actual, 4) : '—'}</td>
+                    <td className="py-1.5 text-right">{shown ? money(shown.quote.premiumTotal) : '—'}</td>
+                    <td className="py-1.5 text-right">
+                      {shown && (
+                        <button
+                          type="button"
+                          className={`${buttonFocus} px-2 text-primary hover:underline`}
+                          onClick={() => setOpen(open === i ? null : i)}
+                        >
+                          {open === i ? 'Gizle' : 'Ayrıntı'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {artifact.rows.some(row => !row.result.candidates.length) && (
+          <p className="mt-2 text-[11px] text-amber-200">
+            * Bu bariyerde hedef prime ulaşılamadı; en yakın sonuç gösterildi.
+          </p>
+        )}
+      </div>
+      {selected && selectedQuote && (
+        <QuoteCard
+          quote={selectedQuote}
+          onApply={onApply}
+          caption={`Bariyer ${fmt(selected.level, 4)} · ${selected.result.candidates.length ? 'hedefi sağlıyor' : 'hedefi sağlamıyor, en yakın sonuç'}`}
+        />
+      )}
+    </section>
+  );
+}
+
 export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact; onApply?: () => void }) {
   if (artifact.kind === 'customers')
     return (
@@ -452,6 +539,7 @@ export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact;
         </p>
       </section>
     );
+  if (artifact.kind === 'barrier_ladder') return <BarrierLadderCard artifact={artifact} onApply={onApply} />;
   if (artifact.kind === 'research')
     return (
       <section className="rounded-2xl border border-indigo-300/20 bg-indigo-300/5 p-4">
@@ -505,7 +593,7 @@ export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact;
           key={i}
           quote={c.quote}
           onApply={onApply}
-          caption={`Alternatif ${i + 1} · Hedefe fark ${fmt(c.error, 5)} ${unitLabels[r.unit]}`}
+          caption={`Alternatif ${i + 1}${r.solvedFor === 'barrier' && c.quote.barrier ? ` · Bariyer ${fmt(c.quote.barrier.level, 4)}` : ''} · Hedefe fark ${fmt(c.error, 5)} ${unitLabels[r.unit]}`}
         />
       ))}
       {!r.reached && r.nearest && (

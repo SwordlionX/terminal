@@ -140,7 +140,7 @@ const declarations: FunctionDeclaration[] = [
   {
     name: 'find_options',
     description:
-      'Hedef prim için strike aralığını Terminal X motorunda toplu tara. Aynı çağrı yüzlerce hesabı yapar. Yüzde birimini netleştir; modelden IV üretme. Çözümsüz hedef açıkça bildirilir.',
+      'Hedef prim için Terminal X motorunda toplu tarama. Varsayılan: verilen koşullarda strike aranır. Bariyerli işlemde iki bilinmeyen varsa kullanıcıya tek seviye sordurmak yerine: (1) barrierLevels ile birkaç bariyer seviyesi ver, her biri için hedefi sağlayan strike tablo halinde bulunur; (2) solveFor="barrier" ile strike sabit tutulur, hedefi sağlayan bariyer seviyesi aranır. Yüzde birimini netleştir; modelden IV üretme. Çözümsüz hedef açıkça bildirilir.',
     parametersJsonSchema: {
       type: 'object',
       properties: {
@@ -150,6 +150,22 @@ const declarations: FunctionDeclaration[] = [
         minStrike: numeric('İsteğe bağlı pozitif alt sınır'),
         maxStrike: numeric('İsteğe bağlı üst sınır'),
         tolerance: numeric('Hedefin kendi biriminde kabul edilen hata; belirtilmediyse küçük varsayılan tolerans.'),
+        solveFor: {
+          type: 'string',
+          enum: ['strike', 'barrier'],
+          description:
+            'strike (varsayılan): strike aranır. barrier: option.strike ve option.barrier.variant sabit, bariyer seviyesi aranır; option.barrier.level yok sayılır.',
+        },
+        barrierLevels: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 6,
+          items: { type: 'number' },
+          description:
+            'Yalnız solveFor=strike ile: her bariyer seviyesi için strike ayrı aranır ve tablo üretilir. option.barrier.variant gerekli; option.barrier.level yok sayılır. Kullanıcı seviye vermediyse spotun yaklaşık %5, %10, %15, %20 uzağını kullan (yukarı bariyerde üstü, aşağıda altı).',
+        },
+        minBarrier: numeric('solveFor=barrier için isteğe bağlı alt sınır'),
+        maxBarrier: numeric('solveFor=barrier için isteğe bağlı üst sınır'),
       },
       required: ['option', 'target', 'unit'],
       additionalProperties: false,

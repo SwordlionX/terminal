@@ -63,6 +63,8 @@ export interface Quote {
 }
 export type PremiumUnit = 'usd_per_unit' | 'total_usd' | 'pct_spot' | 'pct_strike';
 export interface SearchResult {
+  /** Which term was searched; the other terms are fixed. */
+  solvedFor?: 'strike' | 'barrier';
   target: number;
   unit: PremiumUnit;
   tolerance: number;
@@ -92,6 +94,7 @@ export type AssistantArtifact =
   | { kind: 'position_analysis'; result: PositionAnalysis }
   | { kind: 'quote'; quote: Quote }
   | { kind: 'search'; result: SearchResult }
+  | { kind: 'barrier_ladder'; variant: 'uo' | 'do' | 'ui' | 'di'; rows: { level: number; result: SearchResult }[] }
   | { kind: 'scenarios'; results: ScenarioResult[] }
   | {
       kind: 'collateral_added';
