@@ -21,7 +21,10 @@ async function cachedJSON(dir: string, identity: string, fetcher: () => Promise<
   await rename(file + '.tmp', file);
   return payload;
 }
-export async function loadSofrFixings(cacheDir: string, sessionDate: string): Promise<SofrFixing[]> {
+export async function loadSofrFixings(
+  cacheDir: string,
+  sessionDate: string,
+): Promise<{ fixings: SofrFixing[]; revised: string[] }> {
   const first = Date.parse(sessionDate.slice(0, 7) + '-01T00:00:00Z');
   const start = new Date(first - 10 * 86400000).toISOString().slice(0, 10);
   const end = new Date(Date.parse(sessionDate + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
@@ -34,7 +37,8 @@ export async function loadSofrFixings(cacheDir: string, sessionDate: string): Pr
     return res.json();
   })) as { refRates?: { effectiveDate: string; type: string; percentRate: number; revisionIndicator?: string }[] };
   if (!Array.isArray(payload.refRates) || !payload.refRates.length) throw new Error('NY Fed fixing kayıtları eksik.');
-  const result: SofrFixing[] = [];
+  const result: SofrFixing[] = [],
+    revised: string[] = [];
   for (const row of payload.refRates) {
     if (
       row.type !== 'SOFR' ||
@@ -43,11 +47,11 @@ export async function loadSofrFixings(cacheDir: string, sessionDate: string): Pr
       !Number.isFinite(row.percentRate)
     )
       throw new Error('NY Fed SOFR kaydı geçersiz.');
-    if (row.revisionIndicator)
-      throw new Error('Geçmiş SOFR revizyonu var; settlement anındaki sürüm ayrıca doğrulanmalı.');
+    // NY Fed revisions are the official corrected rate; use them and say so on the curve.
+    if (row.revisionIndicator) revised.push(row.effectiveDate);
     result.push({ date: row.effectiveDate, rate: row.percentRate / 100 });
   }
-  return result;
+  return { fixings: result, revised };
 }
 export function metalSettlementTime(date: string, product: 'XAU' | 'XAG') {
   const noon = Date.parse(date + 'T12:00:00Z');

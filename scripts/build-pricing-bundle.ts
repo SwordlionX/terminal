@@ -1,10 +1,12 @@
 import { loadEnvConfig } from '@next/env';
-import { createClient } from '@libsql/client';
+import { createClient, type Client } from '@libsql/client';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { DatabentoCache } from './lib/databento-cache';
 import { loadSofrFixings, loadSettlementSpot } from './lib/curve-sources';
-import { projectSofr } from '../src/lib/market/sofr';
+import { projectSofr, type SofrProjection } from '../src/lib/market/sofr';
+import { factorAt } from '../src/lib/market/factors';
+import { writeRefreshStatus } from './lib/refresh-status';
 import { buildProxyCurves } from '../src/lib/market/proxy-curves';
 import {
   csvRows,
@@ -31,16 +33,39 @@ async function main() {
     const snapshot = JSON.parse(String(result.rows[0].v)) as CarrySnapshot & { rawHash: string };
     if (requested && requested !== snapshot.sessionDate)
       throw new Error('İstenen seans final girdi snapshot tarihiyle uyuşmuyor.');
+    const date = snapshot.sessionDate;
+    const latestRow = await db.execute({ sql: 'SELECT v FROM kv WHERE k=?', args: ['pricing_bundle_v2:latest'] });
+    const latest = latestRow.rows.length ? (JSON.parse(String(latestRow.rows[0].v)) as PricingBundle) : null;
+    if (
+      !requested &&
+      latest &&
+      (latest.sessionDate > date ||
+        (latest.sessionDate === date && latest.inputs?.curveRawHash === snapshot.rawHash && !latest.inputs.degraded))
+    ) {
+      if (write)
+        await writeRefreshStatus({
+          stage: 'bundle',
+          result: 'up_to_date',
+          sessionDate: latest.sessionDate,
+          sofrSession: latest.inputs?.sofrSession,
+          message: 'Fiyatlama paketi güncel; yeni final veri yok.',
+        });
+      console.log(JSON.stringify({ upToDate: true, sessionDate: latest.sessionDate, id: latest.id }));
+      return;
+    }
     const data = new DatabentoCache(args.includes('--cache-only'), 2);
-    const date = snapshot.sessionDate,
-      sourcesDir = path.join(data.cacheDir, 'curve-sources');
+    const sourcesDir = path.join(data.cacheDir, 'curve-sources');
     const available = await data.availableEnd(),
       windows = publicationWindows(date);
     if (Date.parse(available) < Date.parse(windows.statistics.end)) throw new Error('Final yayın kapsamı eksik.');
-    const fixings = await loadSofrFixings(sourcesDir, date);
-    const usd = projectSofr(date, snapshot.products.SR1.nodes, fixings, 400);
+    const sofr = await buildUsd(db, snapshot, sourcesDir, latest);
+    const usd = sofr.usd;
     const surfaces = {} as Record<'XAU' | 'XAG', VolSurface>;
-    const sources: string[] = [snapshot.rawHash, JSON.stringify(fixings)];
+    const sources: string[] = [snapshot.rawHash, sofr.source];
+    // Options settle with the futures; a late or weekend-delayed final gets one wider window.
+    const statisticWindows = [{ start: date + 'T21:00:00Z', end: windows.statistics.end }];
+    if (Date.parse(available) >= Date.parse(windows.statisticsExtended.end))
+      statisticWindows.push({ start: date + 'T21:00:00Z', end: windows.statisticsExtended.end });
     // Build both metals before a single atomic activation; a half-bundle never replaces live curves.
     for (const product of ['XAU', 'XAG'] as const) {
       console.log(`[curve] ${product}: final opsiyon girdileri ve yeniden IV çözümü`);
@@ -48,25 +73,16 @@ async function main() {
         root = product === 'XAU' ? 'GC' : 'SI';
       const opt = product === 'XAU' ? 'OG' : 'SO';
       const symbols = [`${opt}.OPT`, ...[1, 2, 3, 4, 5].map(i => `${opt}${i}.OPT`)].join(',');
-      const files = [];
-      for (const schema of ['definition', 'statistics'] as const) {
-        // Late EOD window includes final revisions across midnight in CDT/CST.
-        const win =
-          schema === 'definition' ? windows.definitions : { start: date + 'T21:00:00Z', end: windows.statistics.end };
-        files.push(
-          await data.download({
-            dataset: 'GLBX.MDP3',
-            start: win.start,
-            end: win.end,
-            stype_in: 'parent',
-            symbols,
-            schema,
-          }),
-        );
-      }
-      sources.push(JSON.stringify(spot), ...files.map(f => f.sha256));
+      const definitions = await data.download({
+        dataset: 'GLBX.MDP3',
+        start: windows.definitions.start,
+        end: windows.definitions.end,
+        stype_in: 'parent',
+        symbols,
+        schema: 'definition',
+      });
       const options = new Map<string, CmeOptionDef>();
-      for (const row of csvRows(files[0].text, [
+      for (const row of csvRows(definitions.text, [
         'instrument_id',
         'instrument_class',
         'expiration',
@@ -90,14 +106,36 @@ async function main() {
           und: row.underlying_id,
         });
       }
-      const stats = parseSessionSettlements(files[1].text, date),
-        optSettle = new Map<string, number>();
-      for (const [id, stat] of stats) {
-        if (!options.has(id)) throw new Error('Final opsiyon settlement için tanım eksik.');
-        if (!(stat.flags & 1) || stat.deleted || stat.price == null)
-          throw new Error('Opsiyon settlement final değil veya geçersiz.');
-        optSettle.set(id, stat.price);
+      let optSettle = new Map<string, number>(),
+        statistics: { sha256: string } | undefined,
+        failure: unknown;
+      for (const window of statisticWindows) {
+        try {
+          const downloaded = await data.download({
+            dataset: 'GLBX.MDP3',
+            start: window.start,
+            end: window.end,
+            stype_in: 'parent',
+            symbols,
+            schema: 'statistics',
+          });
+          const settled = new Map<string, number>();
+          for (const [id, stat] of parseSessionSettlements(downloaded.text, date)) {
+            if (!options.has(id)) throw new Error('Final opsiyon settlement için tanım eksik.');
+            if (!(stat.flags & 1) || stat.deleted || stat.price == null)
+              throw new Error('Opsiyon settlement final değil veya geçersiz.');
+            settled.set(id, stat.price);
+          }
+          if (!settled.size) throw new Error('Final opsiyon settlement yok.');
+          optSettle = settled;
+          statistics = downloaded;
+          break;
+        } catch (error) {
+          failure = error;
+        }
       }
+      if (!statistics) throw failure;
+      sources.push(JSON.stringify(spot), definitions.sha256, statistics.sha256);
       const curves = buildProxyCurves(snapshot, root, usd, spot, 'building');
       const nodes = snapshot.products[root].nodes;
       surfaces[product] = buildCmeSurface(
@@ -126,6 +164,7 @@ async function main() {
       builtAt: new Date().toISOString(),
       usd,
       surfaces,
+      inputs: { curveRawHash: snapshot.rawHash, sofrSession: sofr.session, degraded: sofr.degraded },
     };
     validatePricingBundle(bundle);
     // Private local artifact allows validation/replay without new provider requests.
@@ -147,6 +186,15 @@ async function main() {
         'write',
       );
       promoted = results[1].rowsAffected > 0;
+      await writeRefreshStatus({
+        stage: 'bundle',
+        result: 'updated',
+        sessionDate: date,
+        sofrSession: sofr.session,
+        message: sofr.degraded
+          ? `Opsiyonlar güncellendi; ${sofr.note}`
+          : 'Opsiyon, futures ve SOFR finalleri yüklendi.',
+      });
     }
     console.log(
       JSON.stringify(
@@ -169,7 +217,75 @@ async function main() {
     db.close();
   }
 }
-main().catch(e => {
-  console.error(e instanceof Error ? e.message.replace(/db-[A-Za-z0-9]+/g, '[redacted]') : 'Eğri kurulamadı.');
+/**
+ * USD discount curve for the session. SOFR moves option values only marginally, so it never blocks
+ * the option surfaces: missing SR1 finals fall back to the latest stored SR1 settlements, and a
+ * failed projection falls back to the live bundle's curve re-based to the new session.
+ */
+async function buildUsd(
+  db: Client,
+  snapshot: CarrySnapshot,
+  sourcesDir: string,
+  latest: PricingBundle | null,
+): Promise<{ usd: SofrProjection; source: string; session: string; degraded: boolean; note: string }> {
+  const date = snapshot.sessionDate;
+  let nodes = snapshot.products.SR1.nodes,
+    session = date,
+    note = '';
+  if (!nodes.length) {
+    const rows = await db.execute({
+      sql: `SELECT v FROM kv WHERE k LIKE 'databento_curve_inputs_v1:%' AND k != 'databento_curve_inputs_v1:latest'
+            AND json_extract(v,'$.sessionDate') < ? AND json_array_length(v,'$.products.SR1.nodes') > 0
+            ORDER BY json_extract(v,'$.sessionDate') DESC LIMIT 1`,
+      args: [date],
+    });
+    if (rows.rows.length) {
+      const older = JSON.parse(String(rows.rows[0].v)) as CarrySnapshot;
+      nodes = older.products.SR1.nodes;
+      session = older.sessionDate;
+      note = `SR1 finali gelmedi; ${session} SOFR futures settlementları kullanıldı.`;
+    }
+  }
+  try {
+    const { fixings, revised } = await loadSofrFixings(sourcesDir, date);
+    const usd = projectSofr(date, nodes, fixings, 400);
+    if (note) usd.warnings.push(note);
+    if (revised.length) usd.warnings.push(`NY Fed revize SOFR fixingi kullanıldı: ${revised.join(', ')}.`);
+    return { usd, source: JSON.stringify(fixings) + ':' + session, session, degraded: Boolean(note), note };
+  } catch (error) {
+    if (!latest) throw error;
+    const reason = error instanceof Error ? error.message : 'SOFR eğrisi kurulamadı';
+    const at = Date.parse(date + 'T00:00:00Z'),
+      base = factorAt(latest.usd.nodes, at) ?? NaN;
+    if (!(base > 0) || Date.parse(latest.usd.nodes.at(-1)!.at) < at + 180 * 86400000) throw error;
+    note = `${reason} — ${latest.usd.asOfDate} USD eğrisi yeni seansa taşındı.`;
+    const usd: SofrProjection = {
+      ...latest.usd,
+      asOfDate: date,
+      nodes: [
+        { at: date + 'T00:00:00.000Z', value: 1 },
+        ...latest.usd.nodes.filter(n => Date.parse(n.at) > at).map(n => ({ at: n.at, value: n.value / base })),
+      ],
+      warnings: [...latest.usd.warnings.filter(w => !w.includes('USD eğrisi yeni seansa')), note],
+    };
+    return {
+      usd,
+      source: 'rebased:' + (latest.inputs?.sofrSession ?? latest.usd.asOfDate),
+      session: latest.inputs?.sofrSession ?? latest.usd.asOfDate,
+      degraded: true,
+      note,
+    };
+  }
+}
+
+main().catch(async e => {
+  const message = e instanceof Error ? e.message.replace(/db-[A-Za-z0-9]+/g, '[redacted]') : 'Eğri kurulamadı.';
+  if (process.argv.includes('--write'))
+    await writeRefreshStatus({
+      stage: 'bundle',
+      result: /yayın kapsamı eksik|final değil|settlement yok/i.test(message) ? 'waiting' : 'failed',
+      message,
+    });
+  console.error(message);
   process.exitCode = 1;
 });

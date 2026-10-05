@@ -36,6 +36,8 @@ export interface CarrySnapshot {
     CurveRoot,
     {
       nodes: CurveNode[];
+      /** SOFR futures only: why this session's funding inputs are unusable (pricing falls back to the latest SOFR session). */
+      unavailable?: string;
       missingSettlementIds: string[];
       adjacentNetCarry?: { fromId: string; toId: string; rateAct365Continuous: number }[];
     }
@@ -166,17 +168,20 @@ export function assertSessionDate(date: string): void {
   if (day === 0 || day === 6) throw new Error('Hafta sonu settlement seansı değil');
 }
 
-/** Conservative publication horizon covers both CDT/CST, and Friday's reopening. */
+/**
+ * Final settlements normally arrive together the same evening (1 Oct 2026: 23:34–23:38 UTC for
+ * GC/SI/SR1/SR3 and the metal options). The standard window closes at 04:00 UTC the next day,
+ * covering CDT/CST; a late or weekend-delayed publication is picked up by the extended window,
+ * which closes at 16:00 UTC on the next business day.
+ */
 export function publicationWindows(date: string) {
   assertSessionDate(date);
   const start = Date.parse(`${date}T00:00:00Z`);
-  const friday = new Date(start).getUTCDay() === 5;
+  const nextBusiness = start + (new Date(start).getUTCDay() === 5 ? 3 : 1) * 86400000;
   return {
     definitions: { start: `${date}T00:00:00Z`, end: `${date}T00:15:00Z` },
-    statistics: {
-      start: `${date}T17:00:00Z`,
-      end: new Date(start + (friday ? 3 : 1) * 86400000 + 4 * 3600000).toISOString(),
-    },
+    statistics: { start: `${date}T17:00:00Z`, end: new Date(start + 86400000 + 4 * 3600000).toISOString() },
+    statisticsExtended: { start: `${date}T17:00:00Z`, end: new Date(nextBusiness + 16 * 3600000).toISOString() },
   };
 }
 
@@ -192,6 +197,19 @@ export function buildCarrySnapshot(
   }
   const products = {} as CarrySnapshot['products'];
   for (const root of CURVE_ROOTS) {
+    try {
+      buildRoot(root);
+    } catch (error) {
+      // Options matter most: missing SOFR finals never block the metal snapshot.
+      if (root !== 'SR1' && root !== 'SR3') throw error;
+      products[root] = {
+        nodes: [],
+        missingSettlementIds: [],
+        unavailable: error instanceof Error ? error.message : 'SOFR final settlement yok',
+      };
+    }
+  }
+  function buildRoot(root: (typeof CURVE_ROOTS)[number]) {
     const defs = [...definitions.values()].filter(
       d => d.root === root && d.instrumentClass === 'F' && d.lastTradeTime.slice(0, 10) > date,
     );

@@ -79,9 +79,11 @@ test('out of order publication cannot regress the quote; missing fields and trun
   assert.throws(() => parse('instrument_id,price\nx,100', date), /alanları eksik/);
   assert.throws(() => stats('x,3'), /satırı eksik/);
 });
-test('Friday final horizon waits until Monday; DST is covered by the conservative UTC horizon', () => {
-  assert.equal(publicationWindows('2026-10-02').statistics.end, '2026-10-05T04:00:00.000Z');
+test('standard window closes 04:00 UTC next day; the extended window reaches the next business day', () => {
+  assert.equal(publicationWindows('2026-10-02').statistics.end, '2026-10-03T04:00:00.000Z');
+  assert.equal(publicationWindows('2026-10-02').statisticsExtended.end, '2026-10-05T16:00:00.000Z');
   assert.equal(publicationWindows('2026-12-10').statistics.end, '2026-12-11T04:00:00.000Z');
+  assert.equal(publicationWindows('2026-12-10').statisticsExtended.end, '2026-12-11T16:00:00.000Z');
   assert.throws(() => publicationWindows('2026-10-03'), /Hafta sonu/);
   assert.throws(() => publicationWindows('2026-02-30'), /YYYY-MM-DD/);
 });
@@ -137,4 +139,16 @@ test('a settlement without an instrument definition cannot be silently dropped f
   const f = fixture();
   f.settlements.set('lateListing', { ...f.settlements.get('GC1'), instrumentId: 'lateListing' });
   assert.throws(() => build(date, f.definitions, f.settlements, 'now'), /kontrat tanımı eksik/);
+});
+
+test('missing or preliminary SOFR finals never block the metal snapshot; metal futures still must be final', () => {
+  const f = fixture();
+  f.settlements.get('SR11').flags = 2;
+  const snapshot = build(date, f.definitions, f.settlements, 'now');
+  assert.equal(snapshot.products.SR1.nodes.length, 0);
+  assert.match(snapshot.products.SR1.unavailable, /final settlement yok/);
+  assert.equal(snapshot.products.GC.nodes.length, 10);
+  assert.equal(snapshot.products.SR3.nodes.length, 10);
+  f.settlements.get('SI1').flags = 2;
+  assert.throws(() => build(date, f.definitions, f.settlements, 'now'), /final settlement yok/);
 });

@@ -9,6 +9,8 @@ export interface PricingBundle {
   builtAt: string;
   usd: SofrProjection;
   surfaces: Record<'XAU' | 'XAG', VolSurface>;
+  /** Which inputs built this bundle; degraded means a SOFR fallback was used and a later run may improve it. */
+  inputs?: { curveRawHash: string; sofrSession: string; degraded: boolean };
 }
 export function validatePricingBundle(bundle: PricingBundle): void {
   if (

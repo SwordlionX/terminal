@@ -95,7 +95,7 @@ test('even a valid manual interest rate cannot replace the curve', async () => {
   assert.equal(f.writes.length, 0);
 });
 
-test('datasource status reports only the active CME/SOFR bundle', async () => {
+test('datasource status reports the active CME/SOFR bundle and the last scheduled check', async () => {
   const surface = {
     fetchedISO: '2026-10-01T17:30:00.000Z',
     expiries: [1, 2],
@@ -105,10 +105,36 @@ test('datasource status reports only the active CME/SOFR bundle', async () => {
   const route = load('src/app/api/settings/datasource/route.ts', {
     'next/server': mockNext(),
     '@/services/pricing-bundle.service': {
-      loadPricingBundle: async () => ({ surfaces: { XAU: surface, XAG: surface } }),
+      loadPricingBundle: async () => ({
+        sessionDate: '2026-10-01',
+        surfaces: { XAU: surface, XAG: surface },
+        usd: {
+          asOfDate: '2026-10-01',
+          warnings: ['Endikatif SOFR futures proxy; sabit uyarı.', 'SR1 finali gelmedi; 2026-09-30 kullanıldı.'],
+        },
+        inputs: { curveRawHash: 'h', sofrSession: '2026-09-30', degraded: true },
+      }),
+    },
+    '@/lib/db': {
+      dbc: async () => ({
+        execute: async ({ args }) => {
+          assert.equal(args[0], 'pricing_refresh_status');
+          return { rows: [{ v: JSON.stringify({ at: '2026-10-02T05:20:00Z', result: 'updated', message: 'ok' }) }] };
+        },
+      }),
     },
   });
   const result = await route.GET();
+  assert.equal(result.body.refresh.result, 'updated');
+  assert.equal(
+    JSON.stringify(result.body.usd),
+    JSON.stringify({
+      sessionDate: '2026-10-01',
+      sofrSession: '2026-09-30',
+      degraded: true,
+      warnings: ['SR1 finali gelmedi; 2026-09-30 kullanıldı.'],
+    }),
+  );
   assert.equal(
     JSON.stringify(result.body.items.map(i => [i.product, i.expiries, i.bundleId, i.notes])),
     JSON.stringify([

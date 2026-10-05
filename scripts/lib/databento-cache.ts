@@ -103,9 +103,14 @@ export class DatabentoCache {
       const reserveUsd = 2 * estimateUsd + 0.01;
       if (
         this.newReserveUsd + reserveUsd > this.runLimitUsd ||
-        ledger.requests.reduce((s, x) => s + x.reserveUsd, 0) + reserveUsd > 10
+        // Databento bills monthly; the $10 ceiling applies per UTC month so the daily job keeps running.
+        ledger.requests
+          .filter(x => x.requestedAt?.slice(0, 7) === new Date().toISOString().slice(0, 7))
+          .reduce((s, x) => s + (x.status === 'complete' ? x.estimateUsd : x.reserveUsd), 0) +
+          reserveUsd >
+          10
       )
-        throw new Error(`İndirme bütçeyi aşacak (çalışma $${this.runLimitUsd} / yerel toplam $10)`);
+        throw new Error(`İndirme bütçeyi aşacak (çalışma $${this.runLimitUsd} / aylık $10)`);
       const entry: Entry = {
         id,
         ...args,

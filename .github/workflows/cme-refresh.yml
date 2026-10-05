@@ -1,4 +1,4 @@
-name: CME vol yüzeyi (günlük)
+name: CME vol yüzeyi (günde 3 deneme)
 run-name: ${{ inputs.request_id || format('scheduled-{0}-XAU-XAG', github.run_id) }}
 concurrency:
   group: cme-refresh-engine
@@ -8,7 +8,12 @@ concurrency:
 # Scheduling becomes active only when this workflow reaches the repository default branch.
 on:
   schedule:
-    - cron: '0 12 * * 1-5'
+    # Finals usually land ~23:35 UTC. Standard window closes 04:00 UTC next day, the extended one
+    # 16:00 UTC next business day; three tries absorb late publications and GitHub's cron delays.
+    # An up-to-date bundle is detected and skipped without a paid download.
+    - cron: '15 5 * * 1-5'
+    - cron: '0 11 * * 1-5'
+    - cron: '30 18 * * 1-5'
   workflow_dispatch:        # panelden elle de tetiklenebilir
     inputs:
       date:

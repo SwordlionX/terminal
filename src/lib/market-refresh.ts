@@ -124,3 +124,20 @@ export async function refreshCme(
   options.onStatus?.('timeout');
   return 'timeout';
 }
+
+/** Last scheduled CME/SOFR check, written by the GitHub job (scripts/lib/refresh-status.ts). */
+export interface PricingRefreshStatus {
+  at: string;
+  stage: 'collect' | 'bundle';
+  result: 'updated' | 'up_to_date' | 'waiting' | 'failed';
+  sessionDate?: string;
+  sofrSession?: string;
+  message: string;
+}
+
+export const refreshResultText: Record<PricingRefreshStatus['result'], string> = {
+  updated: 'Güncellendi',
+  up_to_date: 'Güncel',
+  waiting: 'Final veri bekleniyor',
+  failed: 'Başarısız',
+};

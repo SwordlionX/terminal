@@ -10,6 +10,7 @@ import {
   type Settlement,
 } from '../src/lib/market/cme-carry';
 import { DatabentoCache } from './lib/databento-cache';
+import { writeRefreshStatus } from './lib/refresh-status';
 
 loadEnvConfig(process.cwd());
 async function main() {
@@ -34,35 +35,53 @@ async function main() {
       skipped.push(`${date}: final yayın penceresi tamamlanmadı`);
       continue;
     }
-    const definitions = new Map<string, FutureDefinition>(),
-      settlements = new Map<string, Settlement>();
-    const files: { symbols: string; schema: string; sha256: string; cached: boolean }[] = [];
-    // Four small requests; SOFR's publication time is not the metal's early window.
-    for (const symbols of ['SR1.FUT,SR3.FUT', 'GC.FUT,SI.FUT']) {
-      for (const schema of ['definition', 'statistics'] as const) {
-        const window = schema === 'definition' ? windows.definitions : windows.statistics;
-        const downloaded = await data.download({
-          dataset: 'GLBX.MDP3',
-          start: window.start,
-          end: window.end,
-          stype_in: 'parent',
-          symbols,
-          schema,
-        });
-        files.push({ symbols, schema, sha256: downloaded.sha256, cached: downloaded.cached });
-        if (schema === 'definition')
-          for (const [id, def] of parseFutureDefinitions(downloaded.text)) definitions.set(id, def);
-        else for (const [id, stat] of parseSessionSettlements(downloaded.text, date)) settlements.set(id, stat);
+    // Standard window first; the extended window catches late or weekend-delayed finals.
+    const statisticWindows = [windows.statistics];
+    if (!availableEnd || Date.parse(availableEnd) >= Date.parse(windows.statisticsExtended.end))
+      statisticWindows.push(windows.statisticsExtended);
+    const collect = async (statisticsWindow: { start: string; end: string }) => {
+      const definitions = new Map<string, FutureDefinition>(),
+        settlements = new Map<string, Settlement>();
+      const files: { symbols: string; schema: string; sha256: string; cached: boolean }[] = [];
+      // Four small requests per window: SOFR and metal futures from the same final publication.
+      for (const symbols of ['SR1.FUT,SR3.FUT', 'GC.FUT,SI.FUT']) {
+        for (const schema of ['definition', 'statistics'] as const) {
+          const window = schema === 'definition' ? windows.definitions : statisticsWindow;
+          const downloaded = await data.download({
+            dataset: 'GLBX.MDP3',
+            start: window.start,
+            end: window.end,
+            stype_in: 'parent',
+            symbols,
+            schema,
+          });
+          files.push({ symbols, schema, sha256: downloaded.sha256, cached: downloaded.cached });
+          if (schema === 'definition')
+            for (const [id, def] of parseFutureDefinitions(downloaded.text)) definitions.set(id, def);
+          else for (const [id, stat] of parseSessionSettlements(downloaded.text, date)) settlements.set(id, stat);
+        }
+      }
+      return { snapshot: buildCarrySnapshot(date, definitions, settlements, new Date().toISOString()), files };
+    };
+    let collected: Awaited<ReturnType<typeof collect>> | undefined, failure: unknown;
+    for (const statisticsWindow of statisticWindows) {
+      try {
+        const attempt = await collect(statisticsWindow);
+        // Metal finals present; keep looking only when SOFR finals are still missing.
+        if (!collected || (collected.snapshot.products.SR1.unavailable && !attempt.snapshot.products.SR1.unavailable))
+          collected = attempt;
+        if (!collected.snapshot.products.SR1.unavailable) break;
+      } catch (error) {
+        failure = error;
+        if (cacheOnly) break;
       }
     }
-    let snapshot;
-    try {
-      snapshot = buildCarrySnapshot(date, definitions, settlements, new Date().toISOString());
-    } catch (error) {
-      skipped.push(`${date}: ${error instanceof Error ? error.message : 'eksik veri'}`);
-      if (dateArg) throw error;
+    if (!collected) {
+      skipped.push(`${date}: ${failure instanceof Error ? failure.message : 'eksik veri'}`);
+      if (dateArg) throw failure;
       continue;
     }
+    const { snapshot, files } = collected;
     // Diagnostic storage is deliberately separate from cme_surface_* / interest_rate.
     const rawHash = createHash('sha256')
       .update(files.map(f => f.sha256).join(':'))
@@ -124,7 +143,13 @@ async function main() {
   }
   throw new Error(`Tam final veri bulunamadı: ${skipped.join(' | ')}`);
 }
-main().catch(error => {
+main().catch(async error => {
+  await writeRefreshStatus({
+    stage: 'collect',
+    result: 'failed',
+    message:
+      error instanceof Error ? error.message.replace(/db-[A-Za-z0-9]+/g, '[redacted]') : 'Veri kontrolü başarısız',
+  });
   console.error(
     error instanceof Error ? error.message.replace(/db-[A-Za-z0-9]+/g, '[redacted]') : 'Veri kontrolü başarısız',
   );

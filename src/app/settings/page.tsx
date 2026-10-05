@@ -2,8 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MARGIN_MATURITY_BUCKETS, COLLATERAL_HAIRCUT_RATES, RISK_THRESHOLDS, USD_TRY_RATE } from '@/lib/margin/config';
-import { formatDate, formatNumber, formatPercent } from '@/lib/format';
-import { cmeStatusText, refreshCme, type CmeRefreshStatus } from '@/lib/market-refresh';
+import { formatDate, formatDateTime, formatNumber, formatPercent } from '@/lib/format';
+import {
+  cmeStatusText,
+  refreshCme,
+  refreshResultText,
+  type CmeRefreshStatus,
+  type PricingRefreshStatus,
+} from '@/lib/market-refresh';
 
 export default function SettingsPage() {
   // Yüzeyin gece kurulduğu risksiz faiz oranı (SOFR)
@@ -18,6 +24,13 @@ export default function SettingsPage() {
     notes: string | null;
   }
   const [dsItems, setDsItems] = useState<DsItem[]>([]);
+  const [dsRefresh, setDsRefresh] = useState<PricingRefreshStatus | null>(null);
+  const [dsUsd, setDsUsd] = useState<{
+    sessionDate: string;
+    sofrSession: string;
+    degraded: boolean;
+    warnings: string[];
+  } | null>(null);
   const [dsBusy, setDsBusy] = useState<string | null>(null); // yenilenen ürün
   const [dsMsg, setDsMsg] = useState<{ text: string; error: boolean } | null>(null);
   const dsBusyRef = useRef(false);
@@ -27,7 +40,11 @@ export default function SettingsPage() {
   const loadDataSources = () =>
     fetch('/api/settings/datasource')
       .then(r => r.json())
-      .then(d => setDsItems(d.items || []))
+      .then(d => {
+        setDsItems(d.items || []);
+        setDsRefresh(d.refresh ?? null);
+        setDsUsd(d.usd ?? null);
+      })
       .catch(() => {});
 
   useEffect(() => {
@@ -136,10 +153,27 @@ export default function SettingsPage() {
             olarak doğrulanır. Paket eksikse önceki doğrulanmış seans korunur.
           </p>
           <p>
-            Yenileme bağlı GitHub işinin sonucunu izler; önizlemede devre dışıdır. Otomatik yenilemenin
-            etkinleştirilmesi ayrıca kararlaştırılacak.
+            Otomatik kontrol iş günleri 08:15, 14:00 ve 21:30&apos;da (TSİ) çalışır; yeni final yoksa paket değişmez. Opsiyon
+            finalleri geldiğinde paket güncellenir; SOFR finali gecikirse son geçerli SOFR eğrisi kullanılır ve aşağıda
+            belirtilir. Elle yenileme aynı GitHub işini başlatır; önizlemede devre dışıdır.
           </p>
         </details>
+        <div className="desk-market-facts" style={{ marginBottom: 12 }}>
+          <div>
+            <span>Son otomatik kontrol</span>
+            <strong>{dsRefresh ? refreshResultText[dsRefresh.result] : 'Kayıt yok'}</strong>
+            <small>{dsRefresh ? `${formatDateTime(dsRefresh.at)} · ${dsRefresh.message}` : '—'}</small>
+          </div>
+          <div>
+            <span>Opsiyon / futures seansı · SOFR seansı</span>
+            <strong>
+              {dsUsd ? `${formatDate(dsUsd.sessionDate)} · ${formatDate(dsUsd.sofrSession)}` : 'Paket yok'}
+            </strong>
+            <small style={dsUsd?.degraded ? { color: 'var(--primary)' } : undefined}>
+              {dsUsd?.warnings.length ? dsUsd.warnings.join(' ') : dsUsd ? 'SOFR aynı seanstan' : '—'}
+            </small>
+          </div>
+        </div>
         {dsItems.map(item => (
           <div key={item.product} className="workspace-priority">
             <div>

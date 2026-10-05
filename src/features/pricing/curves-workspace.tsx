@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePricingModel } from './use-pricing-model';
 import { SmileChart } from './smile-chart';
@@ -7,9 +7,17 @@ import { VolatilityTermChart } from './volatility-term-chart';
 import { WorkspaceContext, AskAssistant } from '@/components/workspace-context';
 import { curveFactors } from '@/lib/market/factors';
 import { formatDate, formatDateTime, formatNumber, formatPercent } from '@/lib/format';
+import { refreshResultText, type PricingRefreshStatus } from '@/lib/market-refresh';
 export function CurvesWorkspace() {
   const { md, feed, fwd, daysToExpiry } = usePricingModel(),
     [view, setView] = useState('smile');
+  const [refresh, setRefresh] = useState<PricingRefreshStatus | null>(null);
+  useEffect(() => {
+    fetch('/api/settings/datasource')
+      .then(r => r.json())
+      .then(d => setRefresh(d.refresh ?? null))
+      .catch(() => {});
+  }, []);
   const curve = feed.surface?.curves;
   const tenors = useMemo(
     () =>
@@ -87,6 +95,11 @@ export function CurvesWorkspace() {
           <span>Faiz / taşıma / IV seansı</span>
           <strong>{curve ? formatDate(curve.asOf) : 'Paket yok'}</strong>
           <small>{curve ? 'Final settlement paketi · CME/SOFR proxy' : 'Fiyatlama engellenir'}</small>
+          {refresh && (
+            <small title={refresh.message}>
+              Son kontrol {formatDateTime(refresh.at)} · {refreshResultText[refresh.result]}
+            </small>
+          )}
         </div>
         <div>
           <span>IV vade kapsamı</span>
