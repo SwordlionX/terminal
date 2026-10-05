@@ -30,7 +30,12 @@ async function main() {
   try {
     const result = await db.execute({ sql: 'SELECT v FROM kv WHERE k=?', args: ['databento_curve_inputs_v1:latest'] });
     if (!result.rows.length) throw new Error('Önce collect:cme:curves ile final futures girdileri kaydedilmeli.');
-    const snapshot = JSON.parse(String(result.rows[0].v)) as CarrySnapshot & { rawHash: string };
+    const snapshot = JSON.parse(String(result.rows[0].v)) as CarrySnapshot & { rawHash: string; skipped?: string[] };
+    // A newer session the collector passed over because its finals are not out yet.
+    const pending = snapshot.skipped?.find(
+      s => s.slice(0, 10) > snapshot.sessionDate && !s.includes('penceresi tamamlanmadı'),
+    );
+    const pendingText = pending ? `${pending.slice(0, 10)} finalleri henüz yayımlanmadı (${pending.slice(12)}). ` : '';
     if (requested && requested !== snapshot.sessionDate)
       throw new Error('İstenen seans final girdi snapshot tarihiyle uyuşmuyor.');
     const date = snapshot.sessionDate;
@@ -45,10 +50,12 @@ async function main() {
       if (write)
         await writeRefreshStatus({
           stage: 'bundle',
-          result: 'up_to_date',
+          result: pending ? 'waiting' : 'up_to_date',
           sessionDate: latest.sessionDate,
           sofrSession: latest.inputs?.sofrSession,
-          message: 'Fiyatlama paketi güncel; yeni final veri yok.',
+          message: pending
+            ? `${pendingText}${latest.sessionDate} paketi kullanılıyor.`
+            : 'Fiyatlama paketi güncel; yeni final veri yok.',
         });
       console.log(JSON.stringify({ upToDate: true, sessionDate: latest.sessionDate, id: latest.id }));
       return;
@@ -191,9 +198,9 @@ async function main() {
         result: 'updated',
         sessionDate: date,
         sofrSession: sofr.session,
-        message: sofr.degraded
-          ? `Opsiyonlar güncellendi; ${sofr.note}`
-          : 'Opsiyon, futures ve SOFR finalleri yüklendi.',
+        message:
+          pendingText +
+          (sofr.degraded ? `Opsiyonlar güncellendi; ${sofr.note}` : 'Opsiyon, futures ve SOFR finalleri yüklendi.'),
       });
     }
     console.log(
