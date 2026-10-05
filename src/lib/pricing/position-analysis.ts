@@ -37,6 +37,8 @@ export interface PositionAnalysis {
   delta: number;
   gamma: number;
   limits: PayoffLimits | null;
+  /** Spot levels where the model P&L crosses zero on each scenario date (searched within ±40% of spot). */
+  breakevens: { date: string; levels: number[] }[];
   missingCells: number;
   notes: string[];
 }
@@ -156,62 +158,93 @@ export function analyzeEuropeanPosition(
   if (!Number.isFinite(qty) || qty <= 0) throw new Error('Pozitif referans miktarı gerekli.');
   const nominal = quotes[0].inputs.spot * qty;
   if (!Number.isFinite(nominal) || nominal <= 0) throw new Error('Referans nominal sayı sınırını aşıyor.');
+  const cellAt = (spot: number, date: string): AnalysisCell => {
+    let pnl = 0,
+      value = 0,
+      delta = 0,
+      gamma = 0;
+    for (let i = 0; i < quotes.length; i++) {
+      const q = quotes[i],
+        sign = signOf(q),
+        amount = q.inputs.contractSize;
+      if (date === q.inputs.expiryDate) {
+        const mark = intrinsic(q, spot);
+        value += sign * mark * amount;
+        pnl += sign * (mark - entries[i]) * amount;
+        // Delta/gamma are undefined at the expiry kink; never display zeros as Greeks.
+      } else {
+        const p = calculatePricing({ ...q.inputs, spot, tradeDate: date, manualVol: false }, market.surface);
+        const gr = q.type === 'Call' ? p.gr?.call : p.gr?.put;
+        if (!p.priceable || !gr || ![gr.delta, gr.gamma].every(Number.isFinite))
+          return {
+            pnl: null,
+            pnlPct: null,
+            value: null,
+            delta: null,
+            gamma: null,
+            reason: p.unpriceableReason ?? 'Motor bu senaryoyu desteklemiyor.',
+          };
+        const mark = q.type === 'Call' ? p.result.call : p.result.put;
+        value += sign * mark * amount;
+        pnl += sign * (mark - entries[i]) * amount;
+        delta += sign * gr.delta * amount;
+        gamma += sign * gr.gamma * amount;
+      }
+    }
+    if (![pnl, value, delta, gamma].every(Number.isFinite))
+      return {
+        pnl: null,
+        pnlPct: null,
+        value: null,
+        delta: null,
+        gamma: null,
+        reason: 'Sonuç sayı sınırını aşıyor.',
+      };
+    const anyExpiry = quotes.some(q => date === q.inputs.expiryDate);
+    return {
+      pnl,
+      pnlPct: (pnl / nominal) * 100,
+      value,
+      delta: anyExpiry ? null : delta,
+      gamma: anyExpiry ? null : gamma,
+    };
+  };
   const rows = moves.map(movePct => {
     const spot = quotes[0].inputs.spot * (1 + movePct / 100);
-    const cells = columns.map(date => {
-      let pnl = 0,
-        value = 0,
-        delta = 0,
-        gamma = 0;
-      for (let i = 0; i < quotes.length; i++) {
-        const q = quotes[i],
-          sign = signOf(q),
-          amount = q.inputs.contractSize;
-        if (date === q.inputs.expiryDate) {
-          const mark = intrinsic(q, spot);
-          value += sign * mark * amount;
-          pnl += sign * (mark - entries[i]) * amount;
-          // Delta/gamma are undefined at the expiry kink; never display zeros as Greeks.
-        } else {
-          const p = calculatePricing({ ...q.inputs, spot, tradeDate: date, manualVol: false }, market.surface);
-          const gr = q.type === 'Call' ? p.gr?.call : p.gr?.put;
-          if (!p.priceable || !gr || ![gr.delta, gr.gamma].every(Number.isFinite))
-            return {
-              pnl: null,
-              pnlPct: null,
-              value: null,
-              delta: null,
-              gamma: null,
-              reason: p.unpriceableReason ?? 'Motor bu senaryoyu desteklemiyor.',
-            };
-          const mark = q.type === 'Call' ? p.result.call : p.result.put;
-          value += sign * mark * amount;
-          pnl += sign * (mark - entries[i]) * amount;
-          delta += sign * gr.delta * amount;
-          gamma += sign * gr.gamma * amount;
-        }
-      }
-      if (![pnl, value, delta, gamma].every(Number.isFinite))
-        return {
-          pnl: null,
-          pnlPct: null,
-          value: null,
-          delta: null,
-          gamma: null,
-          reason: 'Sonuç sayı sınırını aşıyor.',
-        };
-      const anyExpiry = quotes.some(q => date === q.inputs.expiryDate);
-      return {
-        pnl,
-        pnlPct: (pnl / nominal) * 100,
-        value,
-        delta: anyExpiry ? null : delta,
-        gamma: anyExpiry ? null : gamma,
-      };
-    });
+    const cells = columns.map(date => cellAt(spot, date));
     return { movePct, spot, cells };
   });
   const allSameExpiry = quotes.every(q => q.inputs.expiryDate === firstExpiry);
+  // Zero crossings of the model P&L, refined by bisection on the same pricing path as the grid.
+  const base = quotes[0].inputs.spot;
+  const breakevens = columns.map(date => {
+    const levels: number[] = [];
+    const pnlAt = (spot: number) => cellAt(spot, date).pnl;
+    let prevSpot = base * 0.6,
+      prev = pnlAt(prevSpot);
+    for (let step = 1; step <= 80; step++) {
+      const spot = base * (0.6 + step * 0.01),
+        value = pnlAt(spot);
+      if (prev !== null && value !== null && prev !== 0 && Math.sign(prev) !== Math.sign(value)) {
+        let lo = prevSpot,
+          hi = spot,
+          flo = prev;
+        for (let i = 0; i < 40; i++) {
+          const mid = (lo + hi) / 2,
+            fm = pnlAt(mid);
+          if (fm === null) break;
+          if (Math.sign(fm) === Math.sign(flo)) {
+            lo = mid;
+            flo = fm;
+          } else hi = mid;
+        }
+        levels.push((lo + hi) / 2);
+      } else if (value === 0) levels.push(spot);
+      prevSpot = spot;
+      prev = value;
+    }
+    return { date, levels };
+  });
   const modelCashflow = quotes.reduce((s, q) => s + q.cashflow, 0);
   return {
     label,
@@ -229,6 +262,7 @@ export function analyzeEuropeanPosition(
     delta: quotes.reduce((s, q) => s + q.delta, 0),
     gamma: quotes.reduce((s, q) => s + q.gamma, 0),
     limits: allSameExpiry ? expiryPayoffLimits(quotes, entries) : null,
+    breakevens,
     missingCells: rows.reduce((n, r) => n + r.cells.filter(c => c.pnl === null).length, 0),
     notes: [
       'Avrupa tipi: vade öncesi kullanım yok. Ters işlem eski sözleşmeyi feshetmez; vade değişikliği yeni bir işlem gerektirir.',

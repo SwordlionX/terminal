@@ -440,6 +440,15 @@ export function TerminalWorkspace() {
                 ? 'Korumasız short call yukarı yönlü sınırsız kayıp taşıyabilir.'
                 : 'Long opsiyonda vade sonu azami kayıp ödenen primdir.'}
         </p>
+        {!barrier && limits && limits.breakevens.length > 0 && (
+          <>
+            <p>Vade sonu başabaş</p>
+            <strong>{limits.breakevens.map(level => analysisNumber(level)).join(' / ')}</strong>
+            <p>
+              {(type === 'Call') === (position === 'Long') ? 'Bu seviyenin üstü' : 'Bu seviyenin altı'} müşteri lehine.
+            </p>
+          </>
+        )}
       </div>
     </aside>
   );

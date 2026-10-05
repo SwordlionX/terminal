@@ -241,3 +241,17 @@ test('assistant emits the same deterministic analysis card with no model or rese
   assert.equal(reads, 1);
   assert.equal(artifacts.length, 1);
 });
+
+test('model breakevens match the analytic expiry level and zero the P&L on every scenario date', () => {
+  const result = analyze(screen, market, [leg()], 'Short put');
+  const expiry = result.breakevens.at(-1);
+  assert.equal(expiry.date, '2026-04-01');
+  assert.equal(expiry.levels.length, 1);
+  near(expiry.levels[0], 95, 1e-6); // strike 100 − entry premium 5
+  near(expiry.levels[0], result.limits.breakevens[0], 1e-6);
+  for (const { date, levels } of result.breakevens.slice(0, -1)) {
+    assert.equal(levels.length, 1, date);
+    const check = analyze(screen, market, [leg()], 'check', [date], [((levels[0] - 100) / 100) * 100]);
+    near(check.rows[0].cells[0].pnl, 0, 1e-6);
+  }
+});

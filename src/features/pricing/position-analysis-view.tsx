@@ -57,6 +57,17 @@ export function PositionCurve({ results, dateIndex = 0 }: { results: PositionAna
             );
           })}
           <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="var(--muted-foreground)" strokeDasharray="4 5" />
+          {(results[0].breakevens?.[dateIndex]?.levels ?? [])
+            .filter(level => level >= minX && level <= maxX)
+            .map(level => (
+              <g key={level}>
+                <line x1={x(level)} x2={x(level)} y1={T} y2={H - B} stroke="var(--primary)" strokeDasharray="3 4" />
+                <circle cx={x(level)} cy={y(0)} r="4" fill="var(--primary)" />
+                <text x={x(level) + 6} y={T + 12} fill="var(--primary)" fontSize="11">
+                  Başabaş {analysisNumber(level)}
+                </text>
+              </g>
+            ))}
           {[minX, (minX + maxX) / 2, maxX].map(v => (
             <text key={v} x={x(v)} y={H - 24} textAnchor="middle" fill="var(--muted-foreground)" fontSize="11">
               {analysisNumber(v)}
@@ -109,6 +120,8 @@ export function PositionAnalysisView({ result, compact = false }: { result: Posi
   const dateIndex = Math.max(0, result.dates.indexOf(date));
   const unit = ['XAU', 'XAG'].includes(result.quotes[0].product) ? 'ons' : 'adet';
   const limitText = (v: number | null) => (v === null ? 'Teorik olarak sınırsız' : analysisMoney(v));
+  const levelsText = (levels?: number[]) =>
+    levels === undefined ? '—' : levels.length ? levels.map(x => analysisNumber(x)).join(' / ') : '±%40 içinde yok';
   return (
     <div className={`position-analysis-view ${compact ? 'is-compact' : ''}`}>
       <div className="analysis-summary">
@@ -127,7 +140,22 @@ export function PositionAnalysisView({ result, compact = false }: { result: Posi
           <small>
             {Math.abs(result.delta) < 1e-8
               ? 'Mevcut modelde delta nötr'
-              : `Delta nötrleştirme: ${result.delta > 0 ? 'satış' : 'alış'} ${analysisNumber(Math.abs(result.delta), 3)} ${unit}`}
+              : `Banka hedge'i: ${result.delta > 0 ? 'alış' : 'satış'} ${analysisNumber(Math.abs(result.delta), 3)} ${unit} · müşteri deltası ${result.delta > 0 ? 'pozitif' : 'negatif'}`}
+          </small>
+        </div>
+        <div>
+          <span>Başabaş · dayanak fiyatı</span>
+          <strong>{levelsText(result.breakevens?.[0]?.levels)}</strong>
+          <small>Bugün, model değeriyle</small>
+          <small>
+            Vade sonu:{' '}
+            {result.limits
+              ? result.limits.breakevens.length
+                ? result.limits.breakevens.map(x => analysisNumber(x)).join(' / ')
+                : result.limits.flatZeroRanges.length
+                  ? 'sıfır K/Z aralığı'
+                  : 'yok'
+              : levelsText(result.breakevens?.at(-1)?.levels)}
           </small>
         </div>
         <div>
@@ -138,13 +166,7 @@ export function PositionAnalysisView({ result, compact = false }: { result: Posi
         <div>
           <span>Vade sonu azami kazanç</span>
           <strong>{result.limits ? limitText(result.limits.maxProfit) : 'Ortak vade yok'}</strong>
-          <small>
-            {result.limits?.breakevens.length
-              ? `Başabaş: ${result.limits.breakevens.map(x => analysisNumber(x)).join(' / ')}`
-              : result.limits?.flatZeroRanges.length
-                ? 'Sıfır K/Z aralığı var'
-                : 'Başabaş noktası yok / tanımsız'}
-          </small>
+          <small>{result.limits ? 'S ≥ 0 · bütün fiyat seviyeleri' : 'Farklı vadeler ortak tarihte değerlenir'}</small>
         </div>
       </div>
       {!compact && (
@@ -255,6 +277,20 @@ export function PositionAnalysisView({ result, compact = false }: { result: Posi
                 </tr>
               ))}
             </tbody>
+            {metric === 'pnl' && result.breakevens && (
+              <tfoot>
+                <tr>
+                  <th scope="row">
+                    Başabaş<small>model K/Z = 0</small>
+                  </th>
+                  {result.breakevens.map(b => (
+                    <td key={b.date} className="heat-neutral">
+                      <strong>{levelsText(b.levels)}</strong>
+                    </td>
+                  ))}
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
         <p className="analysis-footnote">
