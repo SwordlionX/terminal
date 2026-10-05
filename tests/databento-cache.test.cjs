@@ -31,6 +31,8 @@ async function client(t, fetch) {
     URLSearchParams,
     AbortSignal,
     fetch,
+    Date,
+    setTimeout: fn => fn(), // retry backoff runs instantly in tests
   });
   return { make: cacheOnly => new mod.exports.DatabentoCache(cacheOnly), dir };
 }
@@ -70,18 +72,45 @@ test('complete downloads are checksum-verified and reused without another reques
   );
   await assert.rejects(c.make(true).download(args), /Önbellek doğrulanamadı/);
 });
-test('failed download retains reservation; a repeated call does not spend again', async t => {
+test('failed downloads stay counted and retry once; a later run may try again', async t => {
   let calls = 0;
   const c = await client(t, async url => {
     calls++;
     return url.pathname.endsWith('get_cost') ? new Response('0.001') : new Response('error', { status: 503 });
   });
   await assert.rejects(c.make(false).download(args), /HTTP 503/);
-  await assert.rejects(c.make(false).download(args), /Önceki indirme yarım/);
-  assert.equal(calls, 2);
+  assert.equal(calls, 4); // cost + range, then one in-run retry
+  let ledger = JSON.parse(await fs.readFile(path.join(c.dir, 'budget.json'), 'utf8'));
+  assert.equal(JSON.stringify(ledger.requests.map(r => r.status)), JSON.stringify(['failed', 'failed']));
+  assert.ok(ledger.requests.every(r => r.reserveUsd > 0));
+  await assert.rejects(c.make(false).download(args), /HTTP 503/);
+  assert.equal(calls, 8);
+  ledger = JSON.parse(await fs.readFile(path.join(c.dir, 'budget.json'), 'utf8'));
+  assert.equal(ledger.requests.length, 4);
+});
+test('a fresh reservation from another run blocks; a stale one is retried', async t => {
+  let calls = 0;
+  const c = await client(t, async url => {
+    calls++;
+    return new Response(url.pathname.endsWith('get_cost') ? '0.001' : 'test,csv\n1,2\n');
+  });
+  const id = require('node:crypto').createHash('sha256').update(JSON.stringify(args)).digest('hex');
+  const write = requestedAt =>
+    fs.writeFile(
+      path.join(c.dir, 'budget.json'),
+      JSON.stringify({
+        limitUsd: 10,
+        requests: [{ id, ...args, estimateUsd: 0.001, reserveUsd: 0.012, status: 'reserved', requestedAt }],
+      }),
+    );
+  await write(new Date().toISOString());
+  await assert.rejects(c.make(false).download(args), /başka bir çalışmada sürüyor/);
+  assert.equal(calls, 0);
+  await write(new Date(Date.now() - 3600000).toISOString());
+  const result = await c.make(false).download(args);
+  assert.equal(result.cached, false);
   const ledger = JSON.parse(await fs.readFile(path.join(c.dir, 'budget.json'), 'utf8'));
-  assert.equal(ledger.requests[0].status, 'reserved');
-  assert.ok(ledger.requests[0].reserveUsd > 0);
+  assert.equal(JSON.stringify(ledger.requests.map(r => r.status)), JSON.stringify(['failed', 'complete']));
 });
 test('provider warning rejects both the new download and its cached copy', async t => {
   const c = await client(t, async url =>
