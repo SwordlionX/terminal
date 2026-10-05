@@ -35,7 +35,7 @@ async function main() {
     const pending = snapshot.skipped?.find(
       s => s.slice(0, 10) > snapshot.sessionDate && !s.includes('penceresi tamamlanmadı'),
     );
-    const pendingText = pending ? `${pending.slice(0, 10)} finalleri henüz yayımlanmadı (${pending.slice(12)}). ` : '';
+    const pendingText = pending ? `${pending.slice(0, 10)} seansının final settlementları henüz yayımlanmadı. ` : '';
     if (requested && requested !== snapshot.sessionDate)
       throw new Error('İstenen seans final girdi snapshot tarihiyle uyuşmuyor.');
     const date = snapshot.sessionDate;
