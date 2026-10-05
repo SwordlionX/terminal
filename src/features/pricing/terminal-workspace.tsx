@@ -511,10 +511,10 @@ export function TerminalWorkspace() {
           <h2>Hedef primi değerlendir.</h2>
           <p>Mevcut terminal araçlarıyla işlem koşullarını ve prim hedefini incele.</p>
         </Link>
-        <Link href="/pricing/barrier">
-          <span>03 / GELİŞMİŞ</span>
-          <h2>Bariyer ve delta hedge.</h2>
-          <p>Bariyer gözlemi, yardımcı smile ve mevcut motorun gelişmiş araçları.</p>
+        <Link href="/pricing/delta-hedge">
+          <span>03 / RİSK</span>
+          <h2>Delta hedge.</h2>
+          <p>Seçili işlem için bankanın spot metal hedge yönü, miktarı ve USD karşılığı.</p>
         </Link>
       </div>
       {!feed.surface?.curves && !feed.loading && (
