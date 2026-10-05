@@ -49,12 +49,16 @@ export function nextPacificMidnight(now = Date.now()): number {
 
 /**
  * How long to skip a model after a provider error, or null when switching models cannot help
- * (bad key, permission, malformed request).
+ * (bad key, permission, malformed request). "High demand" on the newest models tends to last for
+ * a while; a short skip made every request start at the busy model again, so overloads and
+ * timeouts skip it for 15 minutes.
  */
 export function blockAfterError(status: number | undefined, message: string, now = Date.now()): number | null {
   if (status === 429) return /per ?day|PerDay|daily/i.test(message) ? nextPacificMidnight(now) : now + 60_000;
   if (status === 404) return nextPacificMidnight(now);
-  if (status !== undefined && [500, 502, 503, 504].includes(status)) return now + 120_000;
+  if (status !== undefined && [500, 502, 503, 504].includes(status)) return now + 15 * 60_000;
+  if (status === undefined && /timeout|timed out|aborted|fetch failed|network|ECONNRESET/i.test(message))
+    return now + 15 * 60_000;
   return null;
 }
 

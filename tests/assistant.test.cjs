@@ -697,8 +697,8 @@ test('an overloaded model hands over to the next one, SDK retries are disabled a
   assert.equal(fixture.requests[2].model, 'gemini-3.7-flash');
   const failed = mockRunner([transient]);
   await assert.rejects(failed.run(), error => error.status === 503);
-  assert.equal(failed.requests.length, 4);
-  assert.equal(failed.reservations(), 4);
+  assert.equal(failed.requests.length, 5); // first model + four switches
+  assert.equal(failed.reservations(), 5);
 });
 
 test('a quota-exhausted model is skipped and history signatures stay valid for the next model', async () => {
@@ -723,7 +723,9 @@ test('model cascade helpers classify daily quota, transient overload and unrecov
     Date.parse('2026-10-06T07:00:00Z'),
   );
   assert.equal(models.blockAfterError(429, 'per minute', now), now + 60_000);
-  assert.equal(models.blockAfterError(503, '', now), now + 120_000);
+  assert.equal(models.blockAfterError(503, '', now), now + 15 * 60_000);
+  assert.equal(models.blockAfterError(undefined, 'The operation was aborted due to timeout', now), now + 15 * 60_000);
+  assert.equal(models.blockAfterError(undefined, 'Invalid JSON payload', now), null);
   assert.equal(models.blockAfterError(401, '', now), null);
   assert.equal(JSON.stringify(models.availableModels(['a', 'b'], { a: now + 1 }, now)), JSON.stringify(['b']));
   assert.throws(() => models.modelChain('gemini-ok, bad model', []), /geçersiz/);
