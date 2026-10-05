@@ -332,6 +332,10 @@
   font-size: 10px;
   color: var(--muted-foreground);
 }
+.workspace-metrics small + small {
+  display: block;
+  margin-top: 4px;
+}
 .workspace-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
