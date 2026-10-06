@@ -69,6 +69,10 @@ test('chat gets more desktop room while the mobile full-screen layout remains in
   assert.equal(value(rule('.assistant-context'), 'display'), 'flex');
   assert.equal(value(rule('.assistant-context'), 'flex-shrink'), '0');
   assert.equal(value(rule('.assistant-dock footer'), 'padding'), '10px 16px');
+  const floating = rule('.sidebar-shell .assistant-dock');
+  assert.equal(value(floating, 'top'), '16px');
+  assert.equal(value(floating, 'bottom'), '82px');
+  assert.equal(value(floating, 'height'), 'auto');
   const desktop = css.nodes.find(
     node => node.type === 'atrule' && node.name === 'media' && node.params === '(min-width: 1100px)',
   );
@@ -78,6 +82,13 @@ test('chat gets more desktop room while the mobile full-screen layout remains in
       '--assistant-width',
     ),
     '460px',
+  );
+  assert.equal(
+    value(
+      desktop.nodes.find(node => node.selector === '.sidebar-shell .assistant-dock'),
+      'top',
+    ),
+    '16px',
   );
   const mobile = css.nodes
     .filter(node => node.type === 'atrule' && node.params === '(max-width: 900px)')

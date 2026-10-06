@@ -1028,9 +1028,9 @@ html[data-terminal-design='meridian'] .desk-main-grid .desk-risk {
   z-index: 54;
   right: 22px;
   bottom: 82px;
-  top: auto;
+  top: 16px;
   width: min(460px, calc(100vw - 32px));
-  height: min(740px, calc(100dvh - 104px));
+  height: auto;
   min-height: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1312,7 +1312,7 @@ html[data-terminal-design='terminal'] .terminal-shell.sidebar-shell .desk-main-g
   }
   .sidebar-shell .assistant-dock {
     width: var(--assistant-width);
-    top: 76px;
+    top: 16px;
     bottom: 82px;
     height: auto;
   }
