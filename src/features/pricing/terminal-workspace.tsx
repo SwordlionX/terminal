@@ -14,6 +14,7 @@ import { TERMINAL_DESIGN } from '@/lib/terminal-design';
 import { usePricingModel } from './use-pricing-model';
 import { SmileChart } from './smile-chart';
 import { VolatilityTermChart } from './volatility-term-chart';
+import { GreeksRiskMetrics } from './greeks-risk-metrics';
 import { analysisMoney, analysisNumber } from './position-analysis-view';
 import { formatDate } from '@/lib/format';
 
@@ -408,18 +409,7 @@ export function TerminalWorkspace() {
   );
   const risk = (
     <aside className="desk-risk analysis-panel">
-      <p className="desk-eyebrow">RİSKİN KARŞILIĞI</p>
-      {[
-        ['Delta', q ? analysisNumber(q.delta, 3) + ' ' + unit : '—'],
-        ['Gamma', q ? analysisNumber(q.gamma, 5) : '—'],
-        ['Vega / vol puanı', q ? analysisMoney(q.vega) : '—'],
-        ['Theta / gün', q ? analysisMoney(q.theta) : '—'],
-      ].map(([name, value]) => (
-        <div className="desk-risk-item" key={name}>
-          <span>{name}</span>
-          <strong>{value}</strong>
-        </div>
-      ))}
+      <GreeksRiskMetrics quote={q} unit={unit} />
       <div className="desk-risk-note">
         <p>{barrier ? 'Bariyer sözleşmesi' : 'Vade sonu azami kayıp'}</p>
         <strong>
