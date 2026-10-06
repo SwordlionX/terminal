@@ -427,9 +427,11 @@
 }
 .assistant-context {
   border-bottom: 1px solid var(--border);
-  padding: 14px 20px;
-  display: grid;
-  gap: 6px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-shrink: 0;
 }
 .assistant-context span {
   font: 9px var(--font-code);
@@ -440,10 +442,6 @@
   font-size: 12px;
   font-weight: 500;
   overflow-wrap: anywhere;
-}
-.assistant-context small {
-  color: var(--muted-foreground);
-  font-size: 10px;
 }
 .assistant-dock [class*='rounded'] {
   border-radius: var(--radius);
@@ -469,10 +467,11 @@
   color: var(--primary-foreground);
 }
 .assistant-dock footer {
-  padding: 12px 16px;
+  padding: 10px 16px;
 }
 .assistant-dock header {
-  padding: 15px 16px;
+  padding: 10px 16px;
+  align-items: center;
 }
 .assistant-dock textarea {
   font-size: 13px;
@@ -1309,11 +1308,11 @@ html[data-terminal-design='terminal'] .terminal-shell.sidebar-shell .desk-main-g
 /* Desktop: the open assistant docks beside the workspace instead of covering quotes and risk. */
 @media (min-width: 1100px) {
   .sidebar-shell {
-    --assistant-width: 420px;
+    --assistant-width: 460px;
   }
   .sidebar-shell .assistant-dock {
     width: var(--assistant-width);
-    top: 86px;
+    top: 76px;
     bottom: 82px;
     height: auto;
   }

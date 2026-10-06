@@ -316,7 +316,7 @@ export function TerminalAssistant({
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-5">
           <div className="flex min-w-0 gap-3">
-            <span className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-200/10 min-[380px]:flex">
+            <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-200/10 min-[380px]:flex">
               <Sparkles size={19} className="text-cyan-200" />
             </span>
             <div className="min-w-0">
@@ -332,21 +332,17 @@ export function TerminalAssistant({
             </button>
           </div>
         </header>
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 bg-white/[0.025] px-5 py-2.5 text-xs text-slate-400">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/5 bg-white/[0.025] px-4 py-1.5 text-xs text-slate-400">
           <span className="flex items-center gap-1.5 text-cyan-200">
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
             Sizin talebinizle
           </span>
           <span className="ml-auto text-slate-400">XAU / XAG</span>
         </div>
-        <div className="assistant-context">
+        <div className="assistant-context" title="Yalnız okumamı istediğinde kullanırım.">
           <span>AÇIK EKRAN</span>
           <strong>{active?.label ?? areaLabels[area]}</strong>
-          <small>Yalnız okumamı istediğinde kullanırım.</small>
         </div>
-        <p className="shrink-0 border-b border-white/5 px-5 py-2 text-xs leading-relaxed text-slate-400">
-          Terminal eğrisi · Manuel piyasa girdisi kullanılmaz.
-        </p>
         <div
           ref={scrollArea}
           onScroll={e => {
@@ -354,7 +350,7 @@ export function TerminalAssistant({
             following.current = area.scrollHeight - area.scrollTop - area.clientHeight < 96;
             if (following.current) setHasNewResponse(false);
           }}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5"
+          className="assistant-conversation min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3"
         >
           <div ref={scrollContent}>
             {!messages.length && (
@@ -490,7 +486,7 @@ export function TerminalAssistant({
                 e.preventDefault();
                 void send();
               }}
-              className="rounded-2xl border border-white/15 bg-white/[0.04] p-3 focus-within:border-cyan-200/40"
+              className="assistant-composer flex items-end gap-2 rounded-2xl border border-white/15 bg-white/[0.04] p-2 focus-within:border-cyan-200/40"
             >
               <textarea
                 ref={composer}
@@ -506,34 +502,28 @@ export function TerminalAssistant({
                     void send();
                   }
                 }}
-                className="max-h-40 min-h-14 w-full resize-none bg-transparent text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-400"
+                className="h-12 min-h-0 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-400"
               />
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-xs text-slate-400">Enter ile gönder · Shift + Enter ile yeni satır</span>
-                {busy ? (
-                  <button
-                    type="button"
-                    onClick={() => abort.current?.abort()}
-                    aria-label="İsteği durdur"
-                    className={`${iconButton} border border-white/15`}
-                  >
-                    <Square size={17} />
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={!draft.trim() || !availability?.ready}
-                    aria-label="Mesajı gönder"
-                    className={`${iconButton} bg-cyan-300 !text-slate-950 hover:bg-cyan-200 disabled:bg-white/10 disabled:!text-slate-400`}
-                  >
-                    <ArrowUp size={19} />
-                  </button>
-                )}
-              </div>
+              {busy ? (
+                <button
+                  type="button"
+                  onClick={() => abort.current?.abort()}
+                  aria-label="İsteği durdur"
+                  className={`${iconButton} border border-white/15`}
+                >
+                  <Square size={17} />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!draft.trim() || !availability?.ready}
+                  aria-label="Mesajı gönder"
+                  className={`${iconButton} bg-cyan-300 !text-slate-950 hover:bg-cyan-200 disabled:bg-white/10 disabled:!text-slate-400`}
+                >
+                  <ArrowUp size={19} />
+                </button>
+              )}
             </form>
-            <p className="mt-2 text-center text-xs text-slate-400">
-              Endikatif sonuçlar · Hesap anındaki veri ve varsayımlar
-            </p>
           </>
         </footer>
       </aside>
