@@ -63,7 +63,7 @@ export class DatabentoCache {
     if (typeof end !== 'string' || !Number.isFinite(Date.parse(end))) throw new Error('Databento veri sonu okunamadı');
     return end;
   }
-  async download(args: DownloadArgs): Promise<{ text: string; sha256: string; cached: boolean }> {
+  async download(args: DownloadArgs, cachedOnly?: true): Promise<{ text: string; sha256: string; cached: boolean }> {
     await mkdir(this.cacheDir, { recursive: true });
     const lockPath = path.join(this.cacheDir, 'budget.lock');
     const lock = await open(lockPath, 'wx'); // Fail rather than race another paid download.
@@ -100,7 +100,7 @@ export class DatabentoCache {
         if (sha(text) !== existing.sha256 || existing.warningPresent) throw new Error('Önbellek doğrulanamadı');
         return { text, sha256: existing.sha256!, cached: true };
       }
-      if (this.cacheOnly) throw new Error('İstenen veri önbellekte yok; ağ indirmesi kapalı');
+      if (this.cacheOnly || cachedOnly) throw new Error('İstenen veri önbellekte yok; ağ indirmesi kapalı');
       for (let attempt = 1; ; attempt++) {
         try {
           return await this.fetchOnce(args, id, target, ledger, save);
