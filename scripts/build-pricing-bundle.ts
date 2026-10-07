@@ -3,6 +3,7 @@ import { createClient, type Client } from '@libsql/client';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { DatabentoCache } from './lib/databento-cache';
+import { downloadWindowed } from './lib/databento-windows';
 import { loadSofrFixings, loadSettlementSpot } from './lib/curve-sources';
 import { projectSofr, type SofrProjection } from '../src/lib/market/sofr';
 import { factorAt } from '../src/lib/market/factors';
@@ -87,12 +88,13 @@ async function main() {
         schema: 'definition',
       });
       const options = parseOptionDefinitions(definitions.text);
+      console.log(`[curve] ${product}: ${options.size} opsiyon tanımı; final istatistik penceresi küçük parçalarla okunuyor`);
       let optSettle = new Map<string, number>(),
         statistics: { sha256: string } | undefined,
         failure: unknown;
       for (const window of statisticWindows) {
         try {
-          const downloaded = await data.download({
+          const downloaded = await downloadWindowed(data, {
             dataset: 'GLBX.MDP3',
             start: window.start,
             end: window.end,
