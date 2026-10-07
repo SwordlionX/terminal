@@ -83,6 +83,44 @@ test('empty header-only windows preserve coverage; mismatched schemas or failed 
   await assert.rejects(downloadWindowed(make('schema'), args), /CSV alanları uyuşmuyor/);
 });
 
+test('transient gateway failure is bisected with exact coverage; financial/provider validation errors are not retried', async () => {
+  const covered = [];
+  const input = { ...args, end: '2026-10-06T00:00:00Z' };
+  const result = await downloadWindowed(
+    {
+      download: async (request, cachedOnly) => {
+        if (cachedOnly) return missing();
+        if (Date.parse(request.end) - Date.parse(request.start) > 900000) throw new Error('Databento indirme HTTP 504');
+        covered.push([request.start, request.end]);
+        return { text: `id,price\n${covered.length},2\n`, cached: false };
+      },
+    },
+    input,
+  );
+  assert.equal(covered.length, 4);
+  assert.equal(covered[0][0], input.start);
+  assert.equal(covered[3][1], input.end);
+  for (let i = 1; i < covered.length; i++) assert.equal(covered[i - 1][1], covered[i][0]);
+  assert.equal(result.text, 'id,price\n1,2\n2,2\n3,2\n4,2\n');
+  for (const reason of ['İndirme bütçeyi aşacak', 'Databento veri uyarısı verdi', 'Önbellek doğrulanamadı']) {
+    let paidAttempts = 0;
+    await assert.rejects(
+      downloadWindowed(
+        {
+          download: async (request, cachedOnly) => {
+            if (cachedOnly) return missing();
+            paidAttempts++;
+            throw new Error(reason);
+          },
+        },
+        input,
+      ),
+      error => error.message.includes(reason),
+    );
+    assert.equal(paidAttempts, 1);
+  }
+});
+
 test('corrupt or reserved original cache is never bypassed with another paid download', async () => {
   let calls = 0;
   await assert.rejects(

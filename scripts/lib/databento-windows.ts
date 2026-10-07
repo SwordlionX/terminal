@@ -15,19 +15,26 @@ export async function downloadWindowed(cache: Pick<DatabentoCache, 'download'>, 
   let header: string | undefined,
     cached = true;
   const parts: string[] = [];
-  for (let at = start; at < end; at += 3600000) {
+  async function readSlice(at: number, until: number): Promise<void> {
     const slice = {
       ...args,
       start: new Date(at).toISOString().replace('.000Z', 'Z'),
-      end: new Date(Math.min(at + 3600000, end)).toISOString().replace('.000Z', 'Z'),
+      end: new Date(until).toISOString().replace('.000Z', 'Z'),
     };
     let result;
     try {
       result = await cache.download(slice);
     } catch (error) {
-      throw new Error(
-        `Databento ${args.schema} ${slice.start}–${slice.end}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      // Retry only transient transport failures with smaller ranges, down to 15 minutes.
+      // Budget, partial-symbol warnings and corrupt cached data must never be bypassed.
+      if (until - at > 900000 && /HTTP (429|5\d\d)|timeout|aborted|ECONNRESET|fetch failed/i.test(message)) {
+        const middle = at + Math.floor((until - at) / 2);
+        await readSlice(at, middle);
+        await readSlice(middle, until);
+        return;
+      }
+      throw new Error(`Databento ${args.schema} ${slice.start}–${slice.end}: ${message}`);
     }
     const text = result.text.trim(),
       newline = text.indexOf('\n');
@@ -38,6 +45,7 @@ export async function downloadWindowed(cache: Pick<DatabentoCache, 'download'>, 
     if (newline >= 0 && text.slice(newline + 1)) parts.push(text.slice(newline + 1));
     cached &&= result.cached;
   }
+  for (let at = start; at < end; at += 3600000) await readSlice(at, Math.min(at + 3600000, end));
   const text = [header!, ...parts].join('\n') + '\n';
   return { text, sha256: createHash('sha256').update(text).digest('hex'), cached };
 }
