@@ -9,13 +9,11 @@ import { factorAt } from '../src/lib/market/factors';
 import { writeRefreshStatus } from './lib/refresh-status';
 import { buildProxyCurves } from '../src/lib/market/proxy-curves';
 import {
-  csvRows,
-  nanosISO,
-  parseSessionSettlements,
   publicationWindows,
   type CarrySnapshot,
 } from '../src/lib/market/cme-carry';
-import { buildCmeSurface, type CmeOptionDef } from '../src/lib/vol/cme';
+import { buildCmeSurface } from '../src/lib/vol/cme';
+import { parseOptionDefinitions, finalOptionSettlements } from '../src/lib/market/cme-option-inputs';
 import { validatePricingBundle, type PricingBundle } from '../src/services/pricing-bundle.service';
 import { writeFile } from 'node:fs/promises';
 import type { VolSurface } from '../src/lib/vol/surface';
@@ -82,37 +80,13 @@ async function main() {
       const symbols = [`${opt}.OPT`, ...[1, 2, 3, 4, 5].map(i => `${opt}${i}.OPT`)].join(',');
       const definitions = await data.download({
         dataset: 'GLBX.MDP3',
-        start: windows.definitions.start,
-        end: windows.definitions.end,
+        start: windows.optionDefinitions.start,
+        end: windows.optionDefinitions.end,
         stype_in: 'parent',
         symbols,
         schema: 'definition',
       });
-      const options = new Map<string, CmeOptionDef>();
-      for (const row of csvRows(definitions.text, [
-        'instrument_id',
-        'instrument_class',
-        'expiration',
-        'strike_price',
-        'underlying_id',
-        'security_update_action',
-      ])) {
-        if (row.security_update_action === 'D') {
-          options.delete(row.instrument_id);
-          continue;
-        }
-        if (row.instrument_class !== 'C' && row.instrument_class !== 'P') continue;
-        const expiry = nanosISO(row.expiration),
-          strike = Number(row.strike_price) / 1e9;
-        if (!expiry || !Number.isFinite(strike) || strike <= 0 || strike >= 9e9)
-          throw new Error('Opsiyon tanımı geçersiz.');
-        options.set(row.instrument_id, {
-          cls: row.instrument_class,
-          expSec: Date.parse(expiry) / 1000,
-          strike,
-          und: row.underlying_id,
-        });
-      }
+      const options = parseOptionDefinitions(definitions.text);
       let optSettle = new Map<string, number>(),
         statistics: { sha256: string } | undefined,
         failure: unknown;
@@ -126,15 +100,7 @@ async function main() {
             symbols,
             schema: 'statistics',
           });
-          const settled = new Map<string, number>();
-          for (const [id, stat] of parseSessionSettlements(downloaded.text, date)) {
-            if (!options.has(id)) throw new Error('Final opsiyon settlement için tanım eksik.');
-            if (!(stat.flags & 1) || stat.deleted || stat.price == null)
-              throw new Error('Opsiyon settlement final değil veya geçersiz.');
-            settled.set(id, stat.price);
-          }
-          if (!settled.size) throw new Error('Final opsiyon settlement yok.');
-          optSettle = settled;
+          optSettle = finalOptionSettlements(downloaded.text, date, options, product);
           statistics = downloaded;
           break;
         } catch (error) {

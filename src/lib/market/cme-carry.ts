@@ -180,6 +180,8 @@ export function publicationWindows(date: string) {
   const nextBusiness = start + (new Date(start).getUTCDay() === 5 ? 3 : 1) * 86400000;
   return {
     definitions: { start: `${date}T00:00:00Z`, end: `${date}T00:15:00Z` },
+    // A midnight snapshot alone misses new option strikes listed during the session.
+    optionDefinitions: { start: `${date}T00:00:00Z`, end: new Date(start + 86400000).toISOString().replace('.000Z', 'Z') },
     statistics: { start: `${date}T17:00:00Z`, end: new Date(start + 86400000 + 4 * 3600000).toISOString() },
     statisticsExtended: { start: `${date}T17:00:00Z`, end: new Date(nextBusiness + 16 * 3600000).toISOString() },
   };
