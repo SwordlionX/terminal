@@ -9,12 +9,9 @@ import { projectSofr, type SofrProjection } from '../src/lib/market/sofr';
 import { factorAt } from '../src/lib/market/factors';
 import { writeRefreshStatus } from './lib/refresh-status';
 import { buildProxyCurves } from '../src/lib/market/proxy-curves';
-import {
-  publicationWindows,
-  type CarrySnapshot,
-} from '../src/lib/market/cme-carry';
+import { publicationWindows, type CarrySnapshot } from '../src/lib/market/cme-carry';
 import { buildCmeSurface } from '../src/lib/vol/cme';
-import { parseOptionDefinitions, finalOptionSettlements } from '../src/lib/market/cme-option-inputs';
+import { parseOptionDefinitionIndex, finalOptionSettlements } from '../src/lib/market/cme-option-inputs';
 import { validatePricingBundle, type PricingBundle } from '../src/services/pricing-bundle.service';
 import { writeFile } from 'node:fs/promises';
 import type { VolSurface } from '../src/lib/vol/surface';
@@ -87,8 +84,14 @@ async function main() {
         symbols,
         schema: 'definition',
       });
-      const options = parseOptionDefinitions(definitions.text);
-      console.log(`[curve] ${product}: ${options.size} opsiyon tanımı; final istatistik penceresi küçük parçalarla okunuyor`);
+      const definitionIndex = parseOptionDefinitionIndex(definitions.text);
+      const { options } = definitionIndex;
+      console.log(
+        `[curve] ${product}: ${definitionIndex.nonOptions.size} tanımlı tekil opsiyon dışı kontrat; ${definitionIndex.deleted.size} silinmiş tanım (fiyatlamaya alınmaz)`,
+      );
+      console.log(
+        `[curve] ${product}: ${options.size} opsiyon tanımı; final istatistik penceresi küçük parçalarla okunuyor`,
+      );
       let optSettle = new Map<string, number>(),
         statistics: { sha256: string } | undefined,
         failure: unknown;
@@ -102,7 +105,7 @@ async function main() {
             symbols,
             schema: 'statistics',
           });
-          optSettle = finalOptionSettlements(downloaded.text, date, options, product);
+          optSettle = finalOptionSettlements(downloaded.text, date, options, product, definitionIndex);
           statistics = downloaded;
           break;
         } catch (error) {

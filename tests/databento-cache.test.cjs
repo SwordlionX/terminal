@@ -121,3 +121,42 @@ test('provider warning rejects both the new download and its cached copy', async
   await assert.rejects(c.make(false).download(args), /veri uyarısı/);
   await assert.rejects(c.make(true).download(args), /Önbellek doğrulanamadı/);
 });
+
+test('dataset coverage metadata retries transient failures once without any paid request or budget entry', async t => {
+  const end = '2026-10-13T04:00:00Z';
+  for (const first of [503, 504, 429, 'timeout']) {
+    let calls = 0;
+    const c = await client(t, async url => {
+      assert.equal(url.pathname, '/v0/metadata.get_dataset_range');
+      calls++;
+      if (calls === 1) {
+        if (first === 'timeout') throw new DOMException('fixture-key must not leak', 'TimeoutError');
+        return new Response('fixture-provider-body', { status: first });
+      }
+      return new Response(JSON.stringify({ schema: { statistics: { end } } }));
+    });
+    const cache = c.make(false);
+    assert.equal(await cache.availableEnd(), end);
+    assert.equal(calls, 2);
+    assert.equal(cache.downloads, 0);
+    assert.equal(cache.newReserveUsd, 0);
+    assert.deepEqual(await fs.readdir(c.dir), []);
+  }
+});
+
+test('metadata retries are bounded; auth and invalid responses stop immediately with safe endpoint diagnostics', async t => {
+  for (const status of [401, 403, 503, 200, 'timeout']) {
+    let calls = 0;
+    const c = await client(t, async () => {
+      calls++;
+      if (status === 'timeout') throw new DOMException('fixture-secret', 'TimeoutError');
+      return new Response('"fixture-secret"', { status });
+    });
+    await assert.rejects(
+      c.make(false).availableEnd(),
+      error => /metadata.get_dataset_range/.test(error.message) && !/fixture-secret|test-fixture/.test(error.message),
+    );
+    assert.equal(calls, status === 503 || status === 'timeout' ? 2 : 1);
+    assert.deepEqual(await fs.readdir(c.dir), []);
+  }
+});

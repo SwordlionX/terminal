@@ -53,15 +53,30 @@ export class DatabentoCache {
     return url;
   }
   async availableEnd(): Promise<string> {
-    const res = await fetch(this.url('metadata.get_dataset_range', { dataset: 'GLBX.MDP3' }), {
-      headers: this.headers(),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!res.ok) throw new Error(`Databento metadata HTTP ${res.status}`);
-    const range = await res.json(),
-      end = range.schema?.statistics?.end || range.end;
-    if (typeof end !== 'string' || !Number.isFinite(Date.parse(end))) throw new Error('Databento veri sonu okunamadı');
-    return end;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const res = await fetch(this.url('metadata.get_dataset_range', { dataset: 'GLBX.MDP3' }), {
+          headers: this.headers(),
+          signal: AbortSignal.timeout(30000),
+        });
+        if (!res.ok) throw new Error(`Databento metadata HTTP ${res.status}`);
+        const range = await res.json(),
+          end = range.schema?.statistics?.end || range.end;
+        if (typeof end !== 'string' || !Number.isFinite(Date.parse(end)))
+          throw new Error('Databento veri sonu okunamadı');
+        return end;
+      } catch (error) {
+        const transient = /HTTP (429|5\d\d)|timeout|aborted|ECONNRESET|fetch failed/i.test(String(error));
+        if (attempt >= 2 || !transient) {
+          // No credentials or provider response bodies in diagnostics.
+          const status = /HTTP (\d{3})/.exec(String(error))?.[1];
+          throw new Error(
+            `Databento metadata.get_dataset_range başarısız (deneme=${attempt}, ${status ? `HTTP ${status}` : transient ? 'geçici bağlantı/zaman aşımı' : 'veri veya yapılandırma hatası'}).`,
+          );
+        }
+        await new Promise(resolve => setTimeout(resolve, 30000));
+      }
+    }
   }
   async download(args: DownloadArgs, cachedOnly?: true): Promise<{ text: string; sha256: string; cached: boolean }> {
     await mkdir(this.cacheDir, { recursive: true });
