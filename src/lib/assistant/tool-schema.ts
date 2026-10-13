@@ -134,7 +134,7 @@ const declarations: FunctionDeclaration[] = [
   {
     name: 'price_option',
     description:
-      'Terminal X mevcut eğrisi ve AYNI motoruyla endikatif vanilya veya bariyer opsiyon fiyatla. Manuel piyasa varsayımı yasak; eksik veri fiyatlamayı durdurur. Bütün fiyat ve Greeks kartları yalnız bu motorun çıktısıdır.',
+      'Terminal X mevcut eğrisi ve AYNI motoruyla endikatif vanilya veya bariyer opsiyon fiyatla. Bir istekte en fazla 3 fiyat kartı; sınıra ulaşınca yeni fiyat çağırma, mevcut sonuçları yorumla. Hedef prim için tek tek strike deneme, find_options kullan. Manuel piyasa varsayımı yasak; eksik veri fiyatlamayı durdurur. Bütün fiyat ve Greeks kartları yalnız bu motorun çıktısıdır.',
     parametersJsonSchema: option,
   },
   {

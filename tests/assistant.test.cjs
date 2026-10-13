@@ -7,7 +7,7 @@ const ts = require('typescript');
 const test = require('node:test');
 const root = path.join(__dirname, '..');
 
-function modules(overrides = {}, env = {}) {
+function modules(overrides = {}, env = {}, globals = {}) {
   const cache = new Map();
   function load(file) {
     const full = path.resolve(root, file);
@@ -51,6 +51,7 @@ function modules(overrides = {}, env = {}) {
           }
           throw new Error(`Unexpected dependency: ${id}`);
         },
+        ...globals,
       },
       { filename: full },
     );
@@ -477,6 +478,107 @@ test('repeated equivalent tool arguments reuse one calculation and one market sn
   assert.equal(artifacts.length, 1);
 });
 
+test('standalone price cards share a three-quote cap across sequential and concurrent calls', async () => {
+  for (const parallel of [false, true]) {
+    const artifacts = [];
+    let marketReads = 0;
+    const execute = createToolExecutor(context, '10 ons için fiyat alternatifleri bul.', {
+      market: async () => {
+        marketReads++;
+        return market;
+      },
+      artifact: a => artifacts.push(a),
+      research: async () => {
+        throw new Error('No research');
+      },
+      signal: new AbortController().signal,
+    });
+    const requests = [95, 100, 105, 110, 115].map(strike => ({
+      ...terms,
+      type: 'Put',
+      position: 'Short',
+      contractSize: 10,
+      strike,
+    }));
+    const results = parallel
+      ? await Promise.all(requests.map(args => execute('price_option', args)))
+      : await (async () => {
+          const rows = [];
+          for (const args of requests) rows.push(await execute('price_option', args));
+          return rows;
+        })();
+    assert.equal(artifacts.filter(a => a.kind === 'quote').length, 3);
+    assert.equal(results.filter(r => r.quote).length, 3);
+    assert.equal(results[3].quoteLimitReached, true);
+    assert.equal(results[4].maxQuotes, 3);
+    assert.equal(results[3].error, undefined);
+    assert.equal(marketReads, 1);
+    assert.ok(!(await execute('research_diagnostic', { topic: 'units_and_dates' })).deliveredAsSeparateResearchCard);
+    assert.equal(artifacts.length, 3);
+  }
+});
+
+test('selected prices share the same cap; failures and cache hits do not consume extra slots', async () => {
+  const artifacts = [];
+  const dependencies = {
+    market: async () => market,
+    artifact: a => artifacts.push(a),
+    research: async () => {
+      throw new Error('No research');
+    },
+    signal: new AbortController().signal,
+  };
+  const screen = { ...context, type: 'Put', position: 'Short' };
+  const execute = createToolExecutor(screen, 'Ekrandaki işlemi ve alternatifleri 10 ons için fiyatla.', dependencies);
+  const invalid = await execute('price_option', { ...terms, type: 'Put', position: 'Short', contractSize: -1 });
+  assert.ok(invalid.error);
+  const args = { ...terms, type: 'Put', position: 'Short', contractSize: 10, strike: 95 };
+  const first = await execute('price_option', args);
+  assert.equal(first, await execute('price_option', { ...args }));
+  assert.ok((await execute('price_selected_option', {})).quote);
+  assert.ok((await execute('price_option', { ...args, strike: 105 })).quote);
+  assert.equal((await execute('price_option', { ...args, strike: 110 })).quoteLimitReached, true);
+  assert.equal(artifacts.length, 3);
+  const nextRequest = createToolExecutor(screen, '10 ons fiyatla.', dependencies);
+  assert.ok((await nextRequest('price_option', { ...args, strike: 110 })).quote);
+  assert.equal(artifacts.length, 4);
+});
+
+test('quote card cap does not truncate multi-leg hedge calculations', async () => {
+  const artifacts = [];
+  const execute = createToolExecutor(context, '10 ons hedge alternatiflerini karşılaştır.', {
+    market: async () => market,
+    artifact: a => artifacts.push(a),
+    research: async () => {
+      throw new Error('No research');
+    },
+    signal: new AbortController().signal,
+  });
+  const leg = strike => ({ option: { ...terms, type: 'Put', position: 'Short', contractSize: 10, strike } });
+  const result = await execute('compare_strategies', {
+    horizon: 'expiry',
+    strategies: [{ label: 'Dört bacak', legs: [90, 95, 100, 105].map(leg) }],
+  });
+  assert.equal(result.results[0].quotes.length, 4);
+  assert.equal(artifacts.length, 1);
+  assert.equal(artifacts[0].kind, 'scenarios');
+});
+
+test('target search returns at most three alternatives while retaining the nearest result', () => {
+  const result = searchPremium(
+    strike => ({ ...quote(), inputs: { ...quote().inputs, strike }, premiumPerUnit: Math.sin(strike) + 2 }),
+    2,
+    'usd_per_unit',
+    80,
+    120,
+    0.001,
+  );
+  assert.equal(result.reached, true);
+  assert.equal(result.candidates.length, 3);
+  assert.ok(result.nearest);
+  assert.ok(result.evaluations > 3);
+});
+
 test('web research is blocked for normal pricing, including repeated denied attempts', async () => {
   let researches = 0;
   const execute = createToolExecutor(context, 'İnternetten put fiyatı bul', {
@@ -684,6 +786,21 @@ test('SDK failures never expose request contents or keys', async () => {
   await assert.rejects(fixture.run(), error => !error.message.includes('test-only-key') && error.status === 502);
 });
 
+test('default pricing starts at 3.5 Flash and excludes the failing newer models', async () => {
+  const models = modules()('src/lib/assistant/models.ts');
+  assert.deepEqual(Array.from(models.CHAT_MODELS), [
+    'gemini-3.5-flash',
+    'gemini-3-flash-preview',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+  ]);
+  const fixture = mockRunner([finalReply]);
+  const result = await fixture.run();
+  assert.equal(fixture.requests[0].model, 'gemini-3.5-flash');
+  assert.equal(result.model, 'gemini-3.5-flash');
+  assert.equal(fixture.reservations(), 1);
+});
+
 test('an overloaded model hands over to the next one, SDK retries are disabled and switching is bounded', async () => {
   const transient = Object.assign(new Error('temporary'), { status: 503 });
   const fixture = mockRunner([transient, toolReply, finalReply]);
@@ -692,13 +809,13 @@ test('an overloaded model hands over to the next one, SDK retries are disabled a
   assert.equal(fixture.reservations(), 3); // but the daily counter records it
   assert.ok(fixture.requests.every(r => r.config.httpOptions.retryOptions.attempts === 1));
   assert.equal(fixture.events.filter(e => e.type === 'artifact').length, 1);
-  assert.equal(fixture.requests[0].model, 'gemini-3.8-flash');
-  assert.equal(fixture.requests[1].model, 'gemini-3.7-flash');
-  assert.equal(fixture.requests[2].model, 'gemini-3.7-flash');
+  assert.equal(fixture.requests[0].model, 'gemini-3.5-flash');
+  assert.equal(fixture.requests[1].model, 'gemini-3-flash-preview');
+  assert.equal(fixture.requests[2].model, 'gemini-3-flash-preview');
   const failed = mockRunner([transient]);
   await assert.rejects(failed.run(), error => error.status === 503);
-  assert.equal(failed.requests.length, 7); // every model in the chain once, then stop
-  assert.equal(failed.reservations(), 7);
+  assert.equal(failed.requests.length, 4); // every model in the chain once, then stop
+  assert.equal(failed.reservations(), 4);
 });
 
 test('a quota-exhausted model is skipped and history signatures stay valid for the next model', async () => {
@@ -707,9 +824,9 @@ test('a quota-exhausted model is skipped and history signatures stay valid for t
   });
   const fixture = mockRunner([toolReply, quota, finalReply]);
   const result = await fixture.run();
-  assert.equal(result.model, 'gemini-3.7-flash');
-  assert.equal(fixture.requests[1].model, 'gemini-3.8-flash');
-  assert.equal(fixture.requests[2].model, 'gemini-3.7-flash');
+  assert.equal(result.model, 'gemini-3-flash-preview');
+  assert.equal(fixture.requests[1].model, 'gemini-3.5-flash');
+  assert.equal(fixture.requests[2].model, 'gemini-3-flash-preview');
   assert.equal(fixture.requests[2].contents[1].parts[0].thoughtSignature, 'skip_thought_signature_validator');
   assert.equal(fixture.events.filter(e => e.type === 'done' || e.type === 'artifact').length, 1);
 });
@@ -809,6 +926,94 @@ test('API needs production storage, refuses foreign origins and rejects malforme
     403,
   );
   assert.equal(calls, 0);
+});
+
+test('Hobby Fluid config permits the assistant deadline; timeout preserves streamed results', async () => {
+  const config = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+  assert.equal(config.fluid, true);
+  const timeout = new AbortController();
+  let timeoutMs;
+  const route = modules(
+    {
+      '@/lib/assistant/security': {
+        sameOrigin: () => true,
+        openConversation: () => [],
+        sealConversation: () => 'test-conversation',
+      },
+      '@/lib/assistant/limits': { reserveRequest: async () => {} },
+      '@/lib/assistant/runner': {
+        runAssistant: async ({ signal, emit }) => {
+          emit({ type: 'artifact', artifact: { kind: 'quote', quote: { premiumTotal: 100 } } });
+          await new Promise((resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
+      },
+    },
+    { GEMINI_API_KEY: 'test-only-key' },
+    {
+      AbortSignal: {
+        any: AbortSignal.any.bind(AbortSignal),
+        timeout: ms => {
+          timeoutMs = ms;
+          return timeout.signal;
+        },
+      },
+    },
+  )('src/app/api/assistant/route.ts');
+  assert.equal(route.maxDuration, 300);
+  assert.ok(route.maxDuration <= 300);
+  const response = await route.POST(
+    new Request('https://terminal.test/api/assistant', {
+      method: 'POST',
+      body: JSON.stringify({ message: 'Put satışını fiyatla', context }),
+    }),
+  );
+  assert.equal(timeoutMs, 250000);
+  assert.equal(route.maxDuration * 1000 - timeoutMs, 50000);
+  const reader = response.body.getReader();
+  const first = JSON.parse(new TextDecoder().decode((await reader.read()).value));
+  assert.equal(first.type, 'artifact');
+  assert.equal(first.artifact.quote.premiumTotal, 100);
+  timeout.abort(new DOMException('Test timeout', 'TimeoutError'));
+  const last = JSON.parse(new TextDecoder().decode((await reader.read()).value));
+  assert.equal(last.type, 'error');
+  assert.match(last.text, /süre sınırına/);
+  assert.equal((await reader.read()).done, true);
+});
+
+test('extended assistant deadline still cancels upstream work on a client abort', async () => {
+  const client = new AbortController();
+  let upstream;
+  const route = modules(
+    {
+      '@/lib/assistant/security': { sameOrigin: () => true, openConversation: () => [] },
+      '@/lib/assistant/limits': { reserveRequest: async () => {} },
+      '@/lib/assistant/runner': {
+        runAssistant: async ({ signal, emit }) => {
+          upstream = signal;
+          emit({ type: 'status', text: 'Test' });
+          await new Promise((resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
+      },
+    },
+    { GEMINI_API_KEY: 'test-only-key' },
+    { AbortSignal: { any: AbortSignal.any.bind(AbortSignal), timeout: () => new AbortController().signal } },
+  )('src/app/api/assistant/route.ts');
+  const response = await route.POST(
+    new Request('https://terminal.test/api/assistant', {
+      method: 'POST',
+      signal: client.signal,
+      body: JSON.stringify({ message: 'Put satışını fiyatla', context }),
+    }),
+  );
+  const reader = response.body.getReader();
+  await reader.read();
+  client.abort();
+  assert.equal(upstream.aborted, true);
+  assert.equal((await reader.read()).done, true);
 });
 
 test('stale terminal quotes are identified and never treated as live fresh prices', () => {

@@ -89,7 +89,7 @@ export function searchPremium(
     unit,
     tolerance,
     reached: candidates.length > 0,
-    candidates: candidates.slice(0, 5),
+    candidates: candidates.slice(0, 3),
     nearest: valid[0] ?? null,
     evaluations: cache.size,
     unavailable,

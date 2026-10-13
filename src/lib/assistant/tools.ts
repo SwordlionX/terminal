@@ -92,6 +92,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
   const issues = new Set<string>();
   let toolCalls = 0,
     researchCalls = 0,
+    quoteSlots = 0,
     collateralAdded = false;
   let requestedWorkspace: WorkspaceSnapshot | undefined;
   const today = valuationToday();
@@ -148,6 +149,24 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
     const pricingScreen = independentScreen(r);
     assertCurvePricing(r, pricingScreen);
     return quoteOption(r, pricingScreen, await getMarket(r.product!));
+  };
+  const deliverQuote = async (value: unknown): Promise<Record<string, unknown>> => {
+    const limit = {
+      quoteLimitReached: true,
+      maxQuotes: 3,
+      instruction: 'Bu istekte en fazla üç fiyat kartı gösterilir. Yeni fiyat arama; gelen kartları kısa yorumla.',
+    };
+    if (quoteSlots >= 3) return limit;
+    // Reserve before awaiting market data so concurrent tool calls share the same cap.
+    quoteSlots++;
+    try {
+      const quote = await price(value);
+      deps.artifact({ kind: 'quote', quote });
+      return { quote, ...(quoteSlots >= 3 ? limit : {}) };
+    } catch (error) {
+      quoteSlots--;
+      throw error;
+    }
   };
   const run = async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
     deps.signal.throwIfAborted();
@@ -395,7 +414,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
           );
         if (!screen.type || !screen.position) throw new Error('Ekranda opsiyon tipi ve müşteri yönü seçilmeli.');
         assertCurvePricing({}, screen);
-        const quote = await price({
+        return deliverQuote({
           product: screen.product,
           type: screen.type,
           position: screen.position,
@@ -406,8 +425,6 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
           basis: screen.basis,
           ...(screen.barrier ? { barrier: screen.barrier } : {}),
         });
-        deps.artifact({ kind: 'quote', quote });
-        return { quote };
       }
       case 'price_option': {
         if (
@@ -420,9 +437,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
           throw new Error(
             'Ekranda bariyerli işlem seçili. Fiyat aracına seçili bariyer yapısını aktar; vanilya fiyatını bu işlemin fiyatı gibi sunma.',
           );
-        const quote = await price(args);
-        deps.artifact({ kind: 'quote', quote });
-        return { quote };
+        return deliverQuote(args);
       }
       case 'find_options': {
         assertCurvePricing(args, { ...screen, manualSpot: false, manualVol: false });

@@ -8,7 +8,7 @@ import { ASSISTANT_CONVERSATION_SCOPE, requestsScreenContext } from '@/lib/assis
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 const privateHeaders = { 'Cache-Control': 'no-store' };
 
 export async function GET() {
@@ -42,7 +42,8 @@ export async function POST(request: Request) {
     const contents = openConversation(body.conversation, scope);
     await reserveRequest();
     const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, request.signal, AbortSignal.timeout(55000)]);
+    // Reserve fifty seconds for preparation overhead and final stream delivery.
+    const signal = AbortSignal.any([controller.signal, request.signal, AbortSignal.timeout(250000)]);
     const started = Date.now(),
       encoder = new TextEncoder();
     const stream = new ReadableStream({

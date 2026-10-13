@@ -1,12 +1,8 @@
 /**
- * Free-tier model cascade. Each Flash model has its own small daily quota (20 requests on the
- * current plan); the Lite models have larger ones. Requests start at the strongest model that
- * still has quota and fall to the next one when a model is exhausted or overloaded.
+ * Start with 3.5 Flash rather than spending request time on the newer models that repeatedly
+ * failed in production. Keep the existing preview/Lite fallbacks for exhaustion or overload.
  */
 export const CHAT_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-3.7-flash',
-  'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3-flash-preview',
   'gemini-3.5-flash-lite',
