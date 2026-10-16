@@ -15,9 +15,9 @@ function load(file, imports = {}) {
   return mod.exports;
 }
 const carry = load('src/lib/market/cme-carry.ts');
-const { parseOptionDefinitions, parseOptionDefinitionIndex, finalOptionSettlements } = load(
+const { parseOptionDefinitions, parseOptionDefinitionIndex, finalOptionSettlements, OptionSettlementError } = load(
   'src/lib/market/cme-option-inputs.ts',
-  { './cme-carry': carry },
+  { './cme-carry': carry, './cme-option-scope': load('src/lib/market/cme-option-scope.ts') },
 );
 const ns = value => String(BigInt(Date.parse(value)) * 1000000n);
 const date = '2026-10-05';
@@ -173,5 +173,81 @@ test('classification revisions and deletions cannot use stale non-option exempti
   assert.throws(
     () => finalOptionSettlements(csv(statHeader, stat('reclassified', null)), date, index.options, 'XAG', index),
     /geçersiz/,
+  );
+});
+
+test('zero is a legitimate final option settlement, not a missing-price sentinel', () => {
+  const index = parseOptionDefinitionIndex(csv(defHeader, def('zero', date + 'T00:00:00Z')));
+  assert.equal(
+    finalOptionSettlements(csv(statHeader, stat('zero', 0)), date, index.options, 'XAU', index).get('zero'),
+    0,
+  );
+});
+
+test('only explicitly known out-of-horizon maturities bypass invalid-settlement checks', () => {
+  const evalSec = Date.parse(date + 'T23:35:00Z') / 1000;
+  const options = new Map([
+    ['expired', { cls: 'C', expSec: evalSec - 3600, strike: 100, und: 'gc1' }],
+    ['distant', { cls: 'C', expSec: evalSec + 401 * 86400, strike: 100, und: 'gc1' }],
+    ['live', { cls: 'C', expSec: evalSec + 30 * 86400, strike: 100, und: 'gc1' }],
+  ]);
+  const text = csv(statHeader, stat('expired', null), stat('distant', 0, 2, 2), stat('live', 2));
+  assert.throws(() => finalOptionSettlements(text, date, options, 'XAU'), /instrument_id=expired/);
+  let exclusions;
+  const result = finalOptionSettlements(text, date, options, 'XAU', undefined, {
+    evalSec,
+    onExcluded: counts => {
+      exclusions = counts;
+    },
+  });
+  assert.equal(result.size, 1);
+  assert.equal(result.get('live'), 2);
+  assert.equal(exclusions.short_or_expired, 1);
+  assert.equal(exclusions.beyond_horizon, 1);
+  assert.throws(
+    () => finalOptionSettlements(csv(statHeader, stat('unknown', 0)), date, options, 'XAU', undefined, { evalSec }),
+    /tanım eksik/,
+  );
+  assert.throws(
+    () => finalOptionSettlements(text, date, options, 'XAU', undefined, { evalSec: NaN }),
+    /değerleme zamanı/,
+  );
+  options.get('live').expSec = evalSec + 400 * 86400;
+  assert.throws(
+    () => finalOptionSettlements(csv(statHeader, stat('live', null)), date, options, 'XAU', undefined, { evalSec }),
+    /instrument_id=live/,
+  );
+});
+
+test('diagnostics count all failures but bound samples; only pure preliminary failures are waiting', () => {
+  const definitions = parseOptionDefinitions(csv(defHeader, def('x', date + 'T00:00:00Z')));
+  for (const [row, reason, waiting] of [
+    [stat('x', 2, 2), 'preliminary', true],
+    [stat('x', 2, 3, 2), 'deleted', false],
+    [stat('x', null), 'invalid_price', false],
+    [stat('x', null, 2), 'invalid_price', false],
+  ]) {
+    assert.throws(
+      () => finalOptionSettlements(csv(statHeader, row), date, definitions, 'XAU'),
+      error => {
+        assert.ok(error instanceof OptionSettlementError);
+        assert.equal(error.waitingForFinal, waiting);
+        assert.equal(error.diagnostics.reasonCounts[reason], 1);
+        assert.equal(error.diagnostics.samples[0].instrumentId, 'x');
+        return true;
+      },
+    );
+  }
+  const options = new Map(Array.from({ length: 30 }, (_, i) => ['x' + i, definitions.get('x')]));
+  assert.throws(
+    () =>
+      finalOptionSettlements(csv(statHeader, ...[...options.keys()].map(id => stat(id, null))), date, options, 'XAU'),
+    error => {
+      assert.equal(error.diagnostics.issueCount, 30);
+      assert.equal(error.diagnostics.samples.length, 12);
+      assert.equal(error.diagnostics.reasonCounts.invalid_price, 30);
+      assert.ok(!error.message.includes('instrument_id=x12,'));
+      return true;
+    },
   );
 });

@@ -1,6 +1,7 @@
 import { impliedVolAmerican, impliedVolAmericanFutureCurve } from '../math/american';
 import { factorAt, type PricingCurves } from '../market/factors';
 import { VolSurface, ExpirySmile, SmilePoint } from './surface';
+import { cmeOptionDays, optionMaturityExclusion } from '../market/cme-option-scope';
 
 /**
  * CME COMEX settlement → de-Amerikanize IV yüzeyi.
@@ -72,7 +73,7 @@ const BINOM_STEPS = 72;
  * 384 gün — 400 ikisini de içeride, 416'yı dışarıda bırakıyor. Masanın işlem yaptığı
  * vadeler (birkaç ay) bu sınırın çok altında.
  */
-const MAX_SURFACE_DAYS = 400;
+// The limit itself lives in cme-option-scope, shared with settlement validation.
 // Kanat seyreltme yoğunluğu. Ham settlement 150+ strike içerebilir; smile'ı temsil için bu
 // gereksiz (ve her biri ağır Amerikan binom inversiyonu). ATM'i saran dar bant TAM
 // çözünürlükte tutulur, kanatlar seyreltilir — ATM doğruluğu korunur, refresh hızlanır.
@@ -139,12 +140,12 @@ function subsampleStrikes<T extends { m: number }>(sorted: T[]): T[] {
  */
 export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolSurface {
   // 1) Opsiyonları vadeye göre grupla (yalnız settlement'ı olanlar)
-  const byExp = new Map<number, { def: CmeOptionDef; px: number }[]>();
+  const byExp = new Map<number, { id: string; def: CmeOptionDef; px: number }[]>();
   for (const [id, def] of inp.options) {
     const px = inp.optSettle.get(id);
     if (px == null) continue;
     const arr = byExp.get(def.expSec) || [];
-    arr.push({ def, px });
+    arr.push({ id, def, px });
     byExp.set(def.expSec, arr);
   }
 
@@ -160,19 +161,30 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     const und = [...undCount.entries()].sort((a, b) => b[1] - a[1])[0][0];
     const F = inp.futSettle.get(und);
 
-    const days = Math.round(((expSec - inp.evalSec) / 86400) * 10) / 10;
-    if (F == null || days < 1 || days > MAX_SURFACE_DAYS) continue;
+    const days = cmeOptionDays(expSec, inp.evalSec);
+    if (F == null || optionMaturityExclusion(expSec, inp.evalSec)) continue;
     const T = days / 365;
 
     // 3) OTM adayları topla (K>=F -> call, K<F -> put), moneyness penceresinde
     const cands: { m: number; K: number; px: number; type: 'call' | 'put' }[] = [];
-    for (const { def, px } of list) {
+    for (const { id, def, px } of list) {
       if (def.und !== und) continue;
       const K = def.strike;
+      if (px === 0 && (def.cls === 'C' ? F > K : K > F))
+        throw new Error(
+          `${symbol}: sıfır settlement içsel değerin altında; neden=zero_below_intrinsic; instrument_id=${id}.`,
+        );
       if (K < MONEY_LO * F || K > MONEY_HI * F) continue;
       const useCall = K >= F;
       if (useCall && def.cls !== 'C') continue;
       if (!useCall && def.cls !== 'P') continue;
+      // A legitimate zero settlement is not an identifiable IV. Do not silently drop an
+      // in-scope OTM mark and interpolate over it, or invent a small positive premium.
+      if (!(px > 0) || !Number.isFinite(px)) {
+        throw new Error(
+          `${symbol}: IV için fiyat geçersiz; neden=${px === 0 ? 'zero_calibration' : 'invalid_price'}; instrument_id=${id}; days=${days}.`,
+        );
+      }
       cands.push({ m: K / F, K, px, type: useCall ? 'call' : 'put' });
     }
     cands.sort((a, b) => a.m - b.m);

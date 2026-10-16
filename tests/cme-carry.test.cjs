@@ -17,6 +17,7 @@ const {
   publicationWindows,
   buildCarrySnapshot: build,
   interpolateFuturesPrice: interpolate,
+  decodeSettlementPrice,
 } = mod.exports;
 const date = '2026-10-01';
 const ns = date => String(BigInt(Date.parse(date)) * 1000000n);
@@ -78,6 +79,41 @@ test('out of order publication cannot regress the quote; missing fields and trun
   assert.equal(stats(row({ time: '2026-10-02T01:00:00Z', price: 101 }), row()).get('gc1').price, 101);
   assert.throws(() => parse('instrument_id,price\nx,100', date), /alanları eksik/);
   assert.throws(() => stats('x,3'), /satırı eksik/);
+});
+
+test('zero, sentinel, negative and malformed raw prices remain distinguishable; futures still reject zero', () => {
+  for (const [raw, status, value] of [
+    ['0', 'zero', 0],
+    ['1000000000', 'positive', 1],
+    ['', 'missing', null],
+    ['9223372036854775807', 'sentinel', null],
+    ['-1', 'negative', null],
+    ['NaN', 'malformed', null],
+    ['1e9', 'malformed', null],
+    ['9223372036854775808', 'malformed', null],
+  ]) {
+    const decoded = decodeSettlementPrice(raw);
+    assert.equal(decoded.priceStatus, status);
+    assert.equal(decoded.price, value);
+  }
+  assert.equal(stats(row({ price: 0 })).get('gc1').price, 0);
+  const f = fixture();
+  f.settlements.get('GC1').price = 0;
+  assert.throws(() => build(date, f.definitions, f.settlements, 'now'), /final settlement yok/);
+});
+
+test('nanosecond ordering survives out-of-order updates inside the same millisecond', () => {
+  const at = BigInt(ns(date + 'T23:36:00Z'));
+  const version = (offset, price, action = 1, flags = 3) => {
+    const fields = row({ price, action, flags }).split(',');
+    fields[4] = String(at + BigInt(offset));
+    return fields.join(',');
+  };
+  const quote = stats(version(900000, 1), version(100000, 2)).get('gc1');
+  assert.equal(quote.price, 1);
+  assert.equal(quote.publishedAtNs, String(at + 900000n));
+  assert.equal(stats(version(900000, 1, 2), version(100000, 2)).get('gc1').deleted, true);
+  assert.equal(stats(version(100000, 1), version(900000, 2, 1, 2)).get('gc1').flags, 2);
 });
 test('standard window closes 04:00 UTC next day; the extended window reaches the next business day', () => {
   assert.equal(publicationWindows('2026-10-02').statistics.end, '2026-10-03T04:00:00.000Z');

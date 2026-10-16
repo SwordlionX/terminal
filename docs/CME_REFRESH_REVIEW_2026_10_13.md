@@ -23,3 +23,34 @@ Bu hata izole fixture ile yeniden üretildi; eski eşleştirme dört bilinen str
 236 otomatik test geçti; değişen dosyalarda ESLint ve takip edilen proje dosyalarında TypeScript kontrolü temiz. Testlerde gerçek sağlayıcı isteği veya üretim müşteri verisi değişikliği yapılmadı.
 
 Bir sonraki gerçek yenilemede yeni sınıf/silme sayıları ve kalan eksik kimlikler kontrol edilmeli. Eksik tanım sürerse mevcut checksum doğrulamalı definition/statistics önbelleği incelenmeli; 364 kimlik topluca atlanmamalı ve silinmiş tanımlar körlemesine geri getirilmemeli.
+
+## İkinci inceleme: 12 Ekim settlement kontrolü
+
+`38399045798` çalışması `ca8f037` kodunu çalıştırdı; 12 Ekim futures girdilerini kaydetti ve XAU için 31.660 opsiyon tanımı okudu. `42962984` settlement kaydında genel "final değil veya geçersiz" kontrolü durdurdu. Süre sınırı değildir. Bu seansın tanım eşleştirmesi geçti, fakat farklı seanstaki önceki 364 kimliğin çözüldüğünü kanıtlamaz. Yeni paket aktive edilmedi. Ham CSV log zip'inde ve yerelde bulunmuyor; sebep henüz sıfır/preliminary/sentinel/deletion olarak kesinleştirilemedi.
+
+### İlk aşama düzeltmesi
+
+- Fiyat okuyucusu gerçek sıfırı, eksik alanı, INT64_MAX sentinel'i, negatif ve bozuk değeri ayırır. CME, vadesinde değersiz COMEX opsiyonlarına sıfır settlement verir: [CME Clearing Advisory 20-094](https://www.cmegroup.com/notices/clearing/2020/03/Chadv20-094.pdf). Bu genel bir "her sıfır fiyat fiyatlamaya uygundur" kabulü değildir. Futures fiyatları hâlâ pozitif olmalıdır.
+- Değerleme zamanı, gerçek settlement spot zaman damgasıdır. Opsiyon kontrolü ve yüzey aynı yuvarlanmış yaklaşık 1–400 günlük vade filtresini paylaşır. Yalnız tanımı bilinen kapsam dışı vadeler, sayıları raporlanarak elenir. Bilinmeyen/silinmiş tanımlar, kapsam içi preliminary/deleted/sentinel kayıtlar hâlâ reddedilir.
+- Geçerli final sıfır opsiyon fiyatı saklanabilir; fakat kapsam içindeki OTM kalibrasyon noktasında sıfır varsa tüm yeni paket reddedilir. Sıfır IV veya küçük yapay prim üretilmez, bozuk vade üstünden interpolasyon yapılmaz. Bilinen dayanağa göre sıfır ITM de reddedilir.
+- Güncelleme sırası nanosecond hassasiyetini korur. Daha yeni preliminary/deletion/null kayıt yerine eski final geri getirilmez. Eşit zaman damgasında mevcut akış sırası korunur; publisher kanalları arasında varsayımsal sequence sıralaması eklenmedi.
+- Bütün settlement sorunları sayılır; log örnekleri en fazla 12 kayıtla sınırlıdır. Fiyat miktarı/ham CSV/anahtar yazılmaz. Salt preliminary/boş final durumu bekleme sayılır; sentinel ve silme veri hatası sayılır. Daha geniş pencere yalnız final bekleniyorsa denenir; bütçe/checksum/tanım hatası daha çok veri indirilerek aşılmaz.
+- İki metalin atomik aktivasyonu ve son geçerli paketin korunması değişmedi. Önbellek TTL/yeniden indirme politikası, yüzey karantina bölgeleri ve ekran durumları bu aşamada değiştirilmedi.
+
+### Gerçek kaydın salt okunur teşhisi
+
+Yeni `audit:cme:cache` komutu sadece `budget.json` ve checksum doğrulanmış ilgili CSV dosyalarını okur. Env dosyası, Turso, Databento istemcisi, ağ isteği, rezervasyon, kilit veya dosya yazımı yoktur. 1–20 sayısal kimlik için vade/sınıf, fiyatın türü (tutarı değil), final/silme bayrakları ve en fazla son 20 sürümü gösterir. Gerçek spot zamanı verilmezse vade kapsamı konusunda varsayım yapmaz. Bu, eski `--cache-only` builder seçeneğinden farklıdır.
+
+```text
+npm run audit:cme:cache -- --cache-dir=<önbellek-dizini> --date=2026-10-12 --product=XAU --ids=42962984
+```
+
+`.github/workflows/cme-cache-audit.yml` yalnız elle çalışır, tam `cme-curve-budget-38399045798-1` anahtarını restore eder; yanlış/yakın önbelleğe düşerse durur. Üretim/sağlayıcı secret'ı almaz, önbellek kaydetmez, ham CSV artifact'i yüklemez ve fiyatlama paketi aktive etmez. GitHub cache silinmişse teşhis verisi yoktur; otomatik ücretli yeniden indirme yapılmaz. Yeni workflow henüz uzakta çalıştırılmış değildir.
+
+### Kalan aşama
+
+Gerçek `42962984` kayıt geçmişi incelendikten sonra gerekli görülürse yayın zaman aralığının yeni kısmını bütçe dahilinde okumak ve geçmiş dosya düzeltmesini kontrollü yenilemek ele alınmalı. Kritik bir vadenin kısmen atılmasına, yüzey kalite/boşluk kontrolleri uygulanmadan izin verilmemeli. İlk aşamanın izole testleri canlı CME yenilemesinin başarılı olduğu iddiası değildir.
+
+### İlk aşama doğrulaması
+
+254 otomatik test geçti; `src`, `scripts` ve `tests` için ESLint temiz, takip edilen proje dosyaları ve yeni TS araçları için TypeScript kontrolünde 0 hata (167 dosya). Kullanıcının kökteki takip edilmeyen deneme dosyaları tip kontrolü kapsamına alınmadı ve değiştirilmedi. Denetim workflow'u YAML olarak doğrulandı; sabitlenmiş action sürümleri, secret içermemesi, sadece elle çalışması ve restore-only davranışı test edildi. Mock pipeline testleri ikinci metal başarısızlığında artifact/aktivasyon olmadığını, iki başarılı metalin doğrulamadan sonra tek batch ile aktive edildiğini ve sentinel hatasında fazladan pencere indirilmediğini doğruladı. Testlerde gerçek Turso/Databento/Gemini çağrısı yapılmadı. Commit, push veya canlı workflow dispatch yapılmadı.

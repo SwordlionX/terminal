@@ -32,6 +32,7 @@ const american = load('src/lib/math/american.ts', { './gk': european, './solver'
 const { buildCmeSurface, filterForwardVolOutliers } = load('src/lib/vol/cme.ts', {
   '../math/american': american,
   '../market/factors': load('src/lib/market/factors.ts'),
+  '../market/cme-option-scope': load('src/lib/market/cme-option-scope.ts'),
 });
 
 test('CME surface inverts American futures settlements before producing Black-76 IVs', () => {
@@ -136,4 +137,44 @@ test('term-structure jumps from illiquid settlement marks are dropped, ordinary 
   assert.equal(JSON.stringify(dropped), JSON.stringify(['2027-09-27', '2027-10-26']));
   const ordinary = filterForwardVolOutliers([slice('a', 26, 0.198), slice('b', 54, 0.2145), slice('c', 88, 0.2125)]);
   assert.equal(ordinary.dropped.length, 0);
+});
+
+test('an in-scope OTM zero cannot become zero IV or a silently interpolated missing point', () => {
+  const evalSec = Date.UTC(2026, 9, 12, 23, 35) / 1000;
+  const options = new Map([['zero', { cls: 'C', expSec: evalSec + 30 * 86400, strike: 100, und: 'gc' }]]);
+  const inputs = {
+    options,
+    optSettle: new Map([['zero', 0]]),
+    futSettle: new Map([['gc', 100]]),
+    evalSec,
+    fetchedISO: '2026-10-12T23:35:00Z',
+  };
+  assert.throws(() => buildCmeSurface(inputs, 'XAU', 0.04), /zero_calibration.*instrument_id=zero/);
+  options.get('zero').expSec = evalSec - 3600;
+  assert.equal(buildCmeSurface(inputs, 'XAU', 0.04).expiries.length, 0);
+  options.get('zero').expSec = evalSec + 401 * 86400;
+  assert.equal(buildCmeSurface(inputs, 'XAU', 0.04).expiries.length, 0);
+});
+
+test('zero ITM is rejected; out-of-band OTM zero does not create a calibration point', () => {
+  const evalSec = Date.UTC(2026, 9, 12, 23, 35) / 1000;
+  const expSec = evalSec + 30 * 86400;
+  const options = new Map([
+    ['itm', { cls: 'P', expSec, strike: 110, und: 'gc' }],
+    ['far', { cls: 'C', expSec, strike: 200, und: 'gc' }],
+  ]);
+  const inputs = {
+    options,
+    optSettle: new Map([
+      ['itm', 0],
+      ['far', 0],
+    ]),
+    futSettle: new Map([['gc', 100]]),
+    evalSec,
+    fetchedISO: '2026-10-12T23:35:00Z',
+  };
+  assert.throws(() => buildCmeSurface(inputs, 'XAU', 0.04), /zero_below_intrinsic.*instrument_id=itm/);
+  options.delete('itm');
+  const surface = buildCmeSurface(inputs, 'XAU', 0.04);
+  assert.equal(surface.expiries.length, 0);
 });

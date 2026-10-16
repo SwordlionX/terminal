@@ -1,0 +1,67 @@
+name: CME önbellek denetimi (salt okunur)
+on:
+  workflow_dispatch:
+    inputs:
+      cache_key:
+        description: 'İncelenecek çalışmanın tam cme-curve-budget önbellek anahtarı'
+        required: true
+        default: 'cme-curve-budget-38399045798-1'
+      date:
+        description: 'Settlement seansı YYYY-MM-DD'
+        required: true
+        default: '2026-10-12'
+      product:
+        description: 'Metal'
+        type: choice
+        options: [XAU, XAG]
+        default: XAU
+      ids:
+        description: 'Virgülle ayrılmış en fazla 20 instrument_id'
+        required: true
+        default: '42962984'
+      eval_at:
+        description: 'Varsa gerçek settlement spot zaman damgası; boşsa vade kapsamı hakkında varsayım yapılmaz'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+      - name: Sınırlı teşhis girdilerini doğrula
+        env:
+          AUDIT_CACHE_KEY: ${{ inputs.cache_key }}
+        run: |
+          node -e 'if (!/^cme-curve-budget-[0-9]+-[0-9]+$/.test(process.env.AUDIT_CACHE_KEY || "")) process.exit(1)'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: cache
+        with:
+          path: ~/.cache/terminal-x/databento-audit
+          key: ${{ inputs.cache_key }}
+          fail-on-cache-miss: true
+      - name: Tam olarak istenen çalışmanın önbelleğini doğrula
+        env:
+          AUDIT_CACHE_KEY: ${{ inputs.cache_key }}
+          RESTORED_CACHE_KEY: ${{ steps.cache.outputs.cache-matched-key }}
+        run: test "$RESTORED_CACHE_KEY" = "$AUDIT_CACHE_KEY"
+      # No production/provider secrets. No refresh, cache save, raw CSV upload or bundle activation.
+      - name: Yalnız önbellekten sınırlı kayıt teşhisi
+        env:
+          AUDIT_DATE: ${{ inputs.date }}
+          AUDIT_PRODUCT: ${{ inputs.product }}
+          AUDIT_IDS: ${{ inputs.ids }}
+          AUDIT_EVAL_AT: ${{ inputs.eval_at }}
+        run: |
+          args=("--cache-dir=$HOME/.cache/terminal-x/databento-audit" "--date=$AUDIT_DATE" "--product=$AUDIT_PRODUCT" "--ids=$AUDIT_IDS")
+          if [ -n "$AUDIT_EVAL_AT" ]; then args+=("--eval-at=$AUDIT_EVAL_AT"); fi
+          npm run audit:cme:cache -- "${args[@]}"

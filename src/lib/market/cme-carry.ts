@@ -16,6 +16,22 @@ export interface Settlement {
   eventAt: string;
   flags: number;
   deleted: boolean;
+  /** Keep provider precision for ordering and distinguish genuine zero from missing prices. */
+  publishedAtNs?: string;
+  rawPrice?: string;
+  priceStatus?: SettlementPriceStatus;
+}
+export type SettlementPriceStatus = 'positive' | 'zero' | 'missing' | 'sentinel' | 'negative' | 'malformed';
+
+export function decodeSettlementPrice(raw: string): { price: number | null; priceStatus: SettlementPriceStatus } {
+  if (!raw.trim()) return { price: null, priceStatus: 'missing' };
+  if (!/^-?\d+$/.test(raw)) return { price: null, priceStatus: 'malformed' };
+  const value = BigInt(raw),
+    maximum = BigInt('9223372036854775807');
+  if (value === maximum) return { price: null, priceStatus: 'sentinel' };
+  if (value < BigInt(0)) return { price: null, priceStatus: 'negative' };
+  if (value > maximum) return { price: null, priceStatus: 'malformed' };
+  return { price: Number(value) / 1e9, priceStatus: value === BigInt(0) ? 'zero' : 'positive' };
 }
 export interface CurveNode {
   instrumentId: string;
@@ -135,8 +151,7 @@ export function parseSessionSettlements(text: string, sessionDate: string): Map<
     if (!Number.isInteger(flags) || flags < 0 || flags > 15) throw new Error('Settlement bayrakları geçersiz');
     if (flags & 8) continue;
     if (row.update_action !== '1' && row.update_action !== '2') throw new Error('Settlement güncelleme türü geçersiz');
-    const raw = Number(row.price);
-    const price = Number.isFinite(raw) && raw > 0 && raw < 9e18 ? raw / 1e9 : null;
+    const { price, priceStatus } = decodeSettlementPrice(row.price);
     const item: Settlement = {
       instrumentId: row.instrument_id,
       price,
@@ -145,10 +160,13 @@ export function parseSessionSettlements(text: string, sessionDate: string): Map<
       eventAt: event,
       flags,
       deleted: row.update_action === '2',
+      publishedAtNs: row.ts_recv,
+      rawPrice: row.price,
+      priceStatus,
     };
     const key = `${row.instrument_id}:${flags & 4}`;
     const previous = versions.get(key);
-    if (previous && previous.publishedAt > recv) continue;
+    if (previous && BigInt(previous.publishedAtNs!) > BigInt(row.ts_recv)) continue;
     // Preserve invalid latest updates/deletions, so an earlier valid quote cannot reappear.
     versions.set(key, item);
   }
@@ -181,7 +199,10 @@ export function publicationWindows(date: string) {
   return {
     definitions: { start: `${date}T00:00:00Z`, end: `${date}T00:15:00Z` },
     // A midnight snapshot alone misses new option strikes listed during the session.
-    optionDefinitions: { start: `${date}T00:00:00Z`, end: new Date(start + 86400000).toISOString().replace('.000Z', 'Z') },
+    optionDefinitions: {
+      start: `${date}T00:00:00Z`,
+      end: new Date(start + 86400000).toISOString().replace('.000Z', 'Z'),
+    },
     statistics: { start: `${date}T17:00:00Z`, end: new Date(start + 86400000 + 4 * 3600000).toISOString() },
     statisticsExtended: { start: `${date}T17:00:00Z`, end: new Date(nextBusiness + 16 * 3600000).toISOString() },
   };

@@ -11,7 +11,11 @@ import { writeRefreshStatus } from './lib/refresh-status';
 import { buildProxyCurves } from '../src/lib/market/proxy-curves';
 import { publicationWindows, type CarrySnapshot } from '../src/lib/market/cme-carry';
 import { buildCmeSurface } from '../src/lib/vol/cme';
-import { parseOptionDefinitionIndex, finalOptionSettlements } from '../src/lib/market/cme-option-inputs';
+import {
+  parseOptionDefinitionIndex,
+  finalOptionSettlements,
+  OptionSettlementError,
+} from '../src/lib/market/cme-option-inputs';
 import { validatePricingBundle, type PricingBundle } from '../src/services/pricing-bundle.service';
 import { writeFile } from 'node:fs/promises';
 import type { VolSurface } from '../src/lib/vol/surface';
@@ -105,11 +109,18 @@ async function main() {
             symbols,
             schema: 'statistics',
           });
-          optSettle = finalOptionSettlements(downloaded.text, date, options, product, definitionIndex);
+          optSettle = finalOptionSettlements(downloaded.text, date, options, product, definitionIndex, {
+            evalSec: Date.parse(spot.at) / 1000,
+            onExcluded: counts => console.log(`[curve] ${product}: settlement kapsam dışı ${JSON.stringify(counts)}`),
+          });
           statistics = downloaded;
           break;
         } catch (error) {
           failure = error;
+          // A wider window can bring a late final, not repair a sentinel/deletion, budget
+          // failure, corrupt file or missing definition. Never redownload to hide these.
+          if (!(error instanceof OptionSettlementError) || !error.waitingForFinal) throw error;
+          console.log(`[curve] ${product}: final bekleniyor ${JSON.stringify(error.diagnostics)}`);
         }
       }
       if (!statistics) throw failure;
@@ -132,7 +143,7 @@ async function main() {
       if (surfaces[product].expiries.length < 3) throw new Error(`${product}: yeniden kurulan IV yüzeyi yetersiz.`);
     }
     const id = createHash('sha256')
-      .update('proxy-v2.3:' + sources.join(':'))
+      .update('proxy-v2.4:' + sources.join(':'))
       .digest('hex');
     for (const surface of Object.values(surfaces)) surface.curves!.id = id;
     const bundle: PricingBundle = {
@@ -261,7 +272,14 @@ main().catch(async e => {
   if (process.argv.includes('--write'))
     await writeRefreshStatus({
       stage: 'bundle',
-      result: /yayın kapsamı eksik|final değil|settlement yok/i.test(message) ? 'waiting' : 'failed',
+      result:
+        e instanceof OptionSettlementError
+          ? e.waitingForFinal
+            ? 'waiting'
+            : 'failed'
+          : /yayın kapsamı eksik|settlement yok/i.test(message)
+            ? 'waiting'
+            : 'failed',
       message,
     });
   console.error(message);

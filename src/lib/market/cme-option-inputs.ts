@@ -1,5 +1,6 @@
 import { csvRows, nanosISO, parseSessionSettlements } from './cme-carry';
 import type { CmeOptionDef } from '../vol/cme';
+import { optionMaturityExclusion } from './cme-option-scope';
 
 export interface OptionDefinitionIndex {
   options: Map<string, CmeOptionDef>;
@@ -57,6 +58,83 @@ export function parseOptionDefinitions(text: string): Map<string, CmeOptionDef> 
   return parseOptionDefinitionIndex(text).options;
 }
 
+export type OptionSettlementReason = 'preliminary' | 'deleted' | 'invalid_price';
+export interface OptionSettlementIssue {
+  instrumentId: string;
+  reasons: OptionSettlementReason[];
+  flags: number;
+  priceStatus: string;
+  publishedAt: string;
+  expiryAt: string;
+}
+export interface OptionSettlementReport {
+  settlements: Map<string, number>;
+  missingIds: string[];
+  issues: OptionSettlementIssue[];
+  excluded: { nonOptions: number; short_or_expired: number; beyond_horizon: number };
+}
+
+/** Audit all failures before throwing; never infer scope for an unknown/deleted definition. */
+export function inspectOptionSettlements(
+  text: string,
+  sessionDate: string,
+  options: Map<string, CmeOptionDef>,
+  index?: Pick<OptionDefinitionIndex, 'nonOptions' | 'deleted'>,
+  scope?: { evalSec: number },
+): OptionSettlementReport {
+  if (scope && !Number.isFinite(scope.evalSec)) throw new Error('Opsiyon değerleme zamanı geçersiz');
+  const rows = parseSessionSettlements(text, sessionDate);
+  const report: OptionSettlementReport = {
+    settlements: new Map(),
+    missingIds: [],
+    issues: [],
+    excluded: { nonOptions: 0, short_or_expired: 0, beyond_horizon: 0 },
+  };
+  for (const [id, stat] of rows) {
+    const def = options.get(id);
+    if (!def) {
+      if (index?.nonOptions.has(id)) report.excluded.nonOptions++;
+      else report.missingIds.push(id);
+      continue;
+    }
+    const excluded = scope ? optionMaturityExclusion(def.expSec, scope.evalSec) : null;
+    if (excluded) {
+      report.excluded[excluded]++;
+      continue;
+    }
+    const reasons: OptionSettlementReason[] = [];
+    if (!(stat.flags & 1)) reasons.push('preliminary');
+    if (stat.deleted) reasons.push('deleted');
+    if (stat.price == null) reasons.push('invalid_price');
+    if (reasons.length)
+      report.issues.push({
+        instrumentId: id,
+        reasons,
+        flags: stat.flags,
+        priceStatus: stat.priceStatus ?? (stat.price == null ? 'missing' : stat.price === 0 ? 'zero' : 'positive'),
+        publishedAt: stat.publishedAt,
+        expiryAt: new Date(def.expSec * 1000).toISOString(),
+      });
+    else report.settlements.set(id, stat.price!);
+  }
+  return report;
+}
+
+export class OptionSettlementError extends Error {
+  constructor(
+    message: string,
+    readonly waitingForFinal: boolean,
+    readonly diagnostics: {
+      issueCount: number;
+      reasonCounts: Record<OptionSettlementReason, number>;
+      samples: OptionSettlementIssue[];
+    },
+  ) {
+    super(message);
+    this.name = 'OptionSettlementError';
+  }
+}
+
 /** Never skip an unknown settlement or substitute a preliminary/deleted price. */
 export function finalOptionSettlements(
   text: string,
@@ -64,20 +142,36 @@ export function finalOptionSettlements(
   options: Map<string, CmeOptionDef>,
   product: 'XAU' | 'XAG',
   index?: Pick<OptionDefinitionIndex, 'nonOptions' | 'deleted'>,
+  scope?: { evalSec: number; onExcluded?: (counts: OptionSettlementReport['excluded']) => void },
 ): Map<string, number> {
-  const settlements = parseSessionSettlements(text, sessionDate);
-  const missing = [...settlements.keys()].filter(id => !options.has(id) && !index?.nonOptions.has(id));
+  const report = inspectOptionSettlements(text, sessionDate, options, index, scope);
+  const missing = report.missingIds;
+  scope?.onExcluded?.(report.excluded);
   if (missing.length)
     throw new Error(
       `${product} ${sessionDate}: Final opsiyon settlement için tanım eksik; adet=${missing.length}, instrument_id=${missing.slice(0, 12).join(',')}${missing.length > 12 ? ',…' : ''}.${index ? ` Silinmiş tanım=${missing.filter(id => index.deleted.has(id)).length}; tanımlarda bulunmayan/uygunsuz sınıf=${missing.filter(id => !index.deleted.has(id)).length}.` : ''}`,
     );
-  const result = new Map<string, number>();
-  for (const [id, stat] of settlements) {
-    if (!options.has(id) && index?.nonOptions.has(id)) continue;
-    if (!(stat.flags & 1) || stat.deleted || stat.price == null)
-      throw new Error(`${product} ${sessionDate}: Opsiyon settlement final değil veya geçersiz; instrument_id=${id}.`);
-    result.set(id, stat.price);
+  if (report.issues.length) {
+    const reasonCounts = { preliminary: 0, deleted: 0, invalid_price: 0 };
+    for (const issue of report.issues) for (const reason of issue.reasons) reasonCounts[reason]++;
+    const samples = report.issues.slice(0, 12);
+    const details = samples
+      .map(
+        s =>
+          `instrument_id=${s.instrumentId}, neden=${s.reasons.join('+')}, flags=${s.flags}, priceStatus=${s.priceStatus}, expiry=${s.expiryAt}, published=${s.publishedAt}`,
+      )
+      .join('; ');
+    throw new OptionSettlementError(
+      `${product} ${sessionDate}: Opsiyon settlement final değil veya geçersiz; adet=${report.issues.length}; ${details}.`,
+      reasonCounts.deleted === 0 && reasonCounts.invalid_price === 0,
+      { issueCount: report.issues.length, reasonCounts, samples },
+    );
   }
-  if (!result.size) throw new Error(`${product} ${sessionDate}: Final opsiyon settlement yok.`);
-  return result;
+  if (!report.settlements.size)
+    throw new OptionSettlementError(`${product} ${sessionDate}: Final opsiyon settlement yok.`, true, {
+      issueCount: 0,
+      reasonCounts: { preliminary: 0, deleted: 0, invalid_price: 0 },
+      samples: [],
+    });
+  return report.settlements;
 }
