@@ -89,6 +89,11 @@ export interface ScenarioResult {
   note: string;
 }
 export type AssistantArtifact =
+  | {
+      kind: 'margin_threshold';
+      customer: { id: string; name: string };
+      result: import('../margin/threshold').MarginThresholdResult;
+    }
   | { kind: 'customers'; matches: { id: string; name: string }[]; truncated: boolean }
   | { kind: 'workspace'; snapshot: WorkspaceSnapshot }
   | { kind: 'position_analysis'; result: PositionAnalysis }
@@ -138,6 +143,7 @@ export interface WorkspaceSnapshot {
   totalTrades: number;
   truncated: boolean;
   margin?: import('@/lib/margin/engine').MarginResult & { method: string };
+  marginSnapshot?: import('../margin/threshold').MarginSnapshot;
   riskSummary?: {
     customerCount: number;
     openTrades: number;

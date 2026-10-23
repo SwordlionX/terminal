@@ -9,6 +9,7 @@ import { useMarketData } from '@/store/marketData';
 import { useAnalysisDraft } from '@/store/analysis-draft';
 import type { AssistantArtifact, Quote, ScenarioResult } from '@/lib/assistant/types';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { MarginThresholdView } from '@/features/margin/margin-threshold-calculator';
 
 const fmt = (n: number, digits = 2) =>
   Number.isFinite(n)
@@ -437,6 +438,17 @@ function BarrierLadderCard({
 }
 
 export function ResultCard({ artifact, onApply }: { artifact: AssistantArtifact; onApply?: () => void }) {
+  if (artifact.kind === 'margin_threshold')
+    return (
+      <section className="workspace-panel">
+        <p className="desk-eyebrow">TEMİNAT SENARYOSU / MOTOR HESABI</p>
+        <h3 className="my-3 text-sm font-semibold">{artifact.customer.name}</h3>
+        <MarginThresholdView result={artifact.result} />
+        <Link className="desk-link mt-3 block" href={`/customers/${artifact.customer.id}?tab=collateral`}>
+          Teminat hesabını aç ↗
+        </Link>
+      </section>
+    );
   if (artifact.kind === 'customers')
     return (
       <section className="rounded-xl border border-white/10 p-4" aria-label="Müşteri eşleşmeleri">

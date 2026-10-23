@@ -84,7 +84,15 @@ function resolver(trades = [trade]) {
         trades: { findMany: async () => trades, findByCustomerId: async id => trades.filter(t => t.customerId === id) },
       },
     },
-    '@/services/margin.service': { marginService: { evaluateCustomerMargin: async () => margin } },
+    '@/services/margin.service': {
+      marginService: {
+        evaluateCustomerSnapshot: async id => ({
+          margin,
+          trades: trades.filter(t => t.customerId === id),
+          snapshot: undefined,
+        }),
+      },
+    },
   })('src/lib/assistant/workspace-context.ts').resolveWorkspace;
 }
 test('workspace accepts bounded identifiers and refuses client-supplied prices or duplicate selections', () => {

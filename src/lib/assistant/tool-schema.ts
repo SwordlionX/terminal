@@ -46,6 +46,33 @@ const searchOption = { ...option, required: option.required.filter(k => k !== 's
 
 const declarations: FunctionDeclaration[] = [
   {
+    name: 'analyze_margin_threshold',
+    description:
+      'Müşterinin TÜM açık işlemleri için brüt içsel zarar/teminat oranını ve istenen hedef yüzdeye ulaşılan spot seviyelerini hesaplar. MTM veya opsiyon fiyatlaması değildir; IV gerekmez. Her takip sorusunda dosyayı yeniden oku: query ile adı belirtilen müşteri, yoksa açıkça istenmiş ekran seçimi. Aynı veri anında spot/teminat/zarar; teminat değişken metal ise senaryoda değerlenir. Manuel spot veya işlem girilmez. Kayıt yazmaz.',
+    parametersJsonSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Konuşmada kullanıcı tarafından belirtilen müşteri adı. Takip sorusunda aynı adı tekrar gönder.',
+        },
+        product: {
+          type: 'string',
+          enum: ['XAU', 'XAG'],
+          description:
+            'Birden fazla metalde açık short varsa kullanıcıdan hangi spotun değişeceğini sor. Tek metalde boş bırakılabilir.',
+        },
+        targetRatioPct: numeric(
+          'Kullanıcının istediği hedef zarar/teminat yüzdesi, ör. 55. Sadece mevcut oran sorulduysa gönderme.',
+        ),
+        collateralOverrideUsd: numeric(
+          'Yalnız kullanıcı toplam USD teminatını açıkça verdiyse. Kayıtlı tutar yerine salt okunur sabit USD senaryosu; ek teminat değildir. Gönderilmezse kayıtlı teminat kullanılır.',
+        ),
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_customer_file',
     description:
       'Kullanıcının konuşmada adıyla istediği müşteriyi terminal kayıtlarında ara ve açık işlemleri/teminat özetini oku. Her sayfadan kullanılabilir. Birden çok eşleşme varsa dosya okunmaz; tam adı sor. Ekran seçimini veya rastgele müşteri adını query olarak kullanma.',

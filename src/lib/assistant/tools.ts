@@ -6,6 +6,8 @@ import { quoteOption } from './pricing';
 import { premiumValue, searchPremium } from './search';
 import { scenarioPortfolio } from './scenarios';
 import { analyzeEuropeanPosition } from '../pricing/position-analysis';
+import { marginThreshold } from '../margin/threshold';
+import { requestsMarginAnalysis, marginScenarioInputs } from './margin-intent';
 import {
   assertAutomaticPricingMessage,
   assertCurvePricing,
@@ -69,14 +71,17 @@ const MARGIN_STATUS: Record<string, string> = {
 };
 /** The model sees procedure terms by their real names, so it cannot call the intrinsic loss an MTM. */
 function forModel(snapshot: WorkspaceSnapshot) {
-  const { margin, ...rest } = snapshot;
+  const { margin, marginSnapshot, ...rest } = snapshot;
   if (!margin) return rest;
   return {
     ...rest,
     collateralProcedure: {
       procedureGrossIntrinsicLossUsd: margin.totalMtmLoss,
       collateralAfterHaircutUsd: margin.totalCollateralValue,
-      lossToCollateralRatioPct: margin.marginCallRatio * 100,
+      lossToCollateralRatioPct: margin.totalCollateralValue > 0 ? margin.marginCallRatio * 100 : null,
+      spotsUsed: marginSnapshot?.spots,
+      observedAt: marginSnapshot?.observedAt,
+      scope: 'Müşterinin tüm açık işlemleri; seçili/ilk sekiz kayıtla sınırlı değildir.',
       requiredAdditionalCollateralUsd: margin.cureAmount,
       status: MARGIN_STATUS[margin.status] ?? margin.status,
       thresholds: 'Zarar/teminat %39 teminat çağrısı, %60 stop uyarısı, %80 anında stop; çağrıda hedef %35.',
@@ -97,6 +102,20 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
   let requestedWorkspace: WorkspaceSnapshot | undefined;
   const today = valuationToday();
   const selectedScreenRequested = requestsScreenContext(message);
+  const namedFiles = new Map<string, ReturnType<NonNullable<Dependencies['customerFile']>>>();
+  const readNamedFile = async (value: unknown) => {
+    if (typeof value !== 'string' || value.trim().length < 2 || value.length > 100)
+      throw new TradeTermsClarification('Hangi müşterinin dosyasını istediğini adıyla belirt.');
+    const query = value.trim();
+    const fold = (s: string) => s.normalize('NFKC').toLocaleLowerCase('tr-TR');
+    if (![message, ...(deps.priorUserMessages ?? [])].some(text => fold(text).includes(fold(query))))
+      throw new TradeTermsClarification(
+        'Müşteri adı kullanıcı tarafından belirtilmedi. Ekrandaki müşteriyi kendiliğinden alma; hangi müşteri olduğunu sor.',
+      );
+    if (!deps.customerFile) throw new Error('Müşteri arama bağlantısı hazır değil.');
+    if (!namedFiles.has(fold(query))) namedFiles.set(fold(query), deps.customerFile(query));
+    return namedFiles.get(fold(query))!;
+  };
   const requireScreen = () => {
     if (!selectedScreenRequested)
       throw new TradeTermsClarification(
@@ -171,6 +190,21 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
   const run = async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
     deps.signal.throwIfAborted();
     if (
+      requestsMarginAnalysis(message, deps.priorUserMessages) &&
+      [
+        'price_option',
+        'price_selected_option',
+        'find_options',
+        'analyze_position',
+        'analyze_selected_position',
+        'compare_strategies',
+        'get_market_context',
+      ].includes(name)
+    )
+      throw new TradeTermsClarification(
+        'Bu soru brüt zarar/teminat hesabıdır. analyze_margin_threshold kullan; yeni opsiyon primi veya ayrı spot çağrısı üretme.',
+      );
+    if (
       [
         'price_option',
         'price_selected_option',
@@ -183,22 +217,59 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
       assertAutomaticPricingMessage(message);
     if (++toolCalls > 12) throw new Error('Bu isteğin hesaplama sınırına ulaşıldı; sonuçlarla devam edin.');
     switch (name) {
-      case 'get_customer_file': {
-        if (
-          Object.keys(args).some(k => k !== 'query') ||
-          typeof args.query !== 'string' ||
-          args.query.trim().length < 2 ||
-          args.query.length > 100
-        )
-          throw new TradeTermsClarification('Hangi müşterinin dosyasını istediğini adıyla belirt.');
-        const query = args.query.trim();
-        const fold = (s: string) => s.normalize('NFKC').toLocaleLowerCase('tr-TR');
-        if (![message, ...(deps.priorUserMessages ?? [])].some(text => fold(text).includes(fold(query))))
+      case 'analyze_margin_threshold': {
+        if (Object.keys(args).some(k => !['query', 'product', 'targetRatioPct', 'collateralOverrideUsd'].includes(k)))
+          throw new Error('Teminat hesabına manuel spot, işlem koşulu veya başka girdi eklenemez.');
+        const namesCustomerNow =
+          typeof args.query === 'string' &&
+          message.toLocaleLowerCase('tr-TR').includes(args.query.toLocaleLowerCase('tr-TR'));
+        const inputs = marginScenarioInputs(message, namesCustomerNow ? [] : (deps.priorUserMessages ?? []), args);
+        let w: WorkspaceSnapshot | undefined;
+        if (args.query !== undefined) {
+          const file = await readNamedFile(args.query);
+          if (!file.snapshot) {
+            deps.artifact({ kind: 'customers', matches: file.matches, truncated: file.truncated });
+            return {
+              clarificationRequired: true,
+              instruction: file.matches.length
+                ? 'Birden çok müşteri eşleşti; tam adı belirtin.'
+                : 'Müşteri bulunamadı; adını netleştirin.',
+            };
+          }
+          w = file.snapshot;
+        } else {
+          if (!requestedWorkspace) requireScreen();
+          w = requestedWorkspace ?? deps.workspace;
+        }
+        if (!w?.customer || !w.marginSnapshot)
           throw new TradeTermsClarification(
-            'Müşteri adı kullanıcı tarafından belirtilmedi. Ekrandaki müşteriyi kendiliğinden alma; hangi müşteri olduğunu sor.',
+            'Müşteri dosyasını bu istekte yeniden oku; eski konuşma rakamlarından hesap yapma.',
           );
-        if (!deps.customerFile) throw new Error('Müşteri arama bağlantısı hazır değil.');
-        const result = await deps.customerFile(query);
+        const metals = new Set(w.marginSnapshot.positions.filter(p => p.position === 'Short').map(p => p.product));
+        if (metals.size > 1 && args.product !== undefined) {
+          const text = message.toLocaleLowerCase('tr-TR');
+          const explicitlyChosen =
+            args.product === 'XAG' ? /gümüş|gumus|xag/u.test(text) : /altın|altin|xau/u.test(text);
+          if (!explicitlyChosen)
+            throw new TradeTermsClarification(
+              'Birden fazla metal var. Hangi metalin spotu değişsin: altın mı gümüş mü?',
+            );
+        }
+        const product = args.product === undefined ? undefined : choice(args.product, products, 'Ürün');
+        const result = marginThreshold(w.marginSnapshot, { ...inputs, product });
+        deps.artifact({ kind: 'margin_threshold', customer: w.customer, result });
+        return {
+          ...result,
+          customer: w.customer,
+          readOnly: true,
+          instruction:
+            'Sayıları aynen aktar. Bu hesap tüm açık işlemleri kapsar. Aynı sonuçtaki spot, teminat ve oranı birlikte kullan. Yeni fiyatlama kartı üretme. İlk vadeden sonra geçerli sayma.',
+        };
+      }
+      case 'get_customer_file': {
+        if (Object.keys(args).some(k => k !== 'query'))
+          throw new TradeTermsClarification('Hangi müşterinin dosyasını istediğini adıyla belirt.');
+        const result = await readNamedFile(args.query);
         if (!result.snapshot) {
           deps.artifact({ kind: 'customers', matches: result.matches, truncated: result.truncated });
           return {

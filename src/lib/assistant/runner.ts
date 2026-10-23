@@ -14,6 +14,9 @@ import {
 } from './models';
 import { toolDeclarations } from './tool-schema';
 import { ASSISTANT_SYSTEM } from './system-prompt';
+import { requestsMarginAnalysis } from './margin-intent';
+import { marginAnswer } from './margin-answer';
+import type { MarginThresholdResult } from '../margin/threshold';
 import type { AssistantEvent, ScreenContext, WorkspaceSnapshot } from './types';
 import {
   MANUAL_OVERRIDE_REFUSAL,
@@ -69,6 +72,7 @@ const labels: Record<string, string> = {
   compare_strategies: 'Pozisyonlar ve senaryolar karşılaştırılıyor…',
   research_diagnostic: 'Yöntem tutarsızlığı için kaynaklar inceleniyor…',
   add_collateral: 'Teminat müşteri dosyasına ekleniyor…',
+  analyze_margin_threshold: 'Aynı spot ve teminat verisiyle zarar oranı ve hedef seviye hesaplanıyor…',
 };
 
 export async function runAssistant(
@@ -233,6 +237,7 @@ export async function runAssistant(
     research,
     signal: input.signal,
   });
+  const marginQuestion = requestsMarginAnalysis(input.message, priorUserMessages);
   const screenRequested = requestsScreenContext(input.message);
   const screenText = screenRequested
     ? `Kullanıcı bu istekte ekranı okumayı açıkça istedi. Çalışma alanı: ${JSON.stringify({ area: input.workspace?.area ?? 'pricing', customerSelected: Boolean(input.workspace?.customer), selectedTradeCount: input.workspace?.trades.length ?? 0 })}. Kayıtlar için get_workspace_context kullan.\nİstenen ekran işlem koşulları: ${JSON.stringify(
@@ -275,7 +280,14 @@ export async function runAssistant(
           tools: [{ functionDeclarations: toolDeclarations }],
           toolConfig: {
             functionCallingConfig: {
-              mode: round === 4 ? FunctionCallingConfigMode.NONE : FunctionCallingConfigMode.VALIDATED,
+              mode: marginQuestion
+                ? FunctionCallingConfigMode.ANY
+                : round === 4
+                  ? FunctionCallingConfigMode.NONE
+                  : FunctionCallingConfigMode.VALIDATED,
+              ...(marginQuestion
+                ? { allowedFunctionNames: ['analyze_margin_threshold', 'get_customer_file', 'get_workspace_context'] }
+                : {}),
             },
           },
           maxOutputTokens: 8192,
@@ -308,6 +320,14 @@ export async function runAssistant(
     contents.push(modelContent);
     const calls = response.functionCalls ?? [];
     if (!calls.length) {
+      if (marginQuestion) {
+        const text =
+          'Teminat hesabı doğrulanmış araç sonucuyla tamamlanamadı. Müşterinin adını ve istediğiniz hedef zarar/teminat yüzdesini belirtir misiniz? Önceki konuşma rakamlarından hesap üretmedim.';
+        // Do not retain an unverified provider answer as future financial evidence.
+        contents[contents.length - 1] = { role: 'model', parts: [{ text }] };
+        input.emit({ type: 'text', text });
+        return { contents: compactHistory(contents), modelCalls, model };
+      }
       const text = (response.text || '').trim();
       if (!text) throw new Error('Yanıt tamamlanamadı; hesap kartlarını inceleyebilir veya isteği daraltabilirsiniz.');
       input.emit({ type: 'text', text });
@@ -324,6 +344,34 @@ export async function runAssistant(
       }),
     );
     contents = compactHistory([...contents, { role: 'user', parts }]);
+    const marginResponses = parts
+      .filter(p => p.functionResponse.name === 'analyze_margin_threshold')
+      .map(p => p.functionResponse.response);
+    if (
+      marginQuestion &&
+      (marginResponses.length ||
+        parts.some(p => p.functionResponse.response.clarificationRequired || p.functionResponse.response.error))
+    ) {
+      const responses = marginResponses.length
+        ? marginResponses
+        : parts
+            .filter(p => p.functionResponse.response.clarificationRequired || p.functionResponse.response.error)
+            .map(p => p.functionResponse.response);
+      const text = responses
+        .map(response =>
+          typeof response.currentLossUsd === 'number'
+            ? `${(response.customer as { name: string }).name}\n\n${marginAnswer(response as unknown as MarginThresholdResult)}`
+            : String(
+                response.error ??
+                  response.instruction ??
+                  'Müşteri veya hedef oran bilgisi netleştirilmeli. Hesap yapılmadı.',
+              ),
+        )
+        .join('\n\n');
+      input.emit({ type: 'text', text });
+      contents.push({ role: 'model', parts: [{ text }] });
+      return { contents: compactHistory(contents), modelCalls, model };
+    }
   }
   throw new Error('İsteğin hesaplama süresi doldu; mevcut sonuçlardan devam edebilirsiniz.');
 }

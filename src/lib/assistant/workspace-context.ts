@@ -18,10 +18,15 @@ export async function resolveWorkspace(
     throw new Error('Asistan bağlamında aynı müşterinin işlemlerini seç.');
   const customer = customerId ? await db.customers.findById(customerId) : null;
   if (customerId && !customer) throw new Error('Seçili müşteri bulunamadı.');
+  const evaluated = customer ? await marginService.evaluateCustomerSnapshot(customer.id) : undefined;
+  if (evaluated && selection.tradeIds?.length) {
+    selectedTrades = evaluated.trades.filter(t => selection.tradeIds!.includes(t.id));
+    if (selectedTrades.length !== selection.tradeIds.length)
+      throw new Error('Seçili kayıtlar değişti; dosyayı yeniden açın.');
+  }
   let totalTrades = selectedTrades.length;
-  if (customer && !selection.tradeIds?.length) {
-    const all = await db.trades.findByCustomerId(customer.id),
-      open = all.filter(activeTrade);
+  if (evaluated && !selection.tradeIds?.length) {
+    const open = evaluated.trades.filter(activeTrade);
     totalTrades = open.length;
     selectedTrades = open.slice(0, 8);
   }
@@ -43,7 +48,7 @@ export async function resolveWorkspace(
       ? { type: t.barrierType, level: t.barrierLevel, style: t.barrierStyle, historyRequired: true }
       : null,
   }));
-  const margin = customer ? await marginService.evaluateCustomerMargin(customer.id) : undefined;
+  const margin = evaluated?.margin;
   const snapshot: WorkspaceSnapshot = {
     area: selection.area,
     observedAt,
@@ -51,6 +56,7 @@ export async function resolveWorkspace(
     trades,
     totalTrades,
     truncated: totalTrades > trades.length,
+    marginSnapshot: evaluated?.snapshot,
     margin: margin
       ? {
           ...margin,

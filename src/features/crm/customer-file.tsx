@@ -1,6 +1,5 @@
 import { db } from '@/services/mockDb';
-import { marginService, revalueCollaterals } from '@/services/margin.service';
-import { collateralRepository } from '@/repositories/collateral.repository';
+import { marginService } from '@/services/margin.service';
 import { notFound } from 'next/navigation';
 import { CustomerWorkspace } from './customer-workspace';
 import { TradeManagement } from './trade-management';
@@ -9,6 +8,7 @@ import { CustomerTimeline } from './customer-timeline';
 import { DeleteCustomerButton } from './delete-customer-button';
 import { CollateralManager } from '@/features/margin/collateral-manager';
 import { MarginSimulation } from '@/features/margin/margin-simulation';
+import { MarginThresholdCalculator } from '@/features/margin/margin-threshold-calculator';
 import { MarginStatusBadge, MarginRatioValue } from '@/features/margin/margin-status-badge';
 import { AskAssistant } from '@/components/workspace-context';
 import { activeTrade } from '@/lib/workspace';
@@ -38,12 +38,11 @@ export async function CustomerFile({ id, tab }: { id?: string; tab?: string }) {
         notes={null}
       />
     );
-  const [trades, margin, collaterals, activity] = await Promise.all([
-    db.trades.findByCustomerId(customer.id),
-    marginService.evaluateCustomerMargin(customer.id),
-    collateralRepository.findByCustomerId(customer.id).then(revalueCollaterals),
+  const [evaluated, activity] = await Promise.all([
+    marginService.evaluateCustomerSnapshot(customer.id),
     db.activity.findByCustomerId(customer.id),
   ]);
+  const { trades, margin, collaterals, snapshot } = evaluated;
   const open = trades.filter(activeTrade),
     closed = trades.filter(t => t.status === 'Closed');
   const valuations = await valueTrades(trades),
@@ -129,6 +128,7 @@ export async function CustomerFile({ id, tab }: { id?: string; tab?: string }) {
       </div>
       {margin.dataWarning && <p className="desk-policy">{margin.dataWarning}</p>}
       <p className="workspace-muted">Teminat prosedürü · prim ve zaman değeri hariç.</p>
+      <MarginThresholdCalculator key={snapshot.observedAt} snapshot={snapshot} />
       <div className="workspace-grid">
         <CollateralManager customerId={customer.id} collaterals={collaterals} />
         <MarginSimulation initialLoss={margin.totalMtmLoss} initialCollateral={margin.totalCollateralValue} />

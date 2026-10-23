@@ -4,6 +4,10 @@ import { db } from '@/services/mockDb';
 import { getSpot, getUsdTryRate } from '@/services/market.service';
 import { Trade } from '@/types';
 import { CollateralItem } from '@/types/collateral';
+import type { MarginSnapshot } from '@/lib/margin/threshold';
+import { istanbulToday } from '@/lib/dates';
+import { metalProduct } from '@/lib/workspace';
+import { COLLATERAL_HAIRCUT_RATES } from '@/lib/margin/config';
 
 /**
  * Teminatı canlı USD değerine getirir. Teminat tipleri yalnızca USD / XAU / XAG:
@@ -12,13 +16,16 @@ import { CollateralItem } from '@/types/collateral';
  * Canlı spot alınamazsa DB'deki son snapshot (marketValueUsd) fallback olarak kalır.
  * Böylece gerekli teminat (canlı intrinsic zarar) ile mevcut teminat aynı anlıklıkta olur.
  */
-export async function revalueCollaterals(items: CollateralItem[]): Promise<CollateralItem[]> {
+export async function revalueCollaterals(
+  items: CollateralItem[],
+  readSpot: typeof getSpot = getSpot,
+): Promise<CollateralItem[]> {
   const metals = [...new Set(items.map(i => i.currency.toUpperCase()).filter(c => c === 'XAU' || c === 'XAG'))];
   const spotMap: Record<string, number> = {},
     valuationWarnings: Record<string, string | undefined> = {};
   await Promise.all(
     metals.map(async m => {
-      const live = await getSpot(m);
+      const live = await readSpot(m);
       if (live?.price) spotMap[m] = live.price;
       valuationWarnings[m] = !live?.price
         ? 'Metal teminat fiyatı alınamadı; kayıtlı teminat değeri kullanıldı.'
@@ -70,14 +77,14 @@ export interface TradeCollateral {
  * NOT: portfolio.service.ts'e (tam MTM yeniden fiyatlama) bağımlı değildir; smile verisi
  * güncellenmemiş/hata veriyor olsa bile zarar/teminat hesaplanmaya devam eder.
  */
-async function buildTradeCollaterals(trades: Trade[]): Promise<TradeCollateral[]> {
+async function buildTradeCollaterals(trades: Trade[], readSpot: typeof getSpot = getSpot): Promise<TradeCollateral[]> {
   const open = trades.filter(t => t.status === 'Open' || t.status === 'Near Expiry');
   const products = [...new Set(open.map(t => t.underlying.toUpperCase()))];
   const spotMap: Record<string, number> = {},
     warningMap: Record<string, string | undefined> = {};
   await Promise.all(
     products.map(async p => {
-      const live = await getSpot(p);
+      const live = await readSpot(p);
       spotMap[p] = live?.price ?? 0; // 0 ise aşağıda giriş spotuna düşülür
       warningMap[p] = !live?.price
         ? 'Spot alınamadı; giriş spotu kullanıldı. Risk durumu güncel veriyle doğrulanmalı.'
@@ -113,10 +120,24 @@ export class MarginService {
    * usdTryRate verilmezse Ayarlar sayfasından kaydedilen (kv tablosundaki) kalıcı kur kullanılır.
    */
   async evaluateCustomerMargin(customerId: string, usdTryRate?: number): Promise<MarginResult> {
+    return (await this.evaluateCustomerSnapshot(customerId, usdTryRate)).margin;
+  }
+
+  /** One request-scoped quote per metal for trades, collateral and the threshold solver. */
+  async evaluateCustomerSnapshot(customerId: string, usdTryRate?: number) {
+    const observedAt = new Date().toISOString();
+    const quotes = new Map<string, ReturnType<typeof getSpot>>();
+    const readSpot: typeof getSpot = product => {
+      const key = metalProduct(product) ?? product.toUpperCase();
+      if (!quotes.has(key)) quotes.set(key, getSpot(key));
+      return quotes.get(key)!;
+    };
     const rate = usdTryRate ?? (await getUsdTryRate());
     const trades = await db.trades.findByCustomerId(customerId);
-    const collateralItems = await revalueCollaterals(await collateralRepository.findByCustomerId(customerId));
-    const tradeCollaterals = await buildTradeCollaterals(trades);
+    const [collateralItems, tradeCollaterals] = await Promise.all([
+      collateralRepository.findByCustomerId(customerId).then(items => revalueCollaterals(items, readSpot)),
+      buildTradeCollaterals(trades, readSpot),
+    ]);
 
     const positions: TradePosition[] = trades
       .filter(t => t.status === 'Open' || t.status === 'Near Expiry')
@@ -144,7 +165,50 @@ export class MarginService {
         ...collateralItems.flatMap(c => (c.valuationWarning ? [c.valuationWarning] : [])),
       ]),
     ];
-    return { ...margin, ...(warnings.length ? { dataWarning: warnings.join(' ') } : {}) };
+    const spots: MarginSnapshot['spots'] = [];
+    for (const [product, promise] of quotes) {
+      const quote = await promise;
+      if (quote?.price)
+        spots.push({
+          product,
+          price: quote.price,
+          source: quote.source,
+          quoteAt: quote.quoteAt ?? null,
+          stale: Boolean(quote.stale || !quote.quoteAt || Date.now() - quote.quoteAt > 86400000),
+        });
+    }
+    const snapshot: MarginSnapshot = {
+      observedAt,
+      valuationDate: istanbulToday(new Date(observedAt)),
+      spots,
+      warnings,
+      positions: trades
+        .filter(t => t.status === 'Open' || t.status === 'Near Expiry')
+        .map(t => ({
+          id: t.id,
+          product: metalProduct(t.underlying) ?? t.underlying,
+          type: t.type,
+          position: t.position,
+          strike: t.strike,
+          quantity: t.contractSize,
+          premium: t.premium,
+          expiryDate: t.expiryDate.slice(0, 10),
+          barrier: Boolean(t.barrierType),
+          currentSpot: tradeCollaterals.find(c => c.tradeId === t.id)!.currentSpot,
+        })),
+      collaterals: collateralItems.map(c => ({
+        currency: c.currency.toUpperCase(),
+        quantity: c.nominalQuantity,
+        valueUsd: c.marketValueUsd,
+        haircut: c.haircut ?? COLLATERAL_HAIRCUT_RATES[c.assetCode] ?? 1,
+      })),
+    };
+    return {
+      margin: { ...margin, ...(warnings.length ? { dataWarning: warnings.join(' ') } : {}) },
+      snapshot,
+      trades,
+      collaterals: collateralItems,
+    };
   }
 
   /**
