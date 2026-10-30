@@ -36,15 +36,33 @@ export function MarginThresholdView({ result: r }: { result: MarginThresholdResu
       {r.targetRatioPct !== null && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
           <p className="text-sm font-semibold">Hedef zarar / teminat: {formatPercent(r.targetRatioPct)}</p>
-          {r.levels.map(level => (
-            <div className="mt-3" key={level.spot}>
-              <strong className="text-lg text-primary">{formatNumber(level.spot, 4)} USD/ons</strong>
+          {r.calculation === 'additional_collateral' && (
+            <div className="mt-3 space-y-1">
+              <p className="workspace-muted">Müşteriden istenecek ek USD nakit teminat</p>
+              <strong className="text-lg text-primary">{formatMoney(r.additionalCollateralUsd!)}</strong>
+              {r.additionalCollateralUsd === 0 && (
+                <p className="text-sm">Mevcut teminat hedef oranı sağlıyor; ek teminat gerekmiyor.</p>
+              )}
+              <p className="workspace-muted">Hedef için asgari toplam: {formatMoney(r.requiredTotalCollateralUsd!)}.</p>
               <p className="workspace-muted">
-                Spot değişimi {formatPercent(level.movePct)} · Brüt zarar {formatMoney(level.lossUsd)} · Teminat{' '}
-                {formatMoney(level.collateralUsd)}
+                Ek tutar sonrası toplam: {formatMoney(r.usedCollateralUsd + r.additionalCollateralUsd!)} · Oran:{' '}
+                {r.ratioAfterDepositPct === null ? 'Tanımsız' : formatPercent(r.ratioAfterDepositPct!)}.
+              </p>
+              <p className="workspace-muted">
+                Mevcut spot ve zarar sabittir. Ek tutar USD kuruşuna yukarı yuvarlanır; teminat kaydı eklenmez.
               </p>
             </div>
-          ))}
+          )}
+          {r.calculation !== 'additional_collateral' &&
+            r.levels.map(level => (
+              <div className="mt-3" key={level.spot}>
+                <strong className="text-lg text-primary">{formatNumber(level.spot, 4)} USD/ons</strong>
+                <p className="workspace-muted">
+                  Spot değişimi {formatPercent(level.movePct)} · Brüt zarar {formatMoney(level.lossUsd)} · Teminat{' '}
+                  {formatMoney(level.collateralUsd)}
+                </p>
+              </div>
+            ))}
           {r.status === 'unreachable' && (
             <p className="mt-2 text-sm">
               Bu pozisyon ve teminatla hedef orana ulaşan sonlu, sıfır veya üzeri bir spot yok.
@@ -88,6 +106,7 @@ export function MarginThresholdView({ result: r }: { result: MarginThresholdResu
 export function MarginThresholdCalculator({ snapshot }: { snapshot: MarginSnapshot }) {
   const products = [...new Set(snapshot.positions.filter(p => p.position === 'Short').map(p => p.product))];
   const [product, setProduct] = useState(products.length === 1 ? products[0] : '');
+  const [calculation, setCalculation] = useState<'spot_threshold' | 'additional_collateral'>('spot_threshold');
   const [target, setTarget] = useState(55);
   const [override, setOverride] = useState(false);
   const recorded =
@@ -100,28 +119,42 @@ export function MarginThresholdCalculator({ snapshot }: { snapshot: MarginSnapsh
       product: product || undefined,
       targetRatioPct: target,
       collateralOverrideUsd: override ? collateral : undefined,
+      calculation,
     });
   } catch (e) {
     error = e instanceof Error ? e.message : 'Hesap tamamlanamadı.';
   }
   return (
-    <section className="workspace-panel" aria-label="Teminat hedef spot hesaplayıcı">
-      <h2>Hangi spotta bu orana gelir?</h2>
+    <section className="workspace-panel" aria-label="Teminat hedef hesaplayıcı">
+      <h2>Teminat hedef hesabı</h2>
       <p className="workspace-muted">
         Tüm açık işlemler birlikte hesaplanır. Bu alan kayıtları değiştirmez; opsiyon fiyatlaması yapmaz.
       </p>
       <div className="workspace-toolbar">
         <label className="desk-field">
-          Senaryo metali
-          <select aria-label="Senaryo metali" value={product} onChange={e => setProduct(e.target.value)}>
-            <option value="">Metal seçin</option>
-            {products.map(p => (
-              <option key={p} value={p}>
-                {p === 'XAG' ? 'Gümüş · XAG' : p === 'XAU' ? 'Altın · XAU' : p}
-              </option>
-            ))}
+          Hesap türü
+          <select
+            aria-label="Teminat hesap türü"
+            value={calculation}
+            onChange={e => setCalculation(e.target.value as typeof calculation)}
+          >
+            <option value="spot_threshold">Hangi spotta bu orana gelir?</option>
+            <option value="additional_collateral">Hedef oran için ek teminat</option>
           </select>
         </label>
+        {calculation === 'spot_threshold' && (
+          <label className="desk-field">
+            Senaryo metali
+            <select aria-label="Senaryo metali" value={product} onChange={e => setProduct(e.target.value)}>
+              <option value="">Metal seçin</option>
+              {products.map(p => (
+                <option key={p} value={p}>
+                  {p === 'XAG' ? 'Gümüş · XAG' : p === 'XAU' ? 'Altın · XAU' : p}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="desk-field">
           Hedef zarar / teminat · %
           <NumberInput aria-label="Hedef zarar teminat yüzdesi" value={target} onValueChange={setTarget} />

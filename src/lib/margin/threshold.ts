@@ -20,6 +20,8 @@ export interface MarginSnapshot {
 }
 
 export interface MarginThresholdResult {
+  calculation?: 'spot_threshold' | 'additional_collateral';
+  targetIsProcedureDefault?: boolean;
   product: string;
   observedAt: string;
   spots: MarginSnapshot['spots'];
@@ -32,7 +34,10 @@ export interface MarginThresholdResult {
   collateralOverride: boolean;
   currentRatioPct: number | null;
   targetRatioPct: number | null;
-  status: 'current_only' | 'solved' | 'unreachable' | 'non_unique';
+  status: 'current_only' | 'solved' | 'unreachable' | 'non_unique' | 'collateral_calculated';
+  requiredTotalCollateralUsd?: number;
+  additionalCollateralUsd?: number;
+  ratioAfterDepositPct?: number | null;
   levels: { spot: number; lossUsd: number; collateralUsd: number; ratioPct: number; movePct: number }[];
   warnings: string[];
   notes: string[];
@@ -40,9 +45,16 @@ export interface MarginThresholdResult {
 
 export function marginThreshold(
   snapshot: MarginSnapshot,
-  options: { product?: string; targetRatioPct?: number; collateralOverrideUsd?: number },
+  options: {
+    product?: string;
+    targetRatioPct?: number;
+    collateralOverrideUsd?: number;
+    calculation?: 'spot_threshold' | 'additional_collateral';
+    targetIsProcedureDefault?: boolean;
+  },
 ): MarginThresholdResult {
   const { positions, collaterals } = snapshot;
+  const calculation = options.calculation ?? 'spot_threshold';
   const finite = (v: number, min = 0) => Number.isFinite(v) && v >= min;
   if (!positions.length) throw new Error('Hesaplanacak açık işlem yok.');
   if (new Set(positions.map(p => p.id)).size !== positions.length)
@@ -75,8 +87,15 @@ export function marginThreshold(
   )
     throw new Error('Teminat bileşimi bu senaryo için doğrulanamadı.');
   const products = [...new Set(positions.filter(p => p.position === 'Short').map(p => p.product))];
-  const product = options.product ?? (products.length === 1 ? products[0] : undefined);
-  if (!product || !['XAU', 'XAG'].includes(product) || !products.includes(product))
+  const product =
+    calculation === 'additional_collateral'
+      ? (products[0] ?? positions[0].product)
+      : (options.product ?? (products.length === 1 ? products[0] : undefined));
+  if (
+    !product ||
+    !['XAU', 'XAG'].includes(product) ||
+    (calculation === 'spot_threshold' && !products.includes(product))
+  )
     throw new Error('Hangi metalin spot eşiği hesaplansın: XAU (altın) veya XAG (gümüş)?');
   const requiredProducts = [
     ...new Set([
@@ -131,11 +150,15 @@ export function marginThreshold(
   const notes = [
     'Müşterinin tüm açık işlemlerinin brüt içsel zararıdır; alınmış short primleri düşülmez. Model MTM/K/Z değildir.',
     'İşlemler ve teminat adetleri değişmeden, ilk vadeden önce geçerlidir. Bir tarih veya piyasa tahmini değildir.',
-    override !== undefined
-      ? 'Kullanıcının varsayımsal toplam USD teminatı kullanıldı; kayıtlı teminat değiştirilmedi.'
-      : 'Seçilen metal teminatı aynı senaryo spotuyla yeniden değerlenir; diğer metal fiyatları sabittir.',
+    calculation === 'additional_collateral'
+      ? 'Mevcut spotlar ve brüt zarar sabit tutulur. Hesaplanan tutar ek USD nakit teminattır; kayıt yazılmaz.'
+      : override !== undefined
+        ? 'Kullanıcının varsayımsal toplam USD teminatı kullanıldı; kayıtlı teminat değiştirilmedi.'
+        : 'Seçilen metal teminatı aynı senaryo spotuyla yeniden değerlenir; diğer metal fiyatları sabittir.',
   ];
   const result: MarginThresholdResult = {
+    calculation,
+    targetIsProcedureDefault: options.targetIsProcedureDefault ?? false,
     product,
     observedAt: snapshot.observedAt,
     spots: snapshot.spots,
@@ -153,6 +176,23 @@ export function marginThreshold(
     warnings: [...snapshot.warnings],
     notes,
   };
+  if (calculation === 'additional_collateral') {
+    if (target === undefined) throw new Error('Ek teminat hesabı için hedef zarar/teminat yüzdesini belirtin.');
+    const requiredTotalCollateralUsd = currentLossUsd / (target / 100);
+    const gap = Math.max(0, requiredTotalCollateralUsd - usedCollateralUsd);
+    // Round upward to USD cents so the requested deposit actually reaches the target ratio.
+    const additionalCollateralUsd = Math.ceil(gap * 100) / 100;
+    const after = usedCollateralUsd + additionalCollateralUsd;
+    if (![requiredTotalCollateralUsd, additionalCollateralUsd, after].every(v => finite(v)))
+      throw new Error('Tutarlar hesaplama sınırını aşıyor; sonuç üretilmedi.');
+    return {
+      ...result,
+      status: 'collateral_calculated',
+      requiredTotalCollateralUsd,
+      additionalCollateralUsd,
+      ratioAfterDepositPct: after > 0 ? (currentLossUsd / after) * 100 : null,
+    };
+  }
   if (target === undefined) return result;
   const ratio = target / 100;
   const changing = positions.filter(p => p.position === 'Short' && p.product === product);

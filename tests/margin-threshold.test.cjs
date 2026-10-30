@@ -492,3 +492,164 @@ test('runner drops unverified free-text arithmetic instead of showing or storing
   assert.ok(!JSON.stringify([r.contents, events]).includes('UNVERIFIED'));
   assert.match(events.find(e => e.type === 'text').text, /tamamlanamadı/);
 });
+
+test('additional cash keeps loss fixed, rounds up to cents, and distinguishes total from extra', () => {
+  const s = clone(sample);
+  const spot = (78 * 1256.41 + 81 * 2037.04 - 95272.96) / 3293.45;
+  s.spots[0].price = spot;
+  s.positions.forEach(p => (p.currentSpot = spot));
+  const r = marginThreshold(s, { calculation: 'additional_collateral', targetRatioPct: 35 });
+  near(r.currentLossUsd, 95272.96);
+  near(r.requiredTotalCollateralUsd, 272208.45714285714);
+  assert.equal(r.additionalCollateralUsd, 71478.46);
+  assert.ok(r.ratioAfterDepositPct <= 35);
+  assert.equal(r.levels.length, 0);
+  assert.equal(r.status, 'collateral_calculated');
+  const answer = marginAnswer(r);
+  assert.match(answer, /71\.478,46.*ek USD nakit/);
+  assert.match(answer, /272\.208,46/);
+  assert.ok(!answer.includes('için spot:'));
+  const enough = marginThreshold(s, { calculation: 'additional_collateral', targetRatioPct: 60 });
+  assert.equal(enough.additionalCollateralUsd, 0);
+  assert.match(marginAnswer(enough), /ek teminat gerekmiyor/);
+  const empty = clone(s);
+  empty.collaterals = [];
+  const uncollateralized = marginThreshold(empty, { calculation: 'additional_collateral', targetRatioPct: 35 });
+  assert.equal(uncollateralized.currentRatioPct, null);
+  assert.equal(uncollateralized.additionalCollateralUsd, 272208.46);
+});
+
+test('both reported phrasings select cash and recognize a bare 35 without inventing amounts', () => {
+  for (const message of [
+    'sevilin işlemlerinde risk oranının 35 e düşmesi için ek ne kadar teminat almamız gerkiyor',
+    'sevil parfümeri aktif zarar teminat oranını yüzde 35 e çekebilmek için ek ne kadar teminat istememiz gerkiyor',
+    'sevilin zarar teminat oranını 35’e indirmek için ne kadar ek teminat gerekir',
+    'sevilin risk oranı 35% olsun ne kadar teminat istemeliyiz',
+  ]) {
+    assert.equal(requestsMarginAnalysis(message), true);
+    const r = marginScenarioInputs(message, [], { targetRatioPct: 35, calculation: 'spot_threshold' });
+    assert.equal(r.targetRatioPct, 35);
+    assert.equal(r.calculation, 'additional_collateral');
+    assert.equal(r.collateralOverrideUsd, undefined);
+    assert.equal(r.targetIsProcedureDefault, false);
+    assert.throws(() => marginScenarioInputs(message, [], { targetRatioPct: 55 }));
+  }
+  assert.throws(() => marginScenarioInputs('sevilin 35 işlemi var teminat durumu nasıl', [], { targetRatioPct: 35 }));
+  const d = marginScenarioInputs('sevilin zarar oranını düşürmek için ek ne kadar teminat gerekir', [], {});
+  assert.equal(requestsMarginAnalysis('sevilin ne kadar ek teminat vermesi gerekiyor'), true);
+  assert.equal(d.targetRatioPct, 35);
+  assert.equal(d.targetIsProcedureDefault, true);
+  assert.equal(
+    marginScenarioInputs('sevilin zarar oranı yüzde 35 için hangi spotta olur', [], {}).calculation,
+    'spot_threshold',
+  );
+});
+
+test('cash intent wins over model spot arguments and cannot authorize adding collateral', async () => {
+  let writes = 0;
+  const artifacts = [];
+  const message = 'sevilin işlemlerinde risk oranının 35 e düşmesi için ek ne kadar teminat almamız gerkiyor';
+  const execute = load('src/lib/assistant/tools.ts').createToolExecutor(context, message, {
+    customerFile: async () => ({ snapshot: workspace(), matches: [], truncated: false }),
+    market: async () => {
+      throw new Error('no IV');
+    },
+    artifact: a => artifacts.push(a),
+    addCollateral: async () => {
+      writes++;
+    },
+    research: async () => {},
+    signal: new AbortController().signal,
+  });
+  const r = await execute('analyze_margin_threshold', {
+    query: 'sevil',
+    targetRatioPct: 35,
+    calculation: 'spot_threshold',
+  });
+  assert.equal(r.calculation, 'additional_collateral');
+  assert.ok(r.additionalCollateralUsd > 0);
+  assert.equal(r.levels.length, 0);
+  const blocked = await execute('add_collateral', { customer: 'sevil', asset: 'USD', amount: 35 });
+  assert.equal(blocked.clarificationRequired, true);
+  assert.equal(writes, 0);
+  assert.equal(artifacts[0].result.calculation, 'additional_collateral');
+});
+
+test('additional collateral supports a combined gold and silver portfolio without choosing a price to shock', () => {
+  const s = clone(sample);
+  s.spots.push({ ...s.spots[0], product: 'XAU', price: 50 });
+  s.positions.push({ ...s.positions[0], id: 'gold', product: 'XAU', currentSpot: 50 });
+  const r = marginThreshold(s, { calculation: 'additional_collateral', targetRatioPct: 35 });
+  near(r.currentLossUsd, 84765.2929 + 28 * 1256.41);
+  assert.equal(r.tradeIds.length, 3);
+  assert.ok(r.additionalCollateralUsd > 0);
+  assert.equal(r.levels.length, 0);
+});
+
+test('cash answer card shows the deposit amount without a target price and retains the input selector', () => {
+  const React = require('react'),
+    { renderToStaticMarkup } = require('react-dom/server');
+  const ui = modules({ '@/components/ui/number-input': { NumberInput: () => null } })(
+    'src/features/margin/margin-threshold-calculator.tsx',
+  );
+  const r = marginThreshold(sample, { calculation: 'additional_collateral', targetRatioPct: 35 });
+  const html = renderToStaticMarkup(React.createElement(ui.MarginThresholdView, { result: r }));
+  assert.match(html, /Müşteriden istenecek ek USD nakit teminat/);
+  assert.ok(!html.includes('Spot değişimi'));
+  const editor = renderToStaticMarkup(React.createElement(ui.MarginThresholdCalculator, { snapshot: sample }));
+  assert.match(editor, /Teminat hesap türü/);
+  assert.match(editor, /Hedef oran için ek teminat/);
+});
+
+test('reported cash question reaches a deterministic deposit answer after reading the customer file', async () => {
+  const events = [],
+    requests = [];
+  class GoogleGenAI {
+    models = {
+      generateContent: async params => {
+        requests.push(params);
+        assert.ok(requests.length <= 2);
+        const call =
+          requests.length === 1
+            ? { name: 'get_customer_file', args: { query: 'sevil' } }
+            : {
+                name: 'analyze_margin_threshold',
+                args: { query: 'sevil', targetRatioPct: 35, calculation: 'spot_threshold' },
+              };
+        return {
+          candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: [{ functionCall: call }] } }],
+          functionCalls: [call],
+        };
+      },
+    };
+  }
+  const runner = modules(
+    {
+      '@google/genai': { GoogleGenAI, FunctionCallingConfigMode: { ANY: 'ANY', NONE: 'NONE', VALIDATED: 'VALIDATED' } },
+      './market': {
+        terminalMarket: async () => {
+          throw new Error('no pricing');
+        },
+      },
+      './limits': { readModelBlocks: async () => ({}), reserveModelCall: async () => {}, blockModel: async () => {} },
+      './customer-file': { readCustomerFile: async () => ({ snapshot: workspace(), matches: [], truncated: false }) },
+    },
+    { GEMINI_API_KEY: 'offline-test' },
+  )('src/lib/assistant/runner.ts');
+  const r = await runner.runAssistant({
+    message: 'sevilin işlemlerinde risk oranının 35 e düşmesi için ek ne kadar teminat almamız gerkiyor',
+    context,
+    contents: [],
+    signal: new AbortController().signal,
+    emit: e => events.push(e),
+  });
+  assert.equal(r.modelCalls, 2);
+  assert.ok(requests.every(q => q.config.toolConfig.functionCallingConfig.mode === 'ANY'));
+  const text = events.find(e => e.type === 'text').text;
+  assert.match(text, /ek USD nakit teminat/);
+  assert.ok(!text.includes('için spot:'));
+  assert.equal(
+    events.find(e => e.type === 'artifact' && e.artifact.kind === 'margin_threshold').artifact.result.calculation,
+    'additional_collateral',
+  );
+});

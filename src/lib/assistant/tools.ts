@@ -189,6 +189,10 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
   };
   const run = async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
     deps.signal.throwIfAborted();
+    if (name === 'add_collateral' && requestsMarginAnalysis(message, deps.priorUserMessages))
+      throw new TradeTermsClarification(
+        'Bu istek gereken ek teminatı hesaplama sorusudur; teminat yalnız açık ekleme talimatıyla kaydedilebilir. analyze_margin_threshold kullan.',
+      );
     if (
       requestsMarginAnalysis(message, deps.priorUserMessages) &&
       [
@@ -218,7 +222,11 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
     if (++toolCalls > 12) throw new Error('Bu isteğin hesaplama sınırına ulaşıldı; sonuçlarla devam edin.');
     switch (name) {
       case 'analyze_margin_threshold': {
-        if (Object.keys(args).some(k => !['query', 'product', 'targetRatioPct', 'collateralOverrideUsd'].includes(k)))
+        if (
+          Object.keys(args).some(
+            k => !['query', 'product', 'targetRatioPct', 'collateralOverrideUsd', 'calculation'].includes(k),
+          )
+        )
           throw new Error('Teminat hesabına manuel spot, işlem koşulu veya başka girdi eklenemez.');
         const namesCustomerNow =
           typeof args.query === 'string' &&
@@ -246,7 +254,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
             'Müşteri dosyasını bu istekte yeniden oku; eski konuşma rakamlarından hesap yapma.',
           );
         const metals = new Set(w.marginSnapshot.positions.filter(p => p.position === 'Short').map(p => p.product));
-        if (metals.size > 1 && args.product !== undefined) {
+        if (inputs.calculation === 'spot_threshold' && metals.size > 1 && args.product !== undefined) {
           const text = message.toLocaleLowerCase('tr-TR');
           const explicitlyChosen =
             args.product === 'XAG' ? /gümüş|gumus|xag/u.test(text) : /altın|altin|xau/u.test(text);
@@ -263,7 +271,7 @@ export function createToolExecutor(screen: ScreenContext, message: string, deps:
           customer: w.customer,
           readOnly: true,
           instruction:
-            'Sayıları aynen aktar. Bu hesap tüm açık işlemleri kapsar. Aynı sonuçtaki spot, teminat ve oranı birlikte kullan. Yeni fiyatlama kartı üretme. İlk vadeden sonra geçerli sayma.',
+            'Sayıları aynen aktar. additional_collateral hesabında additionalCollateralUsd müşteriden istenecek EK USD nakittir; requiredTotalCollateralUsd toplam teminattır. Spot seviyesi cevaplama. spot_threshold hesabında levels hedef spotlarıdır. Aynı sonuçtaki spot, teminat ve oranı birlikte kullan. Kayıt yazma veya yeni fiyatlama kartı üretme.',
         };
       }
       case 'get_customer_file': {

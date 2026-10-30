@@ -48,10 +48,16 @@ const declarations: FunctionDeclaration[] = [
   {
     name: 'analyze_margin_threshold',
     description:
-      'Müşterinin TÜM açık işlemleri için brüt içsel zarar/teminat oranını ve istenen hedef yüzdeye ulaşılan spot seviyelerini hesaplar. MTM veya opsiyon fiyatlaması değildir; IV gerekmez. Her takip sorusunda dosyayı yeniden oku: query ile adı belirtilen müşteri, yoksa açıkça istenmiş ekran seçimi. Aynı veri anında spot/teminat/zarar; teminat değişken metal ise senaryoda değerlenir. Manuel spot veya işlem girilmez. Kayıt yazmaz.',
+      'Müşterinin TÜM açık işlemleri için zarar/teminat hesabı. Ek ne kadar teminat istenmeli sorusunda calculation=additional_collateral: mevcut zarar ve spotlar sabit, hedefe inmek için EK USD nakit hesaplanır. Hangi spotta hedef orana gelir sorusunda calculation=spot_threshold. Her takip sorusunda query ile dosyayı yeniden oku; yoksa açıkça istenmiş ekran seçimi. IV gerekmez, kayıt yazmaz.',
     parametersJsonSchema: {
       type: 'object',
       properties: {
+        calculation: {
+          type: 'string',
+          enum: ['spot_threshold', 'additional_collateral'],
+          description:
+            'Ek teminat tutarı için additional_collateral; hedef spot için spot_threshold. Ek teminat sorusunu spot hareketiyle cevaplama.',
+        },
         query: {
           type: 'string',
           description: 'Konuşmada kullanıcı tarafından belirtilen müşteri adı. Takip sorusunda aynı adı tekrar gönder.',
@@ -63,7 +69,7 @@ const declarations: FunctionDeclaration[] = [
             'Birden fazla metalde açık short varsa kullanıcıdan hangi spotun değişeceğini sor. Tek metalde boş bırakılabilir.',
         },
         targetRatioPct: numeric(
-          'Kullanıcının istediği hedef zarar/teminat yüzdesi, ör. 55. Sadece mevcut oran sorulduysa gönderme.',
+          'Hedef zarar/teminat yüzdesi, ör. 35. "Oranı 35’e düşür" de yüzde 35 demektir. Ek teminat sorusunda hedef yoksa prosedürün yüzde 35 hedefi kullanılır. Sadece mevcut oran sorulduysa gönderme.',
         ),
         collateralOverrideUsd: numeric(
           'Yalnız kullanıcı toplam USD teminatını açıkça verdiyse. Kayıtlı tutar yerine salt okunur sabit USD senaryosu; ek teminat değildir. Gönderilmezse kayıtlı teminat kullanılır.',
