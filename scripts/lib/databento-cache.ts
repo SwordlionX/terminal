@@ -80,8 +80,24 @@ export class DatabentoCache {
   }
   async download(args: DownloadArgs, cachedOnly?: true): Promise<{ text: string; sha256: string; cached: boolean }> {
     await mkdir(this.cacheDir, { recursive: true });
-    const lockPath = path.join(this.cacheDir, 'budget.lock');
-    const lock = await open(lockPath, 'wx'); // Fail rather than race another paid download.
+    // GitHub restores cache contents across fresh runners. A process lock must not travel
+    // with those contents: killed jobs cannot execute finally. Both CME workflows share
+    // a concurrency group; processes within one job share this runner-scoped lock.
+    const inActions = process.env.GITHUB_ACTIONS === 'true';
+    const runnerTemp = process.env.RUNNER_TEMP;
+    if (inActions && (!runnerTemp || !path.isAbsolute(runnerTemp)))
+      throw new Error('GitHub geçici çalışma klasörü eksik; indirme başlatılmadı.');
+    const lockDir = inActions ? path.join(runnerTemp!, 'terminal-x-databento-locks') : this.cacheDir;
+    await mkdir(lockDir, { recursive: true });
+    const lockPath = path.join(lockDir, inActions ? sha(path.resolve(this.cacheDir)) + '.lock' : 'budget.lock');
+    let lock;
+    try {
+      lock = await open(lockPath, 'wx'); // Fail rather than race another paid download.
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST')
+        throw new Error('Databento bütçe kilidi başka bir işlem tarafından tutuluyor; paralel indirme başlatılmadı.');
+      throw error;
+    }
     try {
       const ledgerPath = path.join(this.cacheDir, 'budget.json');
       let ledger: { limitUsd: number; requests: Entry[] };
@@ -105,8 +121,10 @@ export class DatabentoCache {
       };
       const existing = ledger.requests.find(x => x.id === id && x.status !== 'failed');
       if (existing?.status === 'reserved') {
-        // A reservation left by an interrupted run: retry under the budget instead of blocking forever.
-        if (Date.now() - Date.parse(existing.requestedAt) < 15 * 60000)
+        // Actions jobs are serialized, have private restored caches, and hold the new runtime lock.
+        // A restored reservation cannot belong to a live owner there. Retain its full cost as failed
+        // before retrying; local/shared caches keep the conservative 15-minute guard.
+        if (!inActions && Date.now() - Date.parse(existing.requestedAt) < 15 * 60000)
           throw new Error('Aynı Databento indirmesi başka bir çalışmada sürüyor');
         existing.status = 'failed';
         await save();
@@ -127,8 +145,11 @@ export class DatabentoCache {
         }
       }
     } finally {
-      await lock.close();
-      await rm(lockPath);
+      try {
+        await lock.close();
+      } finally {
+        await rm(lockPath, { force: true });
+      }
     }
   }
 
@@ -170,18 +191,20 @@ export class DatabentoCache {
     this.newReserveUsd += reserveUsd;
     await save(); // The reservation stays counted against the budget even if streaming fails.
     let res: Response;
+    const signal = AbortSignal.timeout(180000);
     try {
       res = await fetch(
         this.url('timeseries.get_range', { ...args, encoding: 'csv', pretty_px: 'false', pretty_ts: 'false' }),
         {
           headers: this.headers(),
-          signal: AbortSignal.timeout(180000),
+          signal,
         },
       );
       if (!res.ok || !res.body) throw new Error(`Databento indirme HTTP ${res.status}`);
       await pipeline(
         Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]),
         createWriteStream(target + '.partial'),
+        { signal },
       );
     } catch (error) {
       entry.status = 'failed';

@@ -12,7 +12,7 @@ on:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,13 +21,16 @@ jobs:
           cache: npm
       - run: npm ci
       - uses: actions/cache/restore@v4
+        id: cme-cache
         with:
-          path: |
-            ~/.cache/terminal-x/databento-audit/*.csv
-            ~/.cache/terminal-x/databento-audit/budget.json
+          # Same paths and key family as the atomic refresh: never start a separate budget ledger.
+          path: ~/.cache/terminal-x/databento-audit
           key: cme-curve-budget-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: cme-curve-budget-
+      - name: Eski önbelleğin sahipsiz geçici dosyalarını temizle
+        run: node scripts/clean-cme-cache.cjs
       - name: Final girdileri ayrı snapshot olarak kaydet
+        timeout-minutes: 15
         env:
           DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
@@ -37,11 +40,12 @@ jobs:
           args=(--write)
           if [ -n "$SESSION_DATE" ]; then args+=("--date=$SESSION_DATE"); fi
           npm run collect:cme:curves -- "${args[@]}"
+      - name: Yarım dosyaları kalıcı önbellekten çıkar
+        if: always() && steps.cme-cache.outcome == 'success'
+        run: node scripts/clean-cme-cache.cjs
       # Preserve paid-request reservations even when a download or validation fails.
       - uses: actions/cache/save@v4
         if: always()
         with:
-          path: |
-            ~/.cache/terminal-x/databento-audit/*.csv
-            ~/.cache/terminal-x/databento-audit/budget.json
+          path: ~/.cache/terminal-x/databento-audit
           key: cme-curve-budget-${{ github.run_id }}-${{ github.run_attempt }}

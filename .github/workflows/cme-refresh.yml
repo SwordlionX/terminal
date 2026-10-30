@@ -14,7 +14,7 @@ on:
     - cron: '15 5 * * 1-5'
     - cron: '0 11 * * 1-5'
     - cron: '30 18 * * 1-5'
-  workflow_dispatch:        # panelden elle de tetiklenebilir
+  workflow_dispatch: # panelden elle de tetiklenebilir
     inputs:
       date:
         description: 'Belirli bir settlement günü (YYYY-MM-DD) — boş bırakılırsa otomatik'
@@ -29,7 +29,7 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 20     # iş ~3 dk; Databento yavaşlarsa pay olsun
+    timeout-minutes: 45 # Extra time outside the data step for setup, cleanup and cache save.
     steps:
       - uses: actions/checkout@v4
 
@@ -41,11 +41,16 @@ jobs:
       - run: npm ci
 
       - uses: actions/cache/restore@v4
+        id: cme-cache
         with:
+          # Keep this whole-directory path/key compatible with existing paid-data/budget caches.
           path: ~/.cache/terminal-x/databento-audit
           key: cme-curve-budget-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: cme-curve-budget-
+      - name: Eski önbelleğin sahipsiz geçici dosyalarını temizle
+        run: node scripts/clean-cme-cache.cjs
       - name: Final futures, USD ve iki IV yüzeyini birlikte kur
+        timeout-minutes: 40
         env:
           DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
@@ -57,6 +62,9 @@ jobs:
           if [ -n "$SESSION_DATE" ]; then args+=("--date=$SESSION_DATE"); fi
           npm run collect:cme:curves -- "${args[@]}"
           npm run refresh:cme -- "${args[@]}"
+      - name: Yarım dosyaları kalıcı önbellekten çıkar
+        if: always() && steps.cme-cache.outcome == 'success'
+        run: node scripts/clean-cme-cache.cjs
       - uses: actions/cache/save@v4
         if: always()
         with:
