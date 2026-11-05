@@ -2,7 +2,7 @@ import { InvoiceError } from './model';
 import { blockAfterError } from '../../lib/assistant/models';
 
 // Document extraction has its own lightweight defaults, independent of chat/research.
-export const INVOICE_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+export const INVOICE_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'];
 
 export type ReadFailure = 'quota' | 'timeout' | 'unavailable' | 'access' | 'request' | 'output' | 'unknown';
 export type ReadEvent = {

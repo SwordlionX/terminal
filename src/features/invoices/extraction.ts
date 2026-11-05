@@ -1,4 +1,4 @@
-import { InvoiceError, cents, currency, date, object, text, normalizeNumber } from './model';
+import { InvoiceError, cents, currency, date, object, text, normalizeNumber, parseMoney } from './model';
 import type { InvoiceCompany, DocumentSummary } from './model';
 import { parseQrEvidence } from './qr-evidence';
 
@@ -47,6 +47,19 @@ export function validateExtraction(
       return null;
     }
   };
+  const printedAmount = (rawKey: string, legacyKey: string) => {
+    if (!(rawKey in b)) return amount(b[legacyKey]);
+    const value = b[rawKey];
+    if (typeof value !== 'string' || value.length > 40) return null;
+    const printed = value.trim().replace(/[ \u00a0\u202f]/g, '');
+    try {
+      // Recognize explicit English grouping/decimal punctuation without asking the model to do arithmetic.
+      const normalized = /^\d{1,3}(?:,\d{3})+\.\d{1,2}$/.test(printed) ? printed.replaceAll(',', '') : printed;
+      return cents(parseMoney(normalized));
+    } catch {
+      return null;
+    }
+  };
   const unit = (v: unknown) => {
     try {
       return v == null ? null : currency(String(v).toUpperCase());
@@ -81,9 +94,9 @@ export function validateExtraction(
   } catch {
     warnings.push('Belge tarihi doğrulanamadı.');
   }
-  const foreignAmount = amount(b.foreignAmountCents),
+  const foreignAmount = printedAmount('foreignAmountText', 'foreignAmountCents'),
     foreignCurrency = unit(b.foreignCurrency);
-  let amountCents = isFx ? foreignAmount : amount(b.amountCents),
+  let amountCents = isFx ? foreignAmount : printedAmount('amountText', 'amountCents'),
     trackingCurrency = isFx ? foreignCurrency : unit(b.currency);
   let qrStatus: DocumentSummary['qrStatus'] = qr.conflict ? 'conflict' : qr.hasData ? 'partial' : 'not_read';
   let agreed = 0;
@@ -135,7 +148,7 @@ export function validateExtraction(
         ? 'QR yalnız bir belge bağlantısı içeriyor; numara ve tutar bu QR’dan doğrulanamadı.'
         : 'Veri içeren QR okunamadı; alanları belge üzerinden kontrol et.',
     );
-  const tlAmount = qr.tlAmountCents ?? amount(b.tlAmountCents),
+  const tlAmount = qr.tlAmountCents ?? printedAmount('tlAmountText', 'tlAmountCents'),
     rate = qr.exchangeRate ?? read('exchangeRate', 30);
   const document: DocumentSummary = {
     issuerName,

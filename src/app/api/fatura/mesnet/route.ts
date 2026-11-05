@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, type ThinkingConfig } from '@google/genai';
 import { NextRequest } from 'next/server';
 import { authenticated, errorResponse, json, sameOrigin } from '@/features/invoices/server';
-import { InvoiceError } from '@/features/invoices/model';
+import { InvoiceError, CURRENCIES } from '@/features/invoices/model';
 import {
   documentMime,
   MAX_DOCUMENT_BYTES,
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
 BELGE TÜRÜ: e-Döviz/Kıymetli Maden Alım/Satım Belgesi ise documentType=foreign_exchange, normal ticari faturada invoice, anlaşılamıyorsa unknown.
 TARAFLAR: Düzenleyen yetkili/satıcı unvanı issuerName. Döviz mesnedinde ALAN KİŞİ/KURULUŞ veya SATAN KİŞİ/KURULUŞ altındaki müşteri unvanı counterpartyName; düzenleyen döviz bürosunu müşteri sanma. Normal faturada counterpartyName alıcı/müşteri olsun. companyName normal faturada satıcı unvanı olsun.
 NUMARA: Sağ üstte SATIŞ/ALIŞ BELGESİ BİLGİLERİ içindeki Belge No alanını öncelikle ara. number alanına etiketin yanındaki numarayı karakter karakter aynen yaz; numberLabel=Belge No olsun. Normal faturada Fatura No/Fatura Numarası etiketini kullan. ETTN, UUID, İşt No, sıra no, müşteri no veya şube kodunu fatura numarası sanma. Belge numarası okunamıyorsa null yaz.
-TUTAR: Döviz mesnedinde Döviz Cinsi=foreignCurrency, Döviz Miktarı=foreignAmountCents (para biriminin yüzde biri cinsinden TAM SAYI; örneğin 1.234,56 GBP için 123456). Döviz Kuru=exchangeRate (ondalık noktalı metin). TL Karşılığı/NET Tutar=tlAmountCents (kuruş cinsinden). Döviz miktarını TL karşılığına, dolar eşdeğerine veya kura karıştırma. Normal faturada vergi dahil ödenecek genel toplam amountCents (yüzde bir birimde tam sayı), para birimi currency olsun; ara toplamı veya KDV'yi alma. Döviz mesnedinin TL net toplamını ayrıca amountCents/currency=TRY olarak yazabilirsin; takip için foreignAmountCents kullanılacaktır.
+TUTAR: Parasal değerleri HESAPLAMA; 100 ile çarpma, kuruşa/yüzde birime çevirme, kur dönüşümü yapma. Basılı miktarı nokta/virgülleriyle aynen METİN olarak kopyala (örnek: belgede 1.234,56 yazıyorsa "1.234,56"). Döviz mesnedinde Döviz Miktarı alanı foreignAmountText, Döviz Cinsi alanının üç harfli ISO kodu foreignCurrency, Döviz Kuru exchangeRate, TL Karşılığı/NET Tutar tlAmountText olsun. Döviz miktarını TL net tutarına, dolar eşdeğerine veya kura karıştırma. Döviz belgesinde amountText=null ve currency=null yaz; takip foreignAmountText üzerinden olacak. Normal faturada vergi dahil ödenecek genel toplam amountText ve üç harfli para birimi kodu currency olsun; ara toplamı veya KDV'yi alma. Okuyamadığın miktarı veya para birimini null bırak.
 TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null bırak; varsayım yapma ve warnings alanında Türkçe uyar. Birden fazla bağımsız belge varsa multipleDocuments=true, aksi halde false yaz. Birden fazla belge varsa number ve tüm miktarlar null olsun; uyarıda tek belge gerektiğini söyle. Bağlantıları, hesap kodlarını ve ilgisiz kişisel bilgileri çıktıya aktarma.`,
                   },
                 ],
@@ -105,32 +105,32 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
                   companyName: { type: Type.STRING, nullable: true },
                   number: { type: Type.STRING, nullable: true },
                   date: { type: Type.STRING, nullable: true },
-                  amountCents: { type: Type.INTEGER, nullable: true },
-                  currency: { type: Type.STRING, nullable: true },
+                  amountText: { type: Type.STRING, nullable: true },
+                  currency: { type: Type.STRING, enum: CURRENCIES, nullable: true },
                   warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
                   documentType: { type: Type.STRING, enum: ['invoice', 'foreign_exchange', 'unknown'] },
                   multipleDocuments: { type: Type.BOOLEAN },
                   issuerName: { type: Type.STRING, nullable: true },
                   counterpartyName: { type: Type.STRING, nullable: true },
                   numberLabel: { type: Type.STRING, nullable: true },
-                  foreignAmountCents: { type: Type.INTEGER, nullable: true },
-                  foreignCurrency: { type: Type.STRING, nullable: true },
-                  tlAmountCents: { type: Type.INTEGER, nullable: true },
+                  foreignAmountText: { type: Type.STRING, nullable: true },
+                  foreignCurrency: { type: Type.STRING, enum: CURRENCIES, nullable: true },
+                  tlAmountText: { type: Type.STRING, nullable: true },
                   exchangeRate: { type: Type.STRING, nullable: true },
                 },
                 required: [
                   'companyName',
                   'number',
                   'date',
-                  'amountCents',
+                  'amountText',
                   'currency',
                   'warnings',
                   'documentType',
                   'issuerName',
                   'counterpartyName',
-                  'foreignAmountCents',
+                  'foreignAmountText',
                   'foreignCurrency',
-                  'tlAmountCents',
+                  'tlAmountText',
                   'exchangeRate',
                   'multipleDocuments',
                 ],

@@ -545,3 +545,31 @@ test('QR-only recovery keeps company unselected and never claims independent agr
   assert.equal(qrReviewAfterFailure(companies, [JSON.stringify({ ...fxQr, uygulanankur: '44' })]), null);
   assert.equal(qrReviewAfterFailure(companies, ['https://example.invalid/doc']), null);
 });
+
+test('printed document amounts convert exactly without model arithmetic and still cross-check QR', () => {
+  for (const printed of ['2.500,00', '2,500.00', '2500.00', '2500,00', '2 500,00']) {
+    const result = validateExtraction(
+      { ...fxRead, foreignAmountCents: 2500, foreignAmountText: printed, tlAmountText: '112.500,00' },
+      companies,
+      [JSON.stringify(fxQr)],
+    );
+    assert.equal(result.amountCents, 250000);
+    assert.equal(result.currency, 'GBP');
+    assert.equal(result.document.qrStatus, 'matched');
+  }
+  const invoice = validateExtraction(
+    { companyName: 'Çizgi Ticaret', number: 'SYNTHETIC', date: '2026-11-05', amountText: '1.250,75', currency: 'TRY' },
+    companies,
+  );
+  assert.equal(invoice.amountCents, 125075);
+  const noQr = validateExtraction({ ...fxRead, foreignAmountText: '2.500,75', tlAmountText: '112.533,75' }, companies);
+  assert.equal(noQr.amountCents, 250075);
+  assert.equal(noQr.document.tlAmountCents, 11253375);
+  for (const printed of ['wrong', '-2.500,00', '2,500,00', '']) {
+    const result = validateExtraction({ ...fxRead, foreignAmountText: printed }, companies);
+    assert.equal(result.amountCents, null);
+  }
+  const conflict = validateExtraction({ ...fxRead, foreignAmountText: '25.000,00' }, companies, [JSON.stringify(fxQr)]);
+  assert.equal(conflict.amountCents, null);
+  assert.equal(conflict.document.qrStatus, 'conflict');
+});
