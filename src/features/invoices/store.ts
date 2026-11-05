@@ -101,6 +101,7 @@ export class InvoiceStore {
         `CREATE TABLE IF NOT EXISTS invoice_records (id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES invoice_companies(id), number TEXT NOT NULL, normalized_number TEXT NOT NULL, invoice_date TEXT NOT NULL, amount_cents INTEGER NOT NULL CHECK(amount_cents>0), used_cents INTEGER NOT NULL DEFAULT 0 CHECK(used_cents>=0 AND used_cents<=amount_cents), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(company_id,normalized_number))`,
         `CREATE TABLE IF NOT EXISTS invoice_events (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL REFERENCES invoice_records(id), delta_cents INTEGER NOT NULL CHECK(delta_cents<>0), event_date TEXT NOT NULL, note TEXT NOT NULL, account_id TEXT NOT NULL REFERENCES invoice_accounts(id), idempotency_key TEXT NOT NULL UNIQUE, reversal_of TEXT UNIQUE REFERENCES invoice_events(id), created_at TEXT NOT NULL)`,
         `CREATE INDEX IF NOT EXISTS invoice_records_company ON invoice_records(company_id,invoice_date)`,
+        `CREATE INDEX IF NOT EXISTS invoice_records_number ON invoice_records(normalized_number)`,
         `CREATE INDEX IF NOT EXISTS invoice_events_invoice ON invoice_events(invoice_id,created_at)`,
         ...INITIAL_COMPANIES.map(([id, name], i) => ({
           sql: 'INSERT OR IGNORE INTO invoice_companies (id,name,normalized_name,sort_order,created_at) VALUES (?,?,?,?,?)',
@@ -398,6 +399,21 @@ export class InvoiceStore {
     const rows = hasKv ? (await this.db.execute({ sql: 'SELECT v FROM kv WHERE k=?', args: [key] })).rows : [];
     return rows.length ? Number(rows[0].v) : 0;
   }
+  async duplicates(number: unknown): Promise<Invoice[]> {
+    const normalized = normalizeNumber(text(number, 'Belge numarası', 100));
+    await this.init();
+    return (
+      await this.db.execute({
+        sql: invoiceSelect + ' WHERE i.normalized_number=? ORDER BY i.created_at LIMIT 20',
+        args: [normalized],
+      })
+    ).rows.map(invoice);
+  }
+  async createFullyUsed(actor: InvoiceAccount, body: unknown) {
+    const b = object(body);
+    return this.create(actor, { ...b, usedCents: b.amountCents, fullUsage: true });
+  }
+  // Internal opening-balance helper; new records from the API always use createFullyUsed.
   async create(actor: InvoiceAccount, body: unknown) {
     const b = object(body),
       companyId = text(b.companyId, 'Firma'),
@@ -413,6 +429,19 @@ export class InvoiceStore {
     return this.write(async tx => {
       if (!(await tx.execute({ sql: 'SELECT id FROM invoice_companies WHERE id=?', args: [companyId] })).rows.length)
         throw new InvoiceError('Firma bulunamadı.');
+      if (b.fullUsage === true) {
+        const previous = (
+          await tx.execute({
+            sql: invoiceSelect + ' WHERE i.normalized_number=? LIMIT 1',
+            args: [normalizeNumber(number)],
+          })
+        ).rows[0];
+        if (previous)
+          throw new InvoiceError(
+            `Bu fatura daha önce ${String(previous.company_name)} firmasına kaydedilmiş. Mevcut kaydı kontrol et.`,
+            409,
+          );
+      }
       if (
         (
           await tx.execute({
@@ -448,7 +477,9 @@ export class InvoiceStore {
             id,
             used,
             todayInTurkey(),
-            'Açılış bakiyesi: kayıt öncesinde kullanılmış tutar',
+            b.fullUsage === true
+              ? 'Yeni belge: tutarın tamamı kullanılmış olarak kaydedildi'
+              : 'Açılış bakiyesi: kayıt öncesinde kullanılmış tutar',
             actor.id,
             randomUUID(),
             now,

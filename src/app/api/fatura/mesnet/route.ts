@@ -41,8 +41,6 @@ export async function POST(request: NextRequest) {
   try {
     sameOrigin(request);
     const { db } = await authenticated(request);
-    if (!process.env.GEMINI_API_KEY)
-      throw new InvoiceError('Gemini bağlantısı henüz hazır değil. Faturayı elle ekleyebilirsin.', 503);
     stage = 'upload';
     if (Number(request.headers.get('content-length') || 0) > MAX_DOCUMENT_BYTES + 20000)
       throw new InvoiceError('Dosya en fazla 3 MB olabilir.', 413);
@@ -62,7 +60,13 @@ export async function POST(request: NextRequest) {
       throw new InvoiceError('QR bilgisi okunamadı.');
     }
     const qr = parseQrEvidence(codes);
+    if (qr.number && !qr.conflict) {
+      const duplicates = await db.duplicates(qr.number);
+      if (duplicates.length) return json({ duplicates });
+    }
     report({ event: 'received', mime, bytes: file.size, qrData: qr.hasData });
+    if (!process.env.GEMINI_API_KEY)
+      throw new InvoiceError('Gemini bağlantısı henüz hazır değil. Faturayı elle ekleyebilirsin.', 503);
     stage = 'budget';
     await reserve(reserveRequest);
     const chain = modelChain(process.env.GEMINI_INVOICE_MODELS, INVOICE_MODELS),
@@ -163,6 +167,10 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
     } catch (error) {
       const partial = error instanceof InvoiceError ? qrReviewAfterFailure(snapshot.companies, codes) : null;
       if (partial) {
+        if (partial.number) {
+          const duplicates = await db.duplicates(partial.number);
+          if (duplicates.length) return json({ duplicates });
+        }
         report({ event: 'qr_review_fallback', status: error instanceof InvoiceError ? error.status : 500 });
         return json(partial);
       }
@@ -170,6 +178,10 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
     }
     stage = 'validation';
     const result = validateExtraction(parsed, snapshot.companies, codes);
+    if (result.number) {
+      const duplicates = await db.duplicates(result.number);
+      if (duplicates.length) return json({ duplicates });
+    }
     report({ event: 'review_ready', qrStatus: result.document.qrStatus });
     // Extraction never creates an invoice or records usage.
     return json(result);

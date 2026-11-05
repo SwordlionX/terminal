@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
         geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
       });
     if (q.get('action') === 'history') return json(await db.history(text(q.get('id'), 'Fatura')));
+    if (q.get('action') === 'duplicates') return json({ duplicates: await db.duplicates(q.get('number')) });
     const offset = Number(q.get('offset') || 0);
     if (!Number.isSafeInteger(offset) || offset < 0) throw new InvoiceError('Sayfa geçersiz.');
     return json(
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
       b = object(await body(request));
     switch (b.action) {
       case 'create':
-        return json({ ok: true, ...(await db.create(account, b)) }, 201);
+        return json({ ok: true, ...(await db.createFullyUsed(account, b)) }, 201);
       case 'update':
         await db.update(b);
         break;

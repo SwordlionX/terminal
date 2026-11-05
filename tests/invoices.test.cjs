@@ -573,3 +573,79 @@ test('printed document amounts convert exactly without model arithmetic and stil
   assert.equal(conflict.amountCents, null);
   assert.equal(conflict.document.qrStatus, 'conflict');
 });
+
+test('new confirmed invoices consume the full amount automatically and preserve older balances', async t => {
+  const { store, owner } = await fixture(t);
+  const older = await store.create(owner, {
+    companyId: 'tempo',
+    number: 'QA-OLDER-OPEN',
+    date: '2025-01-01',
+    amountCents: 50000,
+    usedCents: 10000,
+  });
+  const input = {
+    companyId: 'elve',
+    number: 'QA-FULL-001',
+    date: '2025-02-01',
+    amountCents: 250000,
+    currency: 'GBP',
+    source: 'document',
+    usedCents: 0,
+  };
+  await assert.rejects(() => store.createFullyUsed(owner, input), /onaylanmalı/);
+  const { id } = await store.createFullyUsed(owner, { ...input, confirmed: true });
+  const h = await store.history(id);
+  assert.equal(h.invoice.usedCents, 250000);
+  assert.equal(h.invoice.remainingCents, 0);
+  assert.equal(h.invoice.status, 'closed');
+  assert.equal(h.events.length, 1);
+  assert.equal(h.events[0].deltaCents, 250000);
+  assert.equal(h.events[0].accountName, 'Test owner');
+  assert(h.events[0].note.includes('tamamı kullanılmış'));
+  const { todayInTurkey } = loadTs('src/features/invoices/model.ts');
+  assert.equal(h.events[0].date, todayInTurkey());
+  assert.equal((await store.history(older.id)).invoice.remainingCents, 40000);
+  const manual = await store.createFullyUsed(owner, {
+    companyId: 'cizgi',
+    number: 'QA-MANUAL-001',
+    date: '2026-11-05',
+    amountCents: 125050,
+    usedCents: 1,
+  });
+  assert.equal((await store.history(manual.id)).invoice.usedCents, 125050);
+});
+test('duplicate lookup finds exact normalized document numbers across companies', async t => {
+  const { store, owner } = await fixture(t);
+  const { id } = await store.createFullyUsed(owner, {
+    companyId: 'elve',
+    number: 'QA DUP 001',
+    date: '2026-11-05',
+    amountCents: 250000,
+    currency: 'GBP',
+  });
+  const matches = await store.duplicates('qa dup001');
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].id, id);
+  assert.equal(matches[0].companyName, 'Elve');
+  assert.equal(matches[0].usedCents, 250000);
+  assert.deepEqual(await store.duplicates('QA DUP 00'), []);
+  for (const companyId of ['elve', 'tempo'])
+    await assert.rejects(
+      () => store.createFullyUsed(owner, { companyId, number: 'qadup001', date: '2026-11-05', amountCents: 300000 }),
+      e => e.status === 409 && e.message.includes('Elve'),
+    );
+  assert.equal((await store.snapshot({})).total, 1);
+});
+test('simultaneous submissions cannot record the same document under two firms', async t => {
+  const { store, owner } = await fixture(t);
+  const b = { number: 'QA-RACE-DOC', date: '2026-11-05', amountCents: 150000, currency: 'USD' };
+  const results = await Promise.allSettled(
+    ['elve', 'cizgi'].map(companyId => store.createFullyUsed(owner, { ...b, companyId })),
+  );
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(results.filter(r => r.status === 'rejected' && r.reason.status === 409).length, 1);
+  const s = await store.snapshot({});
+  assert.equal(s.total, 1);
+  assert.equal(s.invoices[0].remainingCents, 0);
+  assert.equal((await store.history(s.invoices[0].id)).events.length, 1);
+});

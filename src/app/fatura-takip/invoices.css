@@ -1144,3 +1144,16 @@
 .inv-document-details p {
   margin: 7px 0;
 }
+
+.inv-duplicate-warning {
+  border: 1px solid #f0cf84;
+  background: #fff8e6;
+  color: #72501a;
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 18px;
+  line-height: 1.6;
+}
+.inv-duplicate-warning p {
+  margin: 6px 0 0;
+}

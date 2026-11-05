@@ -65,6 +65,7 @@ type Modal =
   | { type: 'usage'; invoice: Invoice }
   | { type: 'company' }
   | { type: 'accounts' }
+  | { type: 'duplicate'; invoices: Invoice[] }
   | null;
 
 function ModalFrame({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
@@ -379,12 +380,13 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
       form.append('file', file);
       form.append('qrCodes', JSON.stringify(qr.codes));
       setReadingStage('Gemini firma, belge numarası ve miktarı okuyor…');
-      const data = await api<Extracted>('/api/fatura/mesnet', {
+      const data = await api<Extracted | { duplicates: Invoice[] }>('/api/fatura/mesnet', {
         method: 'POST',
         body: form,
         signal: AbortSignal.timeout(65000),
       });
-      setModal({ type: 'new', extracted: data });
+      if ('duplicates' in data) setModal({ type: 'duplicate', invoices: data.duplicates });
+      else setModal({ type: 'new', extracted: data });
     } catch (error) {
       if (error instanceof RequestError && error.status === 401) onExpired();
       else
@@ -785,6 +787,15 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
       </main>
       {modal?.type === 'accounts' ? (
         <AccountsModal account={account} onClose={() => setModal(null)} onExpired={onExpired} />
+      ) : modal?.type === 'duplicate' ? (
+        <DuplicateModal
+          invoices={modal.invoices}
+          onClose={() => setModal(null)}
+          onOpen={id => {
+            setModal(null);
+            setHistoryId(id);
+          }}
+        />
       ) : modal ? (
         <EntryModal
           modal={modal}
@@ -792,6 +803,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
           selectedCompany={companyId}
           onClose={() => setModal(null)}
           onSaved={saved}
+          onDuplicate={invoices => setModal({ type: 'duplicate', invoices })}
         />
       ) : null}
       {historyId && (
@@ -801,26 +813,82 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
   );
 }
 
+function DuplicateModal({
+  invoices,
+  onClose,
+  onOpen,
+}: {
+  invoices: Invoice[];
+  onClose: () => void;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <ModalFrame title="Bu fatura daha önce kaydedilmiş" onClose={onClose}>
+      <div className="inv-duplicate-warning" role="alert">
+        <strong>Bu belgeyi tekrar kaydetmedik.</strong>
+        <p>Aynı belge numarası daha önce şu firmaya kaydedilmiş:</p>
+      </div>
+      {invoices.map(invoice => (
+        <div className="inv-usage-summary" key={invoice.id}>
+          <strong>{invoice.companyName}</strong>
+          <span>Belge No: {invoice.number}</span>
+          <p>Tarih: {day(invoice.date)}</p>
+          <p>
+            Belge tutarı <b>{formatMoney(invoice.amountCents, invoice.currency)}</b>
+          </p>
+          <p>
+            Kullanılan <b>{formatMoney(invoice.usedCents, invoice.currency)}</b>
+          </p>
+          <p>
+            Kalan <b>{formatMoney(invoice.remainingCents, invoice.currency)}</b>
+          </p>
+          <button className="inv-primary" type="button" onClick={() => onOpen(invoice.id)}>
+            Mevcut kaydı aç
+          </button>
+        </div>
+      ))}
+      <div className="inv-form-footer">
+        <button className="inv-secondary" type="button" onClick={onClose}>
+          Kapat
+        </button>
+      </div>
+    </ModalFrame>
+  );
+}
+
 function EntryModal({
   modal,
   companies,
   selectedCompany,
   onClose,
   onSaved,
+  onDuplicate,
 }: {
-  modal: Exclude<Modal, null | { type: 'accounts' }>;
+  modal: Exclude<Modal, null | { type: 'accounts' } | { type: 'duplicate' }>;
   companies: InvoiceCompany[];
   selectedCompany: string;
   onClose: () => void;
   onSaved: () => void;
+  onDuplicate: (invoices: Invoice[]) => void;
 }) {
-  const [error, setError] = useState(''),
-    [busy, setBusy] = useState(false),
-    [draft, setDraft] = useState<Record<string, unknown> | null>(null),
-    [edited, setEdited] = useState(false),
-    requestId = useRef<string>(crypto.randomUUID());
   const existing = modal.type === 'edit' || modal.type === 'usage' ? modal.invoice : undefined,
     extracted = modal.type === 'new' ? modal.extracted : undefined;
+  const [error, setError] = useState(''),
+    [busy, setBusy] = useState(false),
+    [draft, setDraft] = useState<Record<string, unknown> | null>(() =>
+      extracted?.companyId && extracted.number && extracted.date && extracted.amountCents && extracted.currency
+        ? {
+            action: 'create',
+            companyId: extracted.companyId,
+            number: extracted.number,
+            date: extracted.date,
+            amountCents: extracted.amountCents,
+            currency: extracted.currency,
+          }
+        : null,
+    ),
+    [edited, setEdited] = useState(false),
+    requestId = useRef<string>(crypto.randomUUID());
   const [unit, setUnit] = useState(existing?.currency || extracted?.currency || 'TRY');
   const amount = (n: number | undefined | null) => (n == null ? '' : (n / 100).toFixed(2).replace('.', ','));
   async function saveDraft() {
@@ -828,9 +896,16 @@ function EntryModal({
     setBusy(true);
     setError('');
     try {
+      const result = await api<{ duplicates: Invoice[] }>(
+        '/api/fatura?action=duplicates&number=' + encodeURIComponent(String(draft.number)),
+      );
+      if (result.duplicates.length) {
+        onDuplicate(result.duplicates);
+        return;
+      }
       await post({
         ...draft,
-        source: 'document',
+        source: extracted ? 'document' : 'manual',
         confirmed: true,
         document: extracted?.document
           ? { ...extracted.document, qrStatus: edited ? 'partial' : extracted.document.qrStatus }
@@ -877,10 +952,16 @@ function EntryModal({
                   number: f.get('number'),
                   date: f.get('date'),
                   amountCents: parseMoney(String(f.get('amount'))),
-                  usedCents: parseMoney(String(f.get('used') || '0')),
                   currency: unit,
                 };
-      if (extracted) {
+      if (modal.type === 'new') {
+        const result = await api<{ duplicates: Invoice[] }>(
+          '/api/fatura?action=duplicates&number=' + encodeURIComponent(String(b.number)),
+        );
+        if (result.duplicates.length) {
+          onDuplicate(result.duplicates);
+          return;
+        }
         setDraft(b);
         return;
       }
@@ -920,11 +1001,25 @@ function EntryModal({
             <dd>{formatMoney(Number(draft.amountCents), String(draft.currency))}</dd>
             <dt>Tarih</dt>
             <dd>{day(String(draft.date))}</dd>
-            <dt>Önceden kullanılan</dt>
-            <dd>{formatMoney(Number(draft.usedCents), String(draft.currency))}</dd>
+            <dt>Otomatik kullanılan</dt>
+            <dd>{formatMoney(Number(draft.amountCents), String(draft.currency))}</dd>
+            <dt>Kalan bakiye</dt>
+            <dd>{formatMoney(0, String(draft.currency))}</dd>
           </dl>
-          <p>Onayladığında bakiye {String(draft.currency)} üzerinden takip edilecek.</p>
+          <p>Onayladığında tutarın tamamı kullanılmış olarak kaydedilecek. Kalan bakiye sıfır olacak.</p>
           {extracted && <DocumentDetails document={extracted.document} />}
+          {extracted && (
+            <p className="inv-muted">
+              {!edited && extracted.document.qrStatus === 'matched'
+                ? 'Belge numarası ve miktar QR bilgisiyle uyumlu.'
+                : 'Firma, belge numarası ve miktarı belge üzerinden kontrol et.'}
+            </p>
+          )}
+          {extracted?.warnings.map((warning, i) => (
+            <p className="inv-muted" key={i}>
+              {warning}
+            </p>
+          ))}
           {error && (
             <p className="inv-error" role="alert">
               {error}
@@ -1075,11 +1170,7 @@ function EntryModal({
               />
             </label>
             {modal.type === 'new' && (
-              <label className="inv-field">
-                Önceden kullanılmış miktar ({unit})
-                <input name="used" inputMode="decimal" defaultValue="0,00" />
-                <small>Bu faturanın daha önce kullanılan kısmı varsa gir. Yeni faturada sıfır bırak.</small>
-              </label>
+              <p className="inv-muted">Tutarın tamamı otomatik kullanılmış sayılır; kalan bakiye 0 olur.</p>
             )}
           </>
         )}
@@ -1093,7 +1184,7 @@ function EntryModal({
             Vazgeç
           </button>
           <button className="inv-primary" disabled={busy}>
-            {busy ? 'Kaydediliyor…' : extracted ? 'Bilgileri kontrol et' : 'Kaydet'}
+            {busy ? 'Kontrol ediliyor…' : modal.type === 'new' ? 'Bilgileri kontrol et' : 'Kaydet'}
           </button>
         </div>
       </form>
