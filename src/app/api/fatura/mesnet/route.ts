@@ -10,9 +10,9 @@ import {
 } from '@/features/invoices/extraction';
 import { parseQrEvidence } from '@/features/invoices/qr-evidence';
 import { randomUUID } from 'node:crypto';
-import { DocumentOutputError, readDocumentWithFallback } from '@/features/invoices/document-reader';
+import { DocumentOutputError, INVOICE_MODELS, readDocumentWithFallback } from '@/features/invoices/document-reader';
 import { reserveModelCall, reserveRequest, readModelBlocks, blockModel } from '@/lib/assistant/limits';
-import { availableModels, CHAT_MODELS, modelChain, thinkingFor } from '@/lib/assistant/models';
+import { availableModels, modelChain, thinkingFor } from '@/lib/assistant/models';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     report({ event: 'received', mime, bytes: file.size, qrData: qr.hasData });
     stage = 'budget';
     await reserve(reserveRequest);
-    const chain = modelChain(process.env.GEMINI_INVOICE_MODELS || process.env.GEMINI_MODELS, CHAT_MODELS),
+    const chain = modelChain(process.env.GEMINI_INVOICE_MODELS, INVOICE_MODELS),
       blocks = await readModelBlocks();
     const snapshot = await db.snapshot({});
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -98,7 +98,6 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
               },
             ],
             config: {
-              temperature: 0,
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -138,7 +137,9 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
               },
               maxOutputTokens: 4096,
               httpOptions: { timeout: 30000, retryOptions: { attempts: 1 } },
-              thinkingConfig: thinkingFor(model) as ThinkingConfig,
+              thinkingConfig: (model === 'gemini-3.5-flash-lite'
+                ? { thinkingLevel: 'MINIMAL' }
+                : thinkingFor(model)) as ThinkingConfig,
               abortSignal: signal,
             },
           });
