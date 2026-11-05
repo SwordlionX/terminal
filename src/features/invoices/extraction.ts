@@ -20,6 +20,15 @@ function companyKey(name: string) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
+export function qrReviewAfterFailure(companies: Pick<InvoiceCompany, 'id' | 'name'>[], codes: unknown) {
+  const qr = parseQrEvidence(codes);
+  if (!qr.hasData || qr.conflict || !qr.number || !qr.amountCents || !qr.currency) return null;
+  const partial = validateExtraction({ documentType: qr.documentType }, companies, codes);
+  partial.warnings.unshift(
+    'Gemini okuması tamamlanamadı. QR bilgileri aktarıldı; firmayı belgeye bakarak seç ve tüm alanları doğrula.',
+  );
+  return partial;
+}
 export function validateExtraction(
   value: unknown,
   companies: Pick<InvoiceCompany, 'id' | 'name'>[],

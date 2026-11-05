@@ -432,3 +432,116 @@ test('a stalled QR dependency releases the document upload after a bounded wait'
   t.mock.timers.tick(30000);
   assert.deepEqual(await result, { codes: [], state: 'unavailable' });
 });
+
+const { readDocumentWithFallback, DocumentOutputError, readFailure } = loadTs(
+  'src/features/invoices/document-reader.ts',
+);
+function readerFixture(call) {
+  const calls = [],
+    events = [],
+    blocked = [];
+  let reservations = 0;
+  return {
+    calls,
+    events,
+    blocked,
+    get reservations() {
+      return reservations;
+    },
+    options: {
+      models: ['gemini-test-a', 'gemini-test-b', 'gemini-test-c'],
+      signal: new AbortController().signal,
+      call: async (model, signal) => {
+        calls.push(model);
+        return call(model, signal);
+      },
+      reserve: async () => {
+        reservations++;
+      },
+      block: async (model, until) => {
+        blocked.push({ model, until });
+      },
+      report: event => events.push(event),
+    },
+  };
+}
+test('document reads use a second model after transient failure and count each real attempt', async () => {
+  const f = readerFixture(async model => {
+    if (model.endsWith('-a')) throw Object.assign(new Error('private payload must not be logged'), { status: 503 });
+    return { ready: true };
+  });
+  assert.deepEqual(await readDocumentWithFallback(f.options), { ready: true });
+  assert.deepEqual(f.calls, ['gemini-test-a', 'gemini-test-b']);
+  assert.equal(f.reservations, 2);
+  assert.equal(f.events[0].outcome, 'unavailable');
+  assert.equal(f.events[1].outcome, 'success');
+  assert.equal(f.blocked.length, 1);
+  assert(!JSON.stringify(f.events).includes('private payload'));
+});
+test('document provider failures stop after two attempts and preserve quota error type', async () => {
+  const f = readerFixture(async () => {
+    throw Object.assign(new Error('PerDay limit'), { status: 429 });
+  });
+  await assert.rejects(
+    () => readDocumentWithFallback(f.options),
+    e => e.status === 429 && e.message.includes('kullanım sınırına'),
+  );
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.reservations, 2);
+  assert.equal(f.blocked.length, 2);
+});
+test('invalid keys and malformed document requests are not blindly retried', async () => {
+  for (const status of [400, 401, 403]) {
+    const f = readerFixture(async () => {
+      throw Object.assign(new Error('provider error'), { status });
+    });
+    await assert.rejects(() => readDocumentWithFallback(f.options));
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.blocked.length, 0);
+  }
+});
+test('timeouts and invalid structured output can recover without retrying forever', async () => {
+  for (const failure of [
+    Object.assign(new Error('Timed out'), { name: 'TimeoutError' }),
+    new DocumentOutputError('Truncated response'),
+  ]) {
+    const f = readerFixture(async model => {
+      if (model.endsWith('-a')) throw failure;
+      return 'ready';
+    });
+    assert.equal(await readDocumentWithFallback(f.options), 'ready');
+    assert.equal(f.reservations, 2);
+  }
+  assert.equal(readFailure(Object.assign(new Error('fetch failed'), { status: 503 })).kind, 'unavailable');
+});
+test('cancelled reads and exhausted local budgets never issue another paid request', async () => {
+  const f = readerFixture(async () => {
+    throw new Error('Should never call');
+  });
+  const controller = new AbortController();
+  controller.abort();
+  f.options.signal = controller.signal;
+  await assert.rejects(() => readDocumentWithFallback(f.options));
+  assert.equal(f.reservations, 0);
+  assert.equal(f.calls.length, 0);
+  const b = readerFixture(async () => true);
+  b.options.reserve = async () => {
+    throw new Error('Daily budget exhausted');
+  };
+  await assert.rejects(() => readDocumentWithFallback(b.options), /Daily budget/);
+  assert.equal(b.calls.length, 0);
+});
+test('QR-only recovery keeps company unselected and never claims independent agreement', () => {
+  const { qrReviewAfterFailure } = loadTs('src/features/invoices/extraction.ts');
+  const review = qrReviewAfterFailure(companies, [JSON.stringify(fxQr)]);
+  assert.equal(review.companyId, null);
+  assert.equal(review.companyName, null);
+  assert.equal(review.number, fxQr.no);
+  assert.equal(review.amountCents, 250000);
+  assert.equal(review.currency, 'GBP');
+  assert.equal(review.document.qrStatus, 'partial');
+  assert(review.warnings.some(w => w.includes('firmayı belgeye bakarak seç')));
+  assert.equal(qrReviewAfterFailure(companies, []), null);
+  assert.equal(qrReviewAfterFailure(companies, [JSON.stringify({ ...fxQr, uygulanankur: '44' })]), null);
+  assert.equal(qrReviewAfterFailure(companies, ['https://example.invalid/doc']), null);
+});

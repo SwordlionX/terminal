@@ -33,9 +33,13 @@ The QR scan budget starts after loading its libraries and PDF. Dependencies and 
 
 The extraction result fills an editable review form and never writes a record. After reviewing it, the user sees a separate final confirmation naming the selected company, number, date, tracking quantity and currency. Only “Evet, onayla ve kaydet” submits the create request, with explicit confirmation required for document-source records. Editing the suggested data removes the QR agreement claim. Missing fields require correction. Multiple independent documents are rejected, and duplicate detection runs again at save time.
 
+If Gemini cannot finish but a consistent structured QR supplies the number, amount and currency, the app opens an explicitly labeled QR-only review. Company selection stays blank and QR status stays partial; there is no claim of independent visual agreement. Conflicting QR data or a link-only QR cannot trigger this recovery.
+
+Each request logs a random correlation code, stage, model, provider status, finish reason and elapsed time. Invoice content, document numbers, company names, QR payloads, account data and secrets are never logged. Error responses distinguish quota, timeout, access, invalid output and service failures and include a support code.
+
 The original uploaded file is processed in memory and is not retained as an attachment. The application saves the reviewed invoice fields; users should retain the original mesnet in their existing document archive.
 
-One extraction request makes at most one model call. It shares the assistant's existing request limit (default 20 per minute) and daily model-call budget (default 300, resetting at Istanbul midnight). Google project RPM/TPM/RPD limits are separate. Administrators can see the shared local daily counter in the Accounts screen. No Google quota reset or budget increase is performed.
+One extraction request makes at most two model calls, trying a second available model only after transient provider errors or invalid structured output. Authentication, permission and malformed-request errors are not blindly retried. SDK automatic retries are disabled so each real attempt reserves its own share of the existing daily budget. It shares the assistant's existing request limit (default 20 per minute) and daily model-call budget (default 300, resetting at Istanbul midnight). Google project RPM/TPM/RPD limits are separate. Administrators can see the shared local daily counter in the Accounts screen. No Google quota reset or budget increase is performed.
 
 ## Verification
 
