@@ -30,6 +30,7 @@ const { createSqliteClient } = require('./support/sqlite-client.cjs');
 const { InvoiceStore } = loadTs('src/features/invoices/store.ts');
 const { parseMoney, date, pin, INITIAL_COMPANIES, csvCell } = loadTs('src/features/invoices/model.ts');
 const { validateExtraction, documentMime } = loadTs('src/features/invoices/extraction.ts');
+const { readDocumentQr } = loadTs('src/features/invoices/read-qr.ts');
 
 async function fixture(t) {
   const db = createSqliteClient();
@@ -345,4 +346,89 @@ test('QR conflicts do not silently replace number, amount or date', () => {
     /tek bir belge/,
   );
   assert.throws(() => validateExtraction(fxRead, companies, [1]), /QR/);
+});
+
+test('cold QR library loading does not consume scan time or require animation frames', async t => {
+  let clock = 0,
+    reads = 0;
+  const original = new Map(
+    ['document', 'window', 'createImageBitmap', 'requestAnimationFrame'].map(k => [
+      k,
+      Object.getOwnPropertyDescriptor(globalThis, k),
+    ]),
+  );
+  t.after(() => {
+    for (const [key, value] of original) {
+      if (value) Object.defineProperty(globalThis, key, value);
+      else delete globalThis[key];
+    }
+  });
+  t.mock.method(performance, 'now', () => clock);
+  const context = {
+    drawImage() {},
+    getImageData() {
+      return { data: new Uint8ClampedArray(4), width: 1, height: 1 };
+    },
+  };
+  globalThis.document = {
+    createElement(tag) {
+      return tag === 'canvas' ? { width: 0, height: 0, getContext: () => context } : { remove() {} };
+    },
+    head: {
+      append(script) {
+        clock += 20000;
+        queueMicrotask(() => script.onload());
+      },
+    },
+  };
+  globalThis.window = {
+    ZXingWASM: {
+      prepareZXingModule: async () => ({}),
+      readBarcodes: async () => {
+        reads++;
+        return [{ text: 'synthetic-qr', isValid: true }];
+      },
+    },
+  };
+  globalThis.createImageBitmap = async () => ({ width: 100, height: 100, close() {} });
+  globalThis.requestAnimationFrame = () => {
+    throw new Error('Background tabs do not deliver animation frames');
+  };
+  const result = await readDocumentQr({ type: 'image/png', name: 'synthetic.png' });
+  assert.equal(result.state, 'read');
+  assert.deepEqual(result.codes, ['synthetic-qr']);
+  assert(reads > 1);
+});
+test('a stalled QR dependency releases the document upload after a bounded wait', async t => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'window'),
+    originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  let preparing = false;
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'window', original);
+    else delete globalThis.window;
+    if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument);
+    else delete globalThis.document;
+  });
+  globalThis.document = {
+    createElement: () => ({ width: 0, height: 0, remove() {} }),
+    head: {
+      append(script) {
+        queueMicrotask(() => script.onload());
+      },
+    },
+  };
+  globalThis.window = {
+    ZXingWASM: {
+      prepareZXingModule: () => {
+        preparing = true;
+        return new Promise(() => {});
+      },
+    },
+  };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const result = readDocumentQr({ type: 'image/png', name: 'synthetic.png' });
+  await new Promise(setImmediate);
+  assert(preparing);
+  t.mock.timers.tick(30000);
+  assert.deepEqual(await result, { codes: [], state: 'unavailable' });
 });

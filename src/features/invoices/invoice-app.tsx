@@ -312,6 +312,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     [modal, setModal] = useState<Modal>(null),
     [historyId, setHistoryId] = useState(''),
     [reading, setReading] = useState(false),
+    [readingStage, setReadingStage] = useState(''),
     [drag, setDrag] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -372,15 +373,26 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     try {
       if (file.size > 3 * 1024 * 1024) throw new Error('En fazla 3 MB büyüklüğünde bir belge yükle.');
       const { readDocumentQr } = await import('./read-qr');
+      setReadingStage('Belgedeki QR kontrol ediliyor…');
       const qr = await readDocumentQr(file);
       const form = new FormData();
       form.append('file', file);
       form.append('qrCodes', JSON.stringify(qr.codes));
-      const data = await api<Extracted>('/api/fatura/mesnet', { method: 'POST', body: form });
+      setReadingStage('Gemini firma, belge numarası ve miktarı okuyor…');
+      const data = await api<Extracted>('/api/fatura/mesnet', {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(65000),
+      });
       setModal({ type: 'new', extracted: data });
     } catch (error) {
       if (error instanceof RequestError && error.status === 401) onExpired();
-      else setError((error as Error).message);
+      else
+        setError(
+          (error as Error).name === 'TimeoutError'
+            ? 'Belge okuma süresi doldu. Biraz sonra yeniden dene.'
+            : (error as Error).message,
+        );
     } finally {
       setReading(false);
       if (upload.current) upload.current.value = '';
@@ -580,7 +592,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             <h2>{reading ? 'Mesnet okunuyor…' : 'Mesnedi buraya bırak'}</h2>
             <p>
               {reading
-                ? 'Firma, fatura numarası, tarih ve tutar çıkarılıyor.'
+                ? readingStage || 'Belge hazırlanıyor…'
                 : 'PDF veya fotoğraf yükle. Alanları Gemini doldursun, kontrol edip kaydet.'}
             </p>
           </div>

@@ -13,20 +13,39 @@ interface PdfDocument {
 }
 type PdfEngine = { getDocument(options: unknown): { promise: Promise<PdfDocument> } };
 const scripts = new Map<string, Promise<void>>();
+const zxingOverrides = { locateFile: (path: string) => '/vendor/invoice-qr/' + path };
+function bounded<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new Error('QR kontrolü süre sınırına ulaştı.'));
+    if (signal.aborted) {
+      void promise.catch(() => {});
+      abort();
+      return;
+    }
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
 function loadScript(src: string, module = false) {
   if (!scripts.has(src))
     scripts.set(
       src,
       new Promise<void>((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = src;
-        if (module) script.type = 'module';
-        script.onload = () => resolve();
-        script.onerror = () => {
+        const timeout = setTimeout(() => fail(), 15000);
+        const fail = () => {
+          clearTimeout(timeout);
           scripts.delete(src);
           script.remove();
           reject(new Error('QR kitaplığı yüklenemedi.'));
         };
+        script.src = src;
+        if (module) script.type = 'module';
+        script.onload = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        script.onerror = fail;
         document.head.append(script);
       }),
     );
@@ -55,57 +74,71 @@ async function scan(canvas: HTMLCanvasElement, read: QrReader, codes: Set<string
       results = await read(image, { formats: ['QRCode'], tryHarder: true, tryDenoise: true, maxNumberOfSymbols: 4 });
     for (const result of results) if (result.isValid !== false && result.text.length <= 4096) codes.add(result.text);
     crop.width = crop.height = 0;
-    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    // Animation frames can pause indefinitely when the user changes tabs.
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
   }
 }
 export async function readDocumentQr(
   file: File,
 ): Promise<{ codes: string[]; state: 'read' | 'not_found' | 'unavailable' }> {
   const codes = new Set<string>(),
-    canvas = document.createElement('canvas'),
-    deadline = performance.now() + 16000;
+    canvas = document.createElement('canvas');
+  const controller = new AbortController(),
+    timeout = setTimeout(() => controller.abort(), 30000);
+  const wait = <T>(promise: Promise<T>) => bounded(promise, controller.signal);
   try {
-    await loadScript('/vendor/invoice-qr/zxing-reader.js');
+    await wait(loadScript('/vendor/invoice-qr/zxing-reader.js'));
     const zxing = (
-      window as unknown as { ZXingWASM: { readBarcodes: QrReader; prepareZXingModule: (options: unknown) => void } }
+      window as unknown as {
+        ZXingWASM: { readBarcodes: QrReader; prepareZXingModule: (options: unknown) => Promise<unknown> };
+      }
     ).ZXingWASM;
-    zxing.prepareZXingModule({ overrides: { locateFile: (path: string) => '/vendor/invoice-qr/' + path } });
-    const read = zxing.readBarcodes;
+    await wait(zxing.prepareZXingModule({ overrides: zxingOverrides, fireImmediately: true }));
+    const read: QrReader = (image, options) => wait(zxing.readBarcodes(image, options));
     if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-      await loadScript('/vendor/invoice-qr/pdf-loader.mjs', true);
+      await wait(loadScript('/vendor/invoice-qr/pdf-loader.mjs', true));
       const engine = (window as unknown as { invoicePdf: PdfEngine }).invoicePdf;
-      const pdf = await engine.getDocument({
-        data: new Uint8Array(await file.arrayBuffer()),
-        isEvalSupported: false,
-        useSystemFonts: true,
-      }).promise;
+      const pdf = await wait(
+        engine.getDocument({
+          data: new Uint8Array(await file.arrayBuffer()),
+          isEvalSupported: false,
+          useSystemFonts: true,
+        }).promise,
+      );
       try {
-        for (let n = 1; n <= Math.min(pdf.numPages, 3) && performance.now() < deadline; n++) {
-          const page = await pdf.getPage(n),
+        // Loading the local libraries and PDF must not consume the scan budget.
+        const deadline = performance.now() + 16000;
+        for (
+          let n = 1;
+          n <= Math.min(pdf.numPages, 3) && performance.now() < deadline && !controller.signal.aborted;
+          n++
+        ) {
+          const page = await wait(pdf.getPage(n)),
             base = page.getViewport({ scale: 1 }),
             viewport = page.getViewport({ scale: 6400 / Math.max(base.width, base.height) });
           canvas.width = Math.ceil(viewport.width);
           canvas.height = Math.ceil(viewport.height);
-          await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
+          await wait(page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise);
           await scan(canvas, read, codes, deadline);
           page.cleanup();
         }
       } finally {
-        await pdf.destroy();
+        void pdf.destroy().catch(() => {});
       }
     } else {
-      const bitmap = await createImageBitmap(file),
+      const bitmap = await wait(createImageBitmap(file)),
         scale = Math.min(1, 3200 / Math.max(bitmap.width, bitmap.height));
       canvas.width = Math.ceil(bitmap.width * scale);
       canvas.height = Math.ceil(bitmap.height * scale);
       canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       bitmap.close();
-      await scan(canvas, read, codes, deadline);
+      await scan(canvas, read, codes, performance.now() + 16000);
     }
     return { codes: [...codes], state: codes.size ? 'read' : 'not_found' };
   } catch {
     return { codes: [...codes], state: codes.size ? 'read' : 'unavailable' };
   } finally {
+    clearTimeout(timeout);
     canvas.width = canvas.height = 0;
   }
 }
