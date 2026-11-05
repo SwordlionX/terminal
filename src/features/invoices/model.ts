@@ -21,9 +21,7 @@ export interface InvoiceCompany {
   id: string;
   name: string;
   sortOrder: number;
-  totalCents: number;
-  usedCents: number;
-  remainingCents: number;
+  balances: CurrencyBalance[];
   openCount: number;
   invoiceCount: number;
 }
@@ -33,6 +31,8 @@ export interface Invoice {
   companyName: string;
   number: string;
   date: string;
+  currency: string;
+  document: DocumentSummary | null;
   amountCents: number;
   usedCents: number;
   remainingCents: number;
@@ -55,15 +55,43 @@ export interface InvoiceSnapshot {
   companies: InvoiceCompany[];
   invoices: Invoice[];
   total: number;
-  totals: { amountCents: number; usedCents: number; remainingCents: number; openCount: number };
+  balances: CurrencyBalance[];
+}
+export interface CurrencyBalance {
+  currency: string;
+  amountCents: number;
+  usedCents: number;
+  remainingCents: number;
+  openCount: number;
+}
+export interface DocumentSummary {
+  issuerName: string | null;
+  counterpartyName: string | null;
+  documentType: string;
+  foreignAmountCents: number | null;
+  foreignCurrency: string | null;
+  exchangeRate: string | null;
+  tlAmountCents: number | null;
+  qrStatus: 'matched' | 'partial' | 'conflict' | 'not_read';
+}
+export const CURRENCIES = ['TRY', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'AUD', 'CAD', 'AED', 'SAR'];
+export function currency(value: unknown): string {
+  if (typeof value !== 'string' || !CURRENCIES.includes(value)) throw new InvoiceError('Para birimi geçersiz.');
+  return value;
 }
 export const STATUS_LABELS = {
   unused: 'Kullanılmamış',
   partial: 'Kısmen kullanılmış',
   closed: 'Tamamı kullanılmış',
 } as const;
-export function formatMoney(cents: number) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(cents / 100);
+export function formatMoney(cents: number, unit = 'TRY') {
+  return new Intl.NumberFormat('tr-TR', {
+    style: 'currency',
+    currency: unit,
+    currencyDisplay: 'code',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
 }
 export function todayInTurkey() {
   const parts = new Intl.DateTimeFormat('en-CA', {

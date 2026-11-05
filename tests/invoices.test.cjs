@@ -108,9 +108,9 @@ test('firm order, duplicate numbers, opening usage and exact cents reconcile', a
   const h = await store.history(id);
   assert.equal(h.events[0].deltaCents, 20001);
   assert.equal(h.events[0].accountName, 'Test owner');
-  assert.equal(s.totals.amountCents, 100101);
-  assert.equal(s.totals.usedCents, 20001);
-  assert.equal(s.totals.openCount, 2);
+  assert.equal(s.balances[0].amountCents, 100101);
+  assert.equal(s.balances[0].usedCents, 20001);
+  assert.equal(s.balances[0].openCount, 2);
 });
 test('concurrent usage cannot overspend and retry of the same operation cannot double charge', async t => {
   const { store, owner } = await fixture(t);
@@ -157,7 +157,7 @@ test('closed invoices, stale edits and invoice reductions below used balance', a
   await store.usage(owner, { id, amountCents: 12345, date: '2026-11-05', note: 'Complete use', requestId: 'all' });
   const snapshot = await store.snapshot({ status: 'closed' });
   assert.equal(snapshot.invoices[0].remainingCents, 0);
-  assert.equal(snapshot.totals.openCount, 0);
+  assert.equal(snapshot.balances[0].openCount, 0);
   await assert.rejects(
     () => store.update({ ...before, amountCents: 99999 }),
     e => e.status === 409,
@@ -195,10 +195,154 @@ test('document extraction refuses invented currency conversion and ambiguous com
     { companyName: 'Unknown', number: null, date: '2026-02-30', amountCents: 10000, currency: 'USD' },
     companies,
   );
-  assert.equal(foreign.amountCents, null);
+  assert.equal(foreign.amountCents, 10000);
+  assert.equal(foreign.currency, 'USD');
   assert.equal(foreign.companyId, null);
   assert.equal(foreign.date, null);
   assert(foreign.warnings.length >= 3);
   assert.equal(documentMime(Buffer.from('%PDF-1.7')), 'application/pdf');
   assert.throws(() => documentMime(Buffer.from('<script>')));
+});
+
+test('currency balances stay separate and usage history prevents changing units', async t => {
+  const { store, owner } = await fixture(t);
+  const base = { companyId: 'elve', date: '2026-11-05' };
+  const fx = await store.create(owner, { ...base, number: 'QA-FX-001', amountCents: 250000, currency: 'GBP' });
+  await store.create(owner, { ...base, number: 'QA-TL-001', amountCents: 11250000, currency: 'TRY' });
+  await store.create(owner, { ...base, number: 'QA-US-001', amountCents: 80000, currency: 'USD' });
+  await store.usage(owner, {
+    id: fx.id,
+    amountCents: 10000,
+    date: base.date,
+    note: 'Synthetic use',
+    requestId: 'fx-use',
+  });
+  const s = await store.snapshot({ companyId: 'elve' });
+  assert.deepEqual(
+    s.balances.map(b => [b.currency, b.amountCents, b.remainingCents]),
+    [
+      ['GBP', 250000, 240000],
+      ['TRY', 11250000, 11250000],
+      ['USD', 80000, 80000],
+    ],
+  );
+  assert.equal(s.companies.find(c => c.id === 'elve').balances.length, 3);
+  const filtered = await store.snapshot({ companyId: 'elve', currency: 'GBP' });
+  assert.equal(filtered.total, 1);
+  assert.equal(filtered.invoices[0].currency, 'GBP');
+  let h = await store.history(fx.id);
+  await assert.rejects(() => store.update({ ...h.invoice, currency: 'TRY' }), /para birimi/);
+  await store.reverse(owner, { eventId: h.events[0].id, note: 'Reverse synthetic use' });
+  h = await store.history(fx.id);
+  await assert.rejects(() => store.update({ ...h.invoice, currency: 'USD' }), /para birimi/);
+});
+test('document import requires explicit confirmation and stores only selected metadata', async t => {
+  const { store, owner } = await fixture(t);
+  const doc = {
+    issuerName: 'Örnek Döviz',
+    counterpartyName: 'Elve Ticaret',
+    documentType: 'foreign_exchange',
+    foreignAmountCents: 250000,
+    foreignCurrency: 'GBP',
+    exchangeRate: '45',
+    tlAmountCents: 11250000,
+    qrStatus: 'matched',
+    privateQr: 'never store',
+  };
+  const body = {
+    companyId: 'elve',
+    number: 'QA-DOC-001',
+    date: '2026-11-05',
+    amountCents: 250000,
+    currency: 'GBP',
+    source: 'document',
+    document: doc,
+  };
+  await assert.rejects(() => store.create(owner, body), /onaylanmalı/);
+  assert.equal((await store.snapshot({})).total, 0);
+  const { id } = await store.create(owner, { ...body, confirmed: true });
+  const saved = (await store.history(id)).invoice;
+  assert.equal(saved.document.foreignCurrency, 'GBP');
+  assert.equal(saved.document.privateQr, undefined);
+  assert.equal(saved.amountCents, 250000);
+});
+test('legacy database migration keeps TRY invoices, history and existing sessions', async t => {
+  const { db, store, owner, token } = await fixture(t);
+  const { id } = await store.create(owner, {
+    companyId: 'tempo',
+    number: 'QA-LEGACY',
+    date: '2026-11-05',
+    amountCents: 50000,
+    usedCents: 12000,
+  });
+  await db.execute('ALTER TABLE invoice_records DROP COLUMN currency');
+  await db.execute('ALTER TABLE invoice_records DROP COLUMN document_data');
+  const upgraded = new InvoiceStore(db, 'test-secret-for-isolated-database-only-123456789');
+  assert.equal((await upgraded.session(token)).id, owner.id);
+  const h = await upgraded.history(id);
+  assert.equal(h.invoice.currency, 'TRY');
+  assert.equal(h.invoice.remainingCents, 38000);
+  assert.equal(h.events.length, 1);
+  await new InvoiceStore(db, 'test-secret-for-isolated-database-only-123456789').init();
+  assert.equal((await upgraded.snapshot({})).total, 1);
+});
+const companies = INITIAL_COMPANIES.map(([id, name]) => ({ id, name }));
+const fxRead = {
+  documentType: 'foreign_exchange',
+  issuerName: 'Örnek Döviz AŞ',
+  counterpartyName: 'Elve Ticaret Limited Şirketi',
+  number: 'QA2026000000123',
+  date: '2026-11-05',
+  foreignAmountCents: 250000,
+  foreignCurrency: 'GBP',
+  amountCents: 11250000,
+  currency: 'TRY',
+  tlAmountCents: 11250000,
+  exchangeRate: '45',
+};
+const fxQr = {
+  senaryo: 'EDOVIZBELGE',
+  no: 'QA2026000000123',
+  tarih: '2026-11-05',
+  'miktari(GBP)': '2.500,00',
+  uygulanankur: '45,000000',
+  'odenecek(TRY)': '112.500,00',
+};
+test('FX documents track customer and FX quantity, independently cross-checked with QR', () => {
+  const result = validateExtraction(fxRead, companies, [JSON.stringify(fxQr)]);
+  assert.equal(result.companyId, 'elve');
+  assert.equal(result.amountCents, 250000);
+  assert.equal(result.currency, 'GBP');
+  assert.equal(result.numberLabel, 'Belge No');
+  assert.equal(result.document.qrStatus, 'matched');
+  assert.equal(result.document.tlAmountCents, 11250000);
+  const link = validateExtraction(fxRead, companies, ['https://example.invalid/document']);
+  assert.equal(link.document.qrStatus, 'not_read');
+  assert(link.warnings.some(w => w.includes('bağlantısı')));
+  const partial = validateExtraction({ ...fxRead, number: null, foreignAmountCents: null }, companies, [
+    JSON.stringify(fxQr),
+  ]);
+  assert.equal(partial.document.qrStatus, 'partial');
+  assert.equal(partial.amountCents, 250000);
+});
+test('QR conflicts do not silently replace number, amount or date', () => {
+  const result = validateExtraction(
+    { ...fxRead, number: 'WRONG', foreignAmountCents: 250001, date: '2026-11-04' },
+    companies,
+    [JSON.stringify(fxQr)],
+  );
+  assert.equal(result.number, null);
+  assert.equal(result.amountCents, null);
+  assert.equal(result.date, null);
+  assert.equal(result.document.qrStatus, 'conflict');
+  const arithmetic = validateExtraction(fxRead, companies, [JSON.stringify({ ...fxQr, uygulanankur: '44' })]);
+  assert.equal(arithmetic.amountCents, null);
+  assert.equal(arithmetic.number, null);
+  const multi = validateExtraction(fxRead, companies, [JSON.stringify(fxQr), JSON.stringify({ ...fxQr, no: 'OTHER' })]);
+  assert.equal(multi.document.qrStatus, 'conflict');
+  assert.throws(
+    () => validateExtraction({ ...fxRead, multipleDocuments: true }, companies, [JSON.stringify(fxQr)]),
+    /tek bir belge/,
+  );
+  assert.throws(() => validateExtraction(fxRead, companies, [1]), /QR/);
 });

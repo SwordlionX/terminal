@@ -1091,3 +1091,56 @@
     animation: none;
   }
 }
+
+.inv-currency-summaries {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.inv-currency-title {
+  font-size: 12px;
+  color: var(--inv-muted, #93a4bb);
+  margin: 0 0 10px;
+  letter-spacing: 0.04em;
+}
+.inv-currency-summaries .inv-metrics {
+  margin-bottom: 0;
+}
+.inv-company-button small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.inv-document-confirm h3 {
+  font-size: 20px;
+  line-height: 1.5;
+  margin: 12px 0 22px;
+}
+.inv-document-confirm dl {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--inv-line);
+  border-radius: 12px;
+}
+.inv-document-confirm dt {
+  color: var(--inv-muted);
+}
+.inv-document-confirm dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.inv-document-confirm > p {
+  margin: 20px 0;
+  line-height: 1.6;
+}
+.inv-document-details {
+  margin: 14px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.inv-document-details p {
+  margin: 7px 0;
+}

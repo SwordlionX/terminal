@@ -10,11 +10,40 @@ import {
   date,
   pin,
   todayInTurkey,
+  currency,
 } from './model';
-import type { Invoice, InvoiceAccount, InvoiceCompany, InvoiceEvent, InvoiceSnapshot } from './model';
+import type {
+  Invoice,
+  InvoiceAccount,
+  InvoiceCompany,
+  InvoiceEvent,
+  InvoiceSnapshot,
+  CurrencyBalance,
+  DocumentSummary,
+} from './model';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const SESSION_DAYS = 90;
+function documentSummary(value: unknown): DocumentSummary {
+  const b = object(value),
+    optional = (key: string) => (b[key] == null ? null : text(b[key], key, 250)),
+    amount = (key: string) => (b[key] == null ? null : cents(b[key], true));
+  const qrStatus = ['matched', 'partial', 'conflict', 'not_read'].includes(String(b.qrStatus))
+    ? (String(b.qrStatus) as DocumentSummary['qrStatus'])
+    : 'not_read';
+  const rate = optional('exchangeRate');
+  if (rate && !/^\d+(?:[.,]\d{1,8})?$/.test(rate)) throw new InvoiceError('Belge kuru geçersiz.');
+  return {
+    issuerName: optional('issuerName'),
+    counterpartyName: optional('counterpartyName'),
+    documentType: b.documentType === 'foreign_exchange' ? 'foreign_exchange' : 'invoice',
+    foreignAmountCents: amount('foreignAmountCents'),
+    foreignCurrency: b.foreignCurrency == null ? null : currency(b.foreignCurrency),
+    exchangeRate: rate,
+    tlAmountCents: amount('tlAmountCents'),
+    qrStatus,
+  };
+}
 const toAccount = (row: Row): InvoiceAccount => ({
   id: String(row.id),
   name: String(row.name),
@@ -30,6 +59,8 @@ const invoice = (row: Row): Invoice => {
     companyName: String(row.company_name),
     number: String(row.number),
     date: String(row.invoice_date),
+    currency: String(row.currency || 'TRY'),
+    document: row.document_data ? (JSON.parse(String(row.document_data)) as DocumentSummary) : null,
     amountCents: amount,
     usedCents: used,
     remainingCents: amount - used,
@@ -78,6 +109,20 @@ export class InvoiceStore {
       ],
       'write',
     );
+    const tx = await this.db.transaction('write');
+    try {
+      const columns = (await tx.execute('PRAGMA table_info(invoice_records)')).rows.map(r => String(r.name));
+      if (!columns.includes('currency'))
+        await tx.execute("ALTER TABLE invoice_records ADD COLUMN currency TEXT NOT NULL DEFAULT 'TRY'");
+      if (!columns.includes('document_data'))
+        await tx.execute('ALTER TABLE invoice_records ADD COLUMN document_data TEXT');
+      await tx.commit();
+    } catch (error) {
+      await tx.rollback();
+      throw error;
+    } finally {
+      tx.close();
+    }
   }
   private async write<T>(action: (tx: Transaction) => Promise<T>) {
     await this.init();
@@ -255,27 +300,56 @@ export class InvoiceStore {
     search?: string;
     status?: string;
     offset?: number;
+    currency?: string;
   }): Promise<InvoiceSnapshot> {
     await this.init();
     const tx = await this.db.transaction('read');
     try {
-      const companies = (
+      const groups = (
         await tx.execute(
-          `SELECT c.id,c.name,c.sort_order,COALESCE(SUM(i.amount_cents),0) total,COALESCE(SUM(i.used_cents),0) used,COUNT(i.id) n,COALESCE(SUM(CASE WHEN i.used_cents<i.amount_cents THEN 1 ELSE 0 END),0) open FROM invoice_companies c LEFT JOIN invoice_records i ON i.company_id=c.id GROUP BY c.id ORDER BY c.sort_order,c.name`,
+          `SELECT c.id,c.name,c.sort_order,i.currency,COALESCE(SUM(i.amount_cents),0) total,COALESCE(SUM(i.used_cents),0) used,COUNT(i.id) n,COALESCE(SUM(CASE WHEN i.used_cents<i.amount_cents THEN 1 ELSE 0 END),0) open FROM invoice_companies c LEFT JOIN invoice_records i ON i.company_id=c.id GROUP BY c.id,i.currency ORDER BY c.sort_order,c.name,i.currency`,
         )
-      ).rows.map(
-        r =>
-          ({
-            id: String(r.id),
+      ).rows;
+      const companyMap = new Map<string, InvoiceCompany>(),
+        balanceMap = new Map<string, CurrencyBalance>();
+      for (const r of groups) {
+        const id = String(r.id),
+          company = companyMap.get(id) ?? {
+            id,
             name: String(r.name),
             sortOrder: Number(r.sort_order),
-            totalCents: Number(r.total),
-            usedCents: Number(r.used),
-            remainingCents: Number(r.total) - Number(r.used),
-            openCount: Number(r.open),
-            invoiceCount: Number(r.n),
-          }) satisfies InvoiceCompany,
-      );
+            balances: [],
+            openCount: 0,
+            invoiceCount: 0,
+          };
+        company.openCount += Number(r.open);
+        company.invoiceCount += Number(r.n);
+        if (r.currency) {
+          const unit = String(r.currency),
+            b = {
+              currency: unit,
+              amountCents: Number(r.total),
+              usedCents: Number(r.used),
+              remainingCents: Number(r.total) - Number(r.used),
+              openCount: Number(r.open),
+            };
+          company.balances.push(b);
+          const total = balanceMap.get(unit) ?? {
+            currency: unit,
+            amountCents: 0,
+            usedCents: 0,
+            remainingCents: 0,
+            openCount: 0,
+          };
+          total.amountCents += b.amountCents;
+          total.usedCents += b.usedCents;
+          total.remainingCents += b.remainingCents;
+          total.openCount += b.openCount;
+          balanceMap.set(unit, total);
+        }
+        companyMap.set(id, company);
+      }
+      const companies = [...companyMap.values()];
       const conditions: string[] = [],
         args: string[] = [];
       if (query.companyId) {
@@ -285,6 +359,10 @@ export class InvoiceStore {
       if (query.search) {
         conditions.push("i.normalized_number LIKE ? ESCAPE '\\'");
         args.push('%' + normalizeNumber(query.search).replace(/[\\%_]/g, '\\$&') + '%');
+      }
+      if (query.currency) {
+        conditions.push('i.currency=?');
+        args.push(currency(query.currency));
       }
       if (query.status === 'unused') conditions.push('i.used_cents=0');
       if (query.status === 'partial') conditions.push('i.used_cents>0 AND i.used_cents<i.amount_cents');
@@ -305,15 +383,7 @@ export class InvoiceStore {
         companies,
         invoices,
         total,
-        totals: companies.reduce(
-          (a, c) => ({
-            amountCents: a.amountCents + c.totalCents,
-            usedCents: a.usedCents + c.usedCents,
-            remainingCents: a.remainingCents + c.remainingCents,
-            openCount: a.openCount + c.openCount,
-          }),
-          { amountCents: 0, usedCents: 0, remainingCents: 0, openCount: 0 },
-        ),
+        balances: [...balanceMap.values()].sort((a, b) => a.currency.localeCompare(b.currency)),
       };
     } finally {
       tx.close();
@@ -335,6 +405,10 @@ export class InvoiceStore {
       invoiceDate = date(b.date),
       amount = cents(b.amountCents),
       used = cents(b.usedCents ?? 0, true);
+    const unit = currency(b.currency ?? 'TRY');
+    if (b.source === 'document' && b.confirmed !== true)
+      throw new InvoiceError('Belgeden okunan firma, belge numarası, para birimi ve tutar onaylanmalı.');
+    const doc = b.document == null ? null : documentSummary(b.document);
     if (used > amount) throw new InvoiceError('Kullanılan tutar fatura tutarını aşamaz.');
     return this.write(async tx => {
       if (!(await tx.execute({ sql: 'SELECT id FROM invoice_companies WHERE id=?', args: [companyId] })).rows.length)
@@ -351,8 +425,20 @@ export class InvoiceStore {
       const id = randomUUID(),
         now = new Date().toISOString();
       await tx.execute({
-        sql: 'INSERT INTO invoice_records (id,company_id,number,normalized_number,invoice_date,amount_cents,used_cents,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
-        args: [id, companyId, number, normalizeNumber(number), invoiceDate, amount, used, now, now],
+        sql: 'INSERT INTO invoice_records (id,company_id,number,normalized_number,invoice_date,amount_cents,used_cents,created_at,updated_at,currency,document_data) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        args: [
+          id,
+          companyId,
+          number,
+          normalizeNumber(number),
+          invoiceDate,
+          amount,
+          used,
+          now,
+          now,
+          unit,
+          doc ? JSON.stringify(doc) : null,
+        ],
       });
       if (used)
         await tx.execute({
@@ -377,6 +463,7 @@ export class InvoiceStore {
       number = text(b.number, 'Fatura numarası', 100),
       invoiceDate = date(b.date),
       amount = cents(b.amountCents);
+    const unit = currency(b.currency ?? 'TRY');
     if (!Number.isSafeInteger(b.version)) throw new InvoiceError('Kayıt sürümü geçersiz.');
     return this.write(async tx => {
       const row = (await tx.execute({ sql: 'SELECT * FROM invoice_records WHERE id=?', args: [id] })).rows[0];
@@ -384,6 +471,11 @@ export class InvoiceStore {
       if (Number(row.version) !== b.version)
         throw new InvoiceError('Bu kayıt başka bir işlemle güncellendi. Yenileyip tekrar kontrol et.', 409);
       if (amount < Number(row.used_cents)) throw new InvoiceError('Fatura tutarı kullanılmış tutardan az olamaz.');
+      if (
+        unit !== row.currency &&
+        (await tx.execute({ sql: 'SELECT id FROM invoice_events WHERE invoice_id=? LIMIT 1', args: [id] })).rows.length
+      )
+        throw new InvoiceError('Kullanım geçmişi olan faturanın para birimi değiştirilemez.');
       if (
         (
           await tx.execute({
@@ -394,8 +486,8 @@ export class InvoiceStore {
       )
         throw new InvoiceError('Aynı numaralı fatura zaten kayıtlı.', 409);
       await tx.execute({
-        sql: 'UPDATE invoice_records SET number=?,normalized_number=?,invoice_date=?,amount_cents=?,version=version+1,updated_at=? WHERE id=?',
-        args: [number, normalizeNumber(number), invoiceDate, amount, new Date().toISOString(), id],
+        sql: 'UPDATE invoice_records SET number=?,normalized_number=?,invoice_date=?,amount_cents=?,currency=?,version=version+1,updated_at=? WHERE id=?',
+        args: [number, normalizeNumber(number), invoiceDate, amount, unit, new Date().toISOString(), id],
       });
     });
   }

@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         search: (q.get('search') || '').slice(0, 100),
         status: q.get('status') || undefined,
         offset,
+        currency: q.get('currency') || undefined,
       }),
     );
   } catch (error) {

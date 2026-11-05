@@ -1,5 +1,6 @@
-import { InvoiceError, cents, date, object, text } from './model';
-import type { InvoiceCompany } from './model';
+import { InvoiceError, cents, currency, date, object, text, normalizeNumber } from './model';
+import type { InvoiceCompany, DocumentSummary } from './model';
+import { parseQrEvidence } from './qr-evidence';
 
 export const MAX_DOCUMENT_BYTES = 3 * 1024 * 1024;
 export function documentMime(bytes: Uint8Array) {
@@ -19,47 +20,135 @@ function companyKey(name: string) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
-export function validateExtraction(value: unknown, companies: Pick<InvoiceCompany, 'id' | 'name'>[]) {
+export function validateExtraction(
+  value: unknown,
+  companies: Pick<InvoiceCompany, 'id' | 'name'>[],
+  codes: unknown = [],
+) {
   const b = object(value),
-    warnings: string[] = [];
-  const read = (key: string, max = 100) => (b[key] == null || b[key] === '' ? null : text(b[key], key, max));
-  const companyName = read('companyName', 250),
-    number = read('number'),
-    currency = read('currency', 12)?.toUpperCase() || null;
-  let invoiceDate: string | null = null,
-    amountCents: number | null = null;
+    qr = parseQrEvidence(codes),
+    warnings: string[] = [...qr.warnings];
+  if (b.multipleDocuments === true)
+    throw new InvoiceError('Dosyada birden fazla belge var. Her seferinde tek bir belge yükle.', 422);
+  const read = (key: string, max = 250) => (b[key] == null || b[key] === '' ? null : text(b[key], key, max));
+  const amount = (v: unknown) => {
+    try {
+      return v == null ? null : cents(v);
+    } catch {
+      return null;
+    }
+  };
+  const unit = (v: unknown) => {
+    try {
+      return v == null ? null : currency(String(v).toUpperCase());
+    } catch {
+      return null;
+    }
+  };
+  const issuerName = read('issuerName'),
+    counterpartyName = read('counterpartyName') || read('buyerName');
+  const isFx = b.documentType === 'foreign_exchange' || qr.documentType === 'foreign_exchange';
+  let companyName = isFx ? counterpartyName : read('companyName') || issuerName;
+  const match = (name: string | null) =>
+    name
+      ? companies.filter(c => {
+          const key = companyKey(name),
+            candidate = companyKey(c.name);
+          return key === candidate || key.startsWith(candidate + ' ');
+        })
+      : [];
+  let matches = match(companyName);
+  if (!isFx && matches.length === 0 && counterpartyName) {
+    matches = match(counterpartyName);
+    if (matches.length === 1) companyName = counterpartyName;
+  }
+  const companyId = matches.length === 1 ? matches[0].id : null;
+  if (!companyId)
+    warnings.push('Takip edilecek firma kesin eşleştirilemedi. Belgedeki tarafları kontrol edip firmayı seç.');
+  let number = read('number', 100),
+    invoiceDate: string | null = null;
   try {
     if (b.date != null) invoiceDate = date(b.date);
   } catch {
-    warnings.push('Belgedeki tarih doğrulanamadı. Fatura tarihini elle gir.');
+    warnings.push('Belge tarihi doğrulanamadı.');
   }
-  try {
-    if (b.amountCents != null) amountCents = cents(b.amountCents);
-  } catch {
-    warnings.push('Belgedeki toplam tutar doğrulanamadı. Tutarı elle gir.');
+  const foreignAmount = amount(b.foreignAmountCents),
+    foreignCurrency = unit(b.foreignCurrency);
+  let amountCents = isFx ? foreignAmount : amount(b.amountCents),
+    trackingCurrency = isFx ? foreignCurrency : unit(b.currency);
+  let qrStatus: DocumentSummary['qrStatus'] = qr.conflict ? 'conflict' : qr.hasData ? 'partial' : 'not_read';
+  let agreed = 0;
+  if (qr.hasData && !qr.conflict) {
+    if (number && qr.number && normalizeNumber(number) !== normalizeNumber(qr.number)) {
+      warnings.push('Belgeden okunan Belge/Fatura No ile QR numarası farklı. Numarayı elle doğrula.');
+      number = null;
+      qrStatus = 'conflict';
+    } else if (qr.number) {
+      if (number) agreed++;
+      number = qr.number;
+    }
+    if (
+      amountCents !== null &&
+      qr.amountCents !== null &&
+      (amountCents !== qr.amountCents || trackingCurrency !== qr.currency)
+    ) {
+      warnings.push('Belgedeki takip tutarı veya para birimi QR bilgisiyle uyuşmuyor. Tutarı elle doğrula.');
+      amountCents = null;
+      qrStatus = 'conflict';
+    } else if (qr.amountCents !== null) {
+      if (amountCents !== null && trackingCurrency === qr.currency) agreed++;
+      amountCents = qr.amountCents;
+      trackingCurrency = qr.currency;
+    }
+    if (invoiceDate && qr.date && invoiceDate !== qr.date) {
+      warnings.push('Belge tarihi ile QR tarihi farklı. Tarihi elle doğrula.');
+      invoiceDate = null;
+      qrStatus = 'conflict';
+    } else if (qr.date) invoiceDate = qr.date;
+    if (qrStatus !== 'conflict' && agreed === 2) qrStatus = 'matched';
   }
-  if (currency && !['TRY', 'TL', 'TRL'].includes(currency)) {
+  if (qr.conflict) {
+    number = null;
     amountCents = null;
-    warnings.push(`Belge para birimi ${currency}. Bu uygulama TL kaydı tutar; TL tutarını kontrol edip elle gir.`);
+    trackingCurrency = null;
   }
-  if (!currency) {
+  if (!trackingCurrency) {
     amountCents = null;
-    warnings.push('Belgenin para birimi okunamadı. TL tutarını kontrol edip elle gir.');
+    warnings.push('Takip para birimi okunamadı. Para birimini ve miktarı elle doğrula.');
   }
-  const key = companyName ? companyKey(companyName) : '';
-  // Prefix matches must start at the seller name, and exactly one company must match.
-  const matches = key
-    ? companies.filter(c => {
-        const candidate = companyKey(c.name);
-        return candidate === key || key.startsWith(candidate + ' ');
-      })
-    : [];
-  const companyId = matches.length === 1 ? matches[0].id : null;
-  if (!companyId) warnings.push('Belgedeki satıcı firma otomatik eşleştirilemedi. Firmayı seç.');
-  if (!number) warnings.push('Fatura numarası okunamadı. Belgeden kontrol ederek gir.');
-  if (!invoiceDate && !warnings.some(w => w.includes('tarih'))) warnings.push('Fatura tarihi okunamadı.');
-  if (amountCents === null && !warnings.some(w => w.includes('tutar'))) warnings.push('Fatura toplamı okunamadı.');
+  if (amountCents === null) warnings.push('Takip miktarı kesinleştirilemedi; belgeye bakarak gir.');
+  if (!number)
+    warnings.push('Sağ üstteki Belge No / Fatura No alanını kontrol ederek gir. ETTN veya işlem numarasını kullanma.');
+  if (!invoiceDate) warnings.push('Belge tarihini kontrol ederek gir.');
+  if (!qr.hasData)
+    warnings.push(
+      qr.hasLink
+        ? 'QR yalnız bir belge bağlantısı içeriyor; numara ve tutar bu QR’dan doğrulanamadı.'
+        : 'Veri içeren QR okunamadı; alanları belge üzerinden kontrol et.',
+    );
+  const tlAmount = qr.tlAmountCents ?? amount(b.tlAmountCents),
+    rate = qr.exchangeRate ?? read('exchangeRate', 30);
+  const document: DocumentSummary = {
+    issuerName,
+    counterpartyName,
+    documentType: isFx ? 'foreign_exchange' : 'invoice',
+    foreignAmountCents: qr.foreignAmountCents ?? foreignAmount,
+    foreignCurrency: qr.foreignCurrency ?? foreignCurrency,
+    exchangeRate: rate && /^\d+(?:[.,]\d{1,8})?$/.test(rate) ? rate.replace(',', '.') : null,
+    tlAmountCents: tlAmount,
+    qrStatus,
+  };
   if (Array.isArray(b.warnings))
-    for (const w of b.warnings.slice(0, 6)) if (typeof w === 'string' && w.length <= 300) warnings.push(w);
-  return { companyName, companyId, number, date: invoiceDate, amountCents, currency, warnings };
+    for (const w of b.warnings.slice(0, 5)) if (typeof w === 'string' && w.length <= 300) warnings.push(w);
+  return {
+    companyName,
+    companyId,
+    number,
+    date: invoiceDate,
+    amountCents,
+    currency: trackingCurrency,
+    numberLabel: isFx ? 'Belge No' : read('numberLabel', 50) || 'Fatura No',
+    document,
+    warnings,
+  };
 }

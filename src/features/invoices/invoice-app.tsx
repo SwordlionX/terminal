@@ -20,8 +20,8 @@ import {
   X,
 } from 'lucide-react';
 import { AppSwitcher } from '@/components/app-switcher';
-import { formatMoney, parseMoney, STATUS_LABELS, todayInTurkey, csvCell } from './model';
-import type { Invoice, InvoiceAccount, InvoiceCompany, InvoiceEvent, InvoiceSnapshot } from './model';
+import { CURRENCIES, formatMoney, parseMoney, STATUS_LABELS, todayInTurkey, csvCell } from './model';
+import type { DocumentSummary, Invoice, InvoiceAccount, InvoiceCompany, InvoiceEvent, InvoiceSnapshot } from './model';
 
 class RequestError extends Error {
   constructor(
@@ -55,6 +55,8 @@ type Extracted = {
   date: string | null;
   amountCents: number | null;
   currency: string | null;
+  numberLabel: string;
+  document: DocumentSummary;
   warnings: string[];
 };
 type Modal =
@@ -301,6 +303,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     [search, setSearch] = useState(''),
     [query, setQuery] = useState(''),
     [status, setStatus] = useState(''),
+    [currencyFilter, setCurrencyFilter] = useState(''),
     [offset, setOffset] = useState(0),
     [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true),
@@ -324,7 +327,13 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
       setLoading(true);
       setError('');
       try {
-        const q = new URLSearchParams({ company: companyId, search: query, status, offset: String(offset) });
+        const q = new URLSearchParams({
+          company: companyId,
+          search: query,
+          status,
+          currency: currencyFilter,
+          offset: String(offset),
+        });
         const result = await api<InvoiceSnapshot>('/api/fatura?' + q, { signal: controller.signal });
         setSnapshot(result);
       } catch (error) {
@@ -337,7 +346,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     }
     void load();
     return () => controller.abort();
-  }, [companyId, query, status, offset, revision, onExpired]);
+  }, [companyId, query, status, currencyFilter, offset, revision, onExpired]);
   // Refresh shared records when returning to the tab; data stays on the server.
   useEffect(() => {
     const refresh = () => {
@@ -347,14 +356,9 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     return () => window.removeEventListener('focus', refresh);
   }, []);
   const selected = snapshot?.companies.find(c => c.id === companyId);
-  const totals = selected
-    ? {
-        amountCents: selected.totalCents,
-        usedCents: selected.usedCents,
-        remainingCents: selected.remainingCents,
-        openCount: selected.openCount,
-      }
-    : snapshot?.totals;
+  const balances = (selected?.balances || snapshot?.balances || []).filter(
+    b => !currencyFilter || b.currency === currencyFilter,
+  );
   const saved = () => {
     setModal(null);
     setRevision(v => v + 1);
@@ -366,8 +370,12 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     setError('');
     setNotice('');
     try {
+      if (file.size > 3 * 1024 * 1024) throw new Error('En fazla 3 MB büyüklüğünde bir belge yükle.');
+      const { readDocumentQr } = await import('./read-qr');
+      const qr = await readDocumentQr(file);
       const form = new FormData();
       form.append('file', file);
+      form.append('qrCodes', JSON.stringify(qr.codes));
       const data = await api<Extracted>('/api/fatura/mesnet', { method: 'POST', body: form });
       setModal({ type: 'new', extracted: data });
     } catch (error) {
@@ -385,7 +393,13 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
       let start = 0,
         total = 1;
       while (start < total) {
-        const q = new URLSearchParams({ company: companyId, search: query, status, offset: String(start) });
+        const q = new URLSearchParams({
+          company: companyId,
+          search: query,
+          status,
+          currency: currencyFilter,
+          offset: String(start),
+        });
         const result = await api<InvoiceSnapshot>('/api/fatura?' + q);
         total = result.total;
         rows.push(...result.invoices);
@@ -396,15 +410,17 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
           'Firma',
           'Fatura Tarihi',
           'Fatura Numarası',
-          'Fatura Tutarı (TL)',
-          'Kullanılan Tutar (TL)',
-          'Kalan Tutar (TL)',
+          'Para Birimi',
+          'Fatura Tutarı',
+          'Kullanılan Tutar',
+          'Kalan Tutar',
           'Durum',
         ],
         ...rows.map(r => [
           r.companyName,
           day(r.date),
           r.number,
+          r.currency,
           ...[r.amountCents, r.usedCents, r.remainingCents].map(v => (v / 100).toFixed(2).replace('.', ',')),
           STATUS_LABELS[r.status],
         ]),
@@ -462,7 +478,11 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             <span className="inv-company-initial">{c.name[0]}</span>
             <span>
               {c.name}
-              <small>{formatMoney(c.remainingCents)} kalan</small>
+              <small>
+                {c.balances.length
+                  ? c.balances.map(b => formatMoney(b.remainingCents, b.currency)).join(' · ') + ' kalan'
+                  : 'Henüz fatura yok'}
+              </small>
             </span>
             <span className="inv-count">{c.openCount}</span>
           </button>
@@ -511,20 +531,30 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             </button>
           </div>
         )}
-        <section className="inv-metrics" aria-label="Fatura özeti">
-          {[
-            ['Toplam fatura', totals ? formatMoney(totals.amountCents) : '—'],
-            ['Kullanılan tutar', totals ? formatMoney(totals.usedCents) : '—'],
-            ['Kalan tutar', totals ? formatMoney(totals.remainingCents) : '—'],
-            ['Açık fatura', totals ? String(totals.openCount) : '—'],
-          ].map(([label, value], i) => (
-            <div className={'inv-metric ' + (i === 2 ? 'inv-metric-accent' : '')} key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-              {i === 3 && <small>Kalan tutarı sıfırdan büyük</small>}
-            </div>
+        <div className="inv-currency-summaries" aria-label="Para birimine göre fatura özeti">
+          {balances.length === 0 && (
+            <p className="inv-muted">{loading ? 'Özet yükleniyor…' : 'Bu seçimde henüz fatura bakiyesi yok.'}</p>
+          )}
+          {balances.map(totals => (
+            <section key={totals.currency} aria-label={totals.currency + ' özeti'}>
+              <h2 className="inv-currency-title">{totals.currency} bakiyeleri</h2>
+              <div className="inv-metrics">
+                {[
+                  ['Toplam fatura', formatMoney(totals.amountCents, totals.currency)],
+                  ['Kullanılan tutar', formatMoney(totals.usedCents, totals.currency)],
+                  ['Kalan tutar', formatMoney(totals.remainingCents, totals.currency)],
+                  ['Açık fatura', String(totals.openCount)],
+                ].map(([label, value], i) => (
+                  <div className={'inv-metric ' + (i === 2 ? 'inv-metric-accent' : '')} key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                    {i === 3 && <small>Kalan tutarı sıfırdan büyük</small>}
+                  </div>
+                ))}
+              </div>
+            </section>
           ))}
-        </section>
+        </div>
         <section
           className={`inv-upload ${drag ? 'inv-drag' : ''} ${reading ? 'inv-upload-busy' : ''}`}
           onDragOver={e => {
@@ -616,6 +646,23 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
                 <option value="closed">Tamamı kullanılmış</option>
               </select>
             </label>
+            <label className="inv-status-filter">
+              <span>Para birimi</span>
+              <select
+                value={currencyFilter}
+                onChange={e => {
+                  setCurrencyFilter(e.target.value);
+                  setOffset(0);
+                }}
+              >
+                <option value="">Tümü</option>
+                {CURRENCIES.map(unit => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="inv-table-wrap" aria-busy={loading}>
             <table>
@@ -643,9 +690,9 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
                         <small>{r.companyName}</small>
                       </td>
                       <td>{day(r.date)}</td>
-                      <td className="inv-money">{formatMoney(r.amountCents)}</td>
-                      <td className="inv-money">{formatMoney(r.usedCents)}</td>
-                      <td className="inv-money inv-remaining">{formatMoney(r.remainingCents)}</td>
+                      <td className="inv-money">{formatMoney(r.amountCents, r.currency)}</td>
+                      <td className="inv-money">{formatMoney(r.usedCents, r.currency)}</td>
+                      <td className="inv-money inv-remaining">{formatMoney(r.remainingCents, r.currency)}</td>
                       <td>
                         <span className={'inv-badge inv-' + r.status}>{STATUS_LABELS[r.status]}</span>
                       </td>
@@ -757,10 +804,33 @@ function EntryModal({
 }) {
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
+    [draft, setDraft] = useState<Record<string, unknown> | null>(null),
+    [edited, setEdited] = useState(false),
     requestId = useRef<string>(crypto.randomUUID());
   const existing = modal.type === 'edit' || modal.type === 'usage' ? modal.invoice : undefined,
     extracted = modal.type === 'new' ? modal.extracted : undefined;
+  const [unit, setUnit] = useState(existing?.currency || extracted?.currency || 'TRY');
   const amount = (n: number | undefined | null) => (n == null ? '' : (n / 100).toFixed(2).replace('.', ','));
+  async function saveDraft() {
+    if (!draft || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await post({
+        ...draft,
+        source: 'document',
+        confirmed: true,
+        document: extracted?.document
+          ? { ...extracted.document, qrStatus: edited ? 'partial' : extracted.document.qrStatus }
+          : null,
+      });
+      onSaved();
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
@@ -787,6 +857,7 @@ function EntryModal({
                   number: f.get('number'),
                   date: f.get('date'),
                   amountCents: parseMoney(String(f.get('amount'))),
+                  currency: unit,
                 }
               : {
                   action: 'create',
@@ -795,7 +866,12 @@ function EntryModal({
                   date: f.get('date'),
                   amountCents: parseMoney(String(f.get('amount'))),
                   usedCents: parseMoney(String(f.get('used') || '0')),
+                  currency: unit,
                 };
+      if (extracted) {
+        setDraft(b);
+        return;
+      }
       await post(b);
       onSaved();
     } catch (error) {
@@ -821,18 +897,69 @@ function EntryModal({
         if (!busy) onClose();
       }}
     >
-      <form onSubmit={submit} className="inv-form">
+      {draft && (
+        <div className="inv-document-confirm">
+          <span className="inv-eyebrow">SON KONTROL</span>
+          <h3>Bu belgeyi {companies.find(c => c.id === draft.companyId)?.name} firmasına kaydedeceğim. Doğru mu?</h3>
+          <dl>
+            <dt>{extracted?.numberLabel || 'Fatura No'}</dt>
+            <dd>{String(draft.number)}</dd>
+            <dt>Takip miktarı</dt>
+            <dd>{formatMoney(Number(draft.amountCents), String(draft.currency))}</dd>
+            <dt>Tarih</dt>
+            <dd>{day(String(draft.date))}</dd>
+            <dt>Önceden kullanılan</dt>
+            <dd>{formatMoney(Number(draft.usedCents), String(draft.currency))}</dd>
+          </dl>
+          <p>Onayladığında bakiye {String(draft.currency)} üzerinden takip edilecek.</p>
+          {extracted && <DocumentDetails document={extracted.document} />}
+          {error && (
+            <p className="inv-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="inv-form-footer">
+            <button
+              type="button"
+              className="inv-secondary"
+              disabled={busy}
+              onClick={() => {
+                setDraft(null);
+                setError('');
+              }}
+            >
+              Düzelt
+            </button>
+            <button type="button" className="inv-primary" disabled={busy} onClick={() => void saveDraft()}>
+              {busy ? 'Kaydediliyor…' : 'Evet, onayla ve kaydet'}
+            </button>
+          </div>
+        </div>
+      )}
+      <form
+        onSubmit={submit}
+        onChange={() => {
+          if (extracted) setEdited(true);
+        }}
+        className="inv-form"
+        style={draft ? { display: 'none' } : undefined}
+      >
         {extracted && (
           <div className="inv-extraction-note">
             <ShieldCheck size={18} />
             <div>
               <strong>Belgeden okunan alanları kontrol et.</strong>
-              <p>Kaydetmeden önce firma, fatura numarası ve toplam tutarı doğrula.</p>
+              <p>
+                {!edited && extracted.document.qrStatus === 'matched'
+                  ? 'Belge numarası ve miktar QR bilgisiyle uyumlu.'
+                  : 'Firma, belge numarası ve takip miktarını belge üzerinden doğrula.'}
+              </p>
+              <DocumentDetails document={extracted.document} />
               {extracted.warnings.map((w, i) => (
                 <p key={i}>{w}</p>
               ))}
               {!extracted.companyId && extracted.companyName && (
-                <p>Belgedeki satıcı: {extracted.companyName}. İlgili firmayı seç.</p>
+                <p>Belgedeki ilgili firma: {extracted.companyName}. Takip edilecek firmayı seç.</p>
               )}
             </div>
           </div>
@@ -848,11 +975,11 @@ function EntryModal({
               <strong>{existing!.number}</strong>
               <span>{existing!.companyName}</span>
               <p>
-                Kalan tutar <b>{formatMoney(existing!.remainingCents)}</b>
+                Kalan tutar <b>{formatMoney(existing!.remainingCents, existing!.currency)}</b>
               </p>
             </div>
             <label className="inv-field">
-              Kullanım tutarı (TL)
+              Kullanım miktarı ({existing!.currency})
               <input name="amount" inputMode="decimal" placeholder="Örn. 25.000,00" required />
             </label>
             <label className="inv-field">
@@ -887,11 +1014,11 @@ function EntryModal({
             )}
             {modal.type === 'edit' && (
               <p className="inv-muted">
-                {existing!.companyName} · Kullanılan: {formatMoney(existing!.usedCents)}
+                {existing!.companyName} · Kullanılan: {formatMoney(existing!.usedCents, existing!.currency)}
               </p>
             )}
             <label className="inv-field">
-              Fatura numarası
+              {extracted?.numberLabel || 'Fatura numarası'}
               <input
                 name="number"
                 defaultValue={existing?.number || extracted?.number || ''}
@@ -910,7 +1037,23 @@ function EntryModal({
               />
             </label>
             <label className="inv-field">
-              Fatura tutarı (TL)
+              Takip para birimi
+              <select
+                name="currency"
+                value={unit}
+                onChange={e => setUnit(e.target.value)}
+                disabled={!!existing?.usedCents}
+              >
+                {CURRENCIES.map(c => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <small>Kullanım geçmişi olan kaydın para birimi değiştirilemez.</small>
+            </label>
+            <label className="inv-field">
+              Takip miktarı ({unit})
               <input
                 name="amount"
                 inputMode="decimal"
@@ -921,7 +1064,7 @@ function EntryModal({
             </label>
             {modal.type === 'new' && (
               <label className="inv-field">
-                Önceden kullanılmış tutar (TL)
+                Önceden kullanılmış miktar ({unit})
                 <input name="used" inputMode="decimal" defaultValue="0,00" />
                 <small>Bu faturanın daha önce kullanılan kısmı varsa gir. Yeni faturada sıfır bırak.</small>
               </label>
@@ -938,11 +1081,43 @@ function EntryModal({
             Vazgeç
           </button>
           <button className="inv-primary" disabled={busy}>
-            {busy ? 'Kaydediliyor…' : 'Kaydet'}
+            {busy ? 'Kaydediliyor…' : extracted ? 'Bilgileri kontrol et' : 'Kaydet'}
           </button>
         </div>
       </form>
     </ModalFrame>
+  );
+}
+
+function DocumentDetails({ document: doc }: { document: DocumentSummary }) {
+  return (
+    <div className="inv-document-details">
+      {doc.issuerName && (
+        <p>
+          <b>Belgeyi düzenleyen:</b> {doc.issuerName}
+        </p>
+      )}
+      {doc.counterpartyName && (
+        <p>
+          <b>İlgili kişi / kuruluş:</b> {doc.counterpartyName}
+        </p>
+      )}
+      {doc.foreignAmountCents != null && doc.foreignCurrency && (
+        <p>
+          <b>Döviz miktarı:</b> {formatMoney(doc.foreignAmountCents, doc.foreignCurrency)}
+        </p>
+      )}
+      {doc.exchangeRate && (
+        <p>
+          <b>Belgedeki kur:</b> {doc.exchangeRate}
+        </p>
+      )}
+      {doc.tlAmountCents != null && (
+        <p>
+          <b>TL karşılığı (bilgi):</b> {formatMoney(doc.tlAmountCents, 'TRY')}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1000,15 +1175,16 @@ function HistoryModal({ id, onClose, onChanged }: { id: string; onClose: () => v
               {data.invoice.companyName} · {day(data.invoice.date)}
             </span>
             <p>
-              Fatura <b>{formatMoney(data.invoice.amountCents)}</b>
+              Fatura <b>{formatMoney(data.invoice.amountCents, data.invoice.currency)}</b>
             </p>
             <p>
-              Kullanılan <b>{formatMoney(data.invoice.usedCents)}</b>
+              Kullanılan <b>{formatMoney(data.invoice.usedCents, data.invoice.currency)}</b>
             </p>
             <p>
-              Kalan <b>{formatMoney(data.invoice.remainingCents)}</b>
+              Kalan <b>{formatMoney(data.invoice.remainingCents, data.invoice.currency)}</b>
             </p>
           </div>
+          {data.invoice.document && <DocumentDetails document={data.invoice.document} />}
           {!data.events.length ? (
             <div className="inv-empty">
               <History size={25} />
@@ -1022,7 +1198,7 @@ function HistoryModal({ id, onClose, onChanged }: { id: string; onClose: () => v
                   <div>
                     <strong>
                       {event.deltaCents < 0 ? 'Kullanım iptali' : 'Kullanım'} ·{' '}
-                      {formatMoney(Math.abs(event.deltaCents))}
+                      {formatMoney(Math.abs(event.deltaCents), data.invoice.currency)}
                     </strong>
                     <p>{event.note}</p>
                     <small>
