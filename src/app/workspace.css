@@ -1,3 +1,56 @@
+.app-switcher {
+  position: relative;
+  color: var(--foreground);
+}
+.app-switcher summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 20px;
+  cursor: pointer;
+  font-weight: 750;
+  font-size: 15px;
+}
+.app-switcher summary::-webkit-details-marker {
+  display: none;
+}
+.app-switcher summary small,
+.app-switcher nav small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+  margin-top: 4px;
+}
+.app-switcher nav {
+  position: absolute;
+  top: calc(100% - 8px);
+  left: 12px;
+  min-width: 270px;
+  z-index: 100;
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px #0002;
+  padding: 7px;
+  border-radius: 10px;
+}
+.app-switcher nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 6px;
+}
+.app-switcher nav a:hover,
+.app-switcher nav a[aria-current='page'] {
+  background: var(--muted);
+}
+.app-switcher summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -4px;
+}
 .terminal-shell {
   min-height: 100dvh;
   display: flex;

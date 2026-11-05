@@ -12,13 +12,13 @@ import {
   Settings,
   Shield,
   Sparkles,
-  Terminal,
   Users,
   Wallet,
 } from 'lucide-react';
 import { useWorkspace } from '@/store/workspace';
 import { TerminalAssistantLauncher } from '@/features/assistant/terminal-assistant-launcher';
 import { areaLabels, workspaceArea } from '@/lib/workspace';
+import { AppSwitcher } from '@/components/app-switcher';
 
 const tools = [
   ['/', 'Ana fiyatlama'],
@@ -85,18 +85,14 @@ export function TerminalShell({ children }: { children: React.ReactNode }) {
     [],
   );
   const closeMenu = () => setMobileOpen(false);
+  if (pathname.startsWith('/fatura-takip')) return <>{children}</>;
   return (
     <div
       className={`terminal-shell sidebar-shell ${collapsed ? 'sidebar-collapsed' : ''} ${mobileOpen ? 'sidebar-mobile-open' : ''} ${open ? 'assistant-is-open' : ''}`}
     >
       {mobileOpen && <button className="sidebar-scrim" aria-label="Menüyü kapat" onClick={closeMenu} />}
       <aside id="terminal-navigation" className="terminal-sidebar" aria-label="Terminal menüsü">
-        <Link href="/" onClick={closeMenu} className="sidebar-brand" aria-label="Terminal X fiyatlama">
-          <Terminal size={20} />
-          <span>
-            TERMINAL / X<small>Opsiyon masası</small>
-          </span>
-        </Link>
+        <AppSwitcher />
         <nav aria-label="Çalışma alanları">
           <p className="sidebar-group-label">ÇALIŞMA ALANI</p>
           <button
