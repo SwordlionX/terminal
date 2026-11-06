@@ -143,6 +143,74 @@ test('exact tenor, variance time interpolation, calendar guard, and expiry age',
   assert.match(surface.surfaceVolEstimate(inverted, 1, 45).reason, /takvim arbitrajı/);
 });
 
+function quarantinedMarket() {
+  const tenor = days => {
+    const expiryAt = new Date(Date.UTC(2026, 0, 1, 18) + days * 86400000).toISOString();
+    return { days, date: expiryAt.slice(0, 10), expiryAt };
+  };
+  return {
+    ...market(
+      ...[30, 90, 120].map(days => ({
+        ...tenor(days),
+        points: modelPoints(days, (0.2 ** 2 * days) / 365),
+      })),
+    ),
+    quarantinedExpiries: [
+      {
+        ...tenor(60),
+        reason: 'zero_calibration',
+        instrumentIds: ['42762966'],
+        issueCount: 1,
+      },
+    ],
+  };
+}
+
+test('quarantined expiry blocks its whole interpolation bracket, including fitted wings', () => {
+  const s = quarantinedMarket();
+  for (const days of [30, 90, 120]) {
+    assert.equal(surface.surfaceVolEstimate(s, 1, days).mode, 'model');
+  }
+  for (const days of [45, 60, 75]) {
+    for (const m of [1, 1.4]) {
+      const result = surface.surfaceVolEstimate(s, m, days);
+      assert.equal(result.mode, 'unavailable');
+      assert.equal(result.vol, null);
+    }
+  }
+  assert.equal(surface.surfaceVolEstimate(s, 1, 105).mode, 'model');
+  // Persisted metadata must retain the barrier across a cache/database round trip.
+  assert.equal(surface.surfaceVolEstimate(JSON.parse(JSON.stringify(s)), 1, 45).vol, null);
+});
+
+test('quarantined tenors age with healthy tenors for both dated and legacy surfaces', () => {
+  const s = quarantinedMarket();
+  assert.equal(surface.surfaceVolEstimate(s, 1, 29, '2026-01-02').mode, 'model');
+  assert.equal(surface.surfaceVolEstimate(s, 1, 59, '2026-01-02').vol, null);
+  assert.equal(surface.surfaceVolEstimate(s, 1, 75, '2026-01-02').vol, null);
+  s.curves = {}; // Exact expiry timestamps are used for curve-backed surfaces.
+  assert.equal(surface.surfaceVolEstimate(s, 1, 29.75, '2026-01-02').mode, 'model');
+  assert.equal(surface.surfaceVolEstimate(s, 1, 59.75, '2026-01-02').vol, null);
+  assert.equal(surface.surfaceVolEstimate(s, 1, 75, '2026-01-02').vol, null);
+  assert.equal(surface.surfaceVolEstimate(s, 1, 104.75, '2026-01-02').mode, 'model');
+  // A quarantine that has expired cannot block later healthy brackets.
+  assert.equal(surface.surfaceVolEstimate(s, 1, 35.75, '2026-03-12').mode, 'model');
+});
+
+test('quarantine conflicts and malformed dates fail closed instead of creating prices', () => {
+  const s = quarantinedMarket();
+  s.expiries.push({ ...s.quarantinedExpiries[0], points: modelPoints(60, (0.2 ** 2 * 60) / 365) });
+  assert.equal(surface.surfaceVolEstimate(s, 1, 60).vol, null);
+  assert.equal(surface.surfaceVolEstimate(s, 1, 45).vol, null);
+  s.curves = {};
+  s.quarantinedExpiries[0].expiryAt = 'invalid';
+  assert.equal(surface.surfaceVolEstimate(s, 1, 29.75, '2026-01-02').vol, null);
+  assert.equal(surface.surfaceVolEstimate(s, 1, 30).vol, null);
+  delete s.curves;
+  s.quarantinedExpiries[0].days = NaN;
+  assert.equal(surface.surfaceVolEstimate(s, 1, 30).vol, null);
+});
+
 test('manual pricing is blocked even without a source curve or with invalid inputs', () => {
   let md = {
     product: 'XAU',

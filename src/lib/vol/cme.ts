@@ -1,6 +1,6 @@
 import { impliedVolAmerican, impliedVolAmericanFutureCurve } from '../math/american';
 import { factorAt, type PricingCurves } from '../market/factors';
-import { VolSurface, ExpirySmile, SmilePoint } from './surface';
+import { VolSurface, ExpirySmile, SmilePoint, QuarantinedExpiry } from './surface';
 import { cmeOptionDays, optionMaturityExclusion } from '../market/cme-option-scope';
 
 /**
@@ -150,6 +150,7 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
   }
 
   const expiries: ExpirySmile[] = [];
+  const quarantinedExpiries: QuarantinedExpiry[] = [];
   let frontF = 0;
 
   for (const expSec of [...byExp.keys()].sort((a, b) => a - b)) {
@@ -167,25 +168,45 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
 
     // 3) OTM adayları topla (K>=F -> call, K<F -> put), moneyness penceresinde
     const cands: { m: number; K: number; px: number; type: 'call' | 'put' }[] = [];
+    let quarantine: QuarantinedExpiry | undefined;
+    const quarantineZero = (id: string, reason: 'zero_calibration' | 'zero_below_intrinsic') => {
+      quarantine ??= {
+        expiryAt: new Date(expSec * 1000).toISOString(),
+        date: new Date(expSec * 1000).toISOString().slice(0, 10),
+        days,
+        reason,
+        instrumentIds: [],
+        issueCount: 0,
+      };
+      if (reason === 'zero_below_intrinsic') quarantine.reason = reason;
+      quarantine.issueCount++;
+      if (quarantine.instrumentIds.length < 12) quarantine.instrumentIds.push(id);
+    };
     for (const { id, def, px } of list) {
       if (def.und !== und) continue;
       const K = def.strike;
-      if (px === 0 && (def.cls === 'C' ? F > K : K > F))
-        throw new Error(
-          `${symbol}: sıfır settlement içsel değerin altında; neden=zero_below_intrinsic; instrument_id=${id}.`,
-        );
+      if (px === 0 && (def.cls === 'C' ? F > K : K > F)) {
+        quarantineZero(id, 'zero_below_intrinsic');
+        continue;
+      }
       if (K < MONEY_LO * F || K > MONEY_HI * F) continue;
       const useCall = K >= F;
       if (useCall && def.cls !== 'C') continue;
       if (!useCall && def.cls !== 'P') continue;
-      // A legitimate zero settlement is not an identifiable IV. Do not silently drop an
-      // in-scope OTM mark and interpolate over it, or invent a small positive premium.
+      // A zero cannot identify IV. Quarantine the ENTIRE expiry, with a persisted
+      // barrier so readers cannot interpolate or fit across the removed tenor.
+      if (px === 0) {
+        quarantineZero(id, 'zero_calibration');
+        continue;
+      }
       if (!(px > 0) || !Number.isFinite(px)) {
-        throw new Error(
-          `${symbol}: IV için fiyat geçersiz; neden=${px === 0 ? 'zero_calibration' : 'invalid_price'}; instrument_id=${id}; days=${days}.`,
-        );
+        throw new Error(`${symbol}: IV için fiyat geçersiz; neden=invalid_price; instrument_id=${id}; days=${days}.`);
       }
       cands.push({ m: K / F, K, px, type: useCall ? 'call' : 'put' });
+    }
+    if (quarantine) {
+      quarantinedExpiries.push(quarantine);
+      continue;
     }
     cands.sort((a, b) => a.m - b.m);
 
@@ -225,7 +246,18 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     }
   }
 
-  const { kept, dropped } = filterForwardVolOutliers(expiries);
+  const { kept } = filterForwardVolOutliers(expiries);
+  for (const expiry of expiries.filter(e => !kept.includes(e))) {
+    quarantinedExpiries.push({
+      expiryAt: expiry.expiryAt!,
+      date: expiry.date,
+      days: expiry.days,
+      reason: 'forward_vol_outlier',
+      instrumentIds: [],
+      issueCount: 0,
+    });
+  }
+  quarantinedExpiries.sort((a, b) => a.days - b.days);
 
   // DİKKAT: `spot` alanı burada gerçek spot DEĞİL, ön vadenin futures settlement'ıdır
   // (F). Yüzey forward-moneyness ekseninde tutulduğu için downstream bu alanı fiyatlamada
@@ -237,9 +269,10 @@ export function buildCmeSurface(inp: CmeInputs, symbol: string, r: number): VolS
     spot: frontF,
     fetchedISO: inp.fetchedISO,
     expiries: kept,
-    ...(dropped.length
+    ...(quarantinedExpiries.length
       ? {
-          notes: `Vade yapısı tutarsız (forward vol sıçraması) olduğu için yüzeye alınmayan vadeler: ${dropped.join(', ')}.`,
+          quarantinedExpiries,
+          notes: `Veri kontrolü nedeniyle fiyatlamaya kapalı vadeler: ${quarantinedExpiries.map(e => `${e.date} (${e.reason})`).join(', ')}. Bu vadelerin üzerinden enterpolasyon yapılmaz.`,
         }
       : {}),
     ...(inp.curves ? { curves: inp.curves } : { builtWithR: r }),

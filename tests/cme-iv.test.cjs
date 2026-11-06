@@ -149,14 +149,17 @@ test('an in-scope OTM zero cannot become zero IV or a silently interpolated miss
     evalSec,
     fetchedISO: '2026-10-12T23:35:00Z',
   };
-  assert.throws(() => buildCmeSurface(inputs, 'XAU', 0.04), /zero_calibration.*instrument_id=zero/);
+  const quarantined = buildCmeSurface(inputs, 'XAU', 0.04);
+  assert.equal(quarantined.expiries.length, 0);
+  assert.equal(quarantined.quarantinedExpiries[0].reason, 'zero_calibration');
+  assert.equal(quarantined.quarantinedExpiries[0].instrumentIds[0], 'zero');
   options.get('zero').expSec = evalSec - 3600;
   assert.equal(buildCmeSurface(inputs, 'XAU', 0.04).expiries.length, 0);
   options.get('zero').expSec = evalSec + 401 * 86400;
   assert.equal(buildCmeSurface(inputs, 'XAU', 0.04).expiries.length, 0);
 });
 
-test('zero ITM is rejected; out-of-band OTM zero does not create a calibration point', () => {
+test('zero ITM quarantines its expiry; out-of-band OTM zero does not create a calibration point', () => {
   const evalSec = Date.UTC(2026, 9, 12, 23, 35) / 1000;
   const expSec = evalSec + 30 * 86400;
   const options = new Map([
@@ -173,8 +176,43 @@ test('zero ITM is rejected; out-of-band OTM zero does not create a calibration p
     evalSec,
     fetchedISO: '2026-10-12T23:35:00Z',
   };
-  assert.throws(() => buildCmeSurface(inputs, 'XAU', 0.04), /zero_below_intrinsic.*instrument_id=itm/);
+  const quarantined = buildCmeSurface(inputs, 'XAU', 0.04);
+  assert.equal(quarantined.expiries.length, 0);
+  assert.equal(quarantined.quarantinedExpiries[0].reason, 'zero_below_intrinsic');
+  assert.equal(quarantined.quarantinedExpiries[0].instrumentIds[0], 'itm');
   options.delete('itm');
   const surface = buildCmeSurface(inputs, 'XAU', 0.04);
   assert.equal(surface.expiries.length, 0);
+  assert.equal(surface.quarantinedExpiries, undefined);
+});
+
+test('one bad expiry preserves three clean tenors and bounds zero diagnostics', () => {
+  const evalSec = Date.UTC(2026, 10, 4, 18, 30) / 1000;
+  const options = new Map(),
+    optSettle = new Map();
+  for (const days of [2, 30, 60, 90]) {
+    for (const strike of [95, 100, 105]) {
+      const id = `${days}-${strike}`,
+        type = strike >= 100 ? 'call' : 'put';
+      options.set(id, { cls: type === 'call' ? 'C' : 'P', expSec: evalSec + days * 86400, strike, und: 'gc' });
+      optSettle.set(id, american.americanPrice(100, strike, days / 365, 0.04, 0.04, 0.25, type, 72));
+    }
+  }
+  for (let i = 0; i < 20; i++) {
+    const id = String(42762966 + i);
+    options.set(id, { cls: 'C', expSec: evalSec + 2 * 86400, strike: 120 + i / 100, und: 'gc' });
+    optSettle.set(id, 0);
+  }
+  const inputs = { options, optSettle, futSettle: new Map([['gc', 100]]), evalSec, fetchedISO: '2026-11-04T18:30:00Z' };
+  const surface = buildCmeSurface(inputs, 'XAU', 0.04);
+  assert.deepEqual(
+    Array.from(surface.expiries, e => e.days),
+    [30, 60, 90],
+  );
+  assert.equal(surface.quarantinedExpiries.length, 1);
+  assert.equal(surface.quarantinedExpiries[0].issueCount, 20);
+  assert.equal(surface.quarantinedExpiries[0].instrumentIds.length, 12);
+  // An unrelated malformed price must still stop publication, even in a quarantined expiry.
+  optSettle.set('2-100', NaN);
+  assert.throws(() => buildCmeSurface(inputs, 'XAU', 0.04), /invalid_price/);
 });

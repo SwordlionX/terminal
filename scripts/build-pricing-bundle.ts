@@ -21,6 +21,13 @@ import { writeFile } from 'node:fs/promises';
 import type { VolSurface } from '../src/lib/vol/surface';
 loadEnvConfig(process.cwd());
 
+function quarantineSummary(surfaces: Record<'XAU' | 'XAG', VolSurface>): string {
+  return Object.entries(surfaces)
+    .filter(([, s]) => s.quarantinedExpiries?.length)
+    .map(([p, s]) => ` ${p}: ${s.quarantinedExpiries!.length} vade veri kontrolü nedeniyle fiyatlamaya kapalı.`)
+    .join('');
+}
+
 async function main() {
   const args = process.argv.slice(2),
     requested = args.find(a => a.startsWith('--date='))?.slice(7),
@@ -39,11 +46,14 @@ async function main() {
     if (requested && requested !== snapshot.sessionDate)
       throw new Error('İstenen seans final girdi snapshot tarihiyle uyuşmuyor.');
     const date = snapshot.sessionDate;
-    const latestRow = await db.execute({ sql: 'SELECT v FROM kv WHERE k=?', args: ['pricing_bundle_v2:latest'] });
+    let latestRow = await db.execute({ sql: 'SELECT v FROM kv WHERE k=?', args: ['pricing_bundle_v3:latest'] });
+    if (!latestRow.rows.length)
+      latestRow = await db.execute({ sql: 'SELECT v FROM kv WHERE k=?', args: ['pricing_bundle_v2:latest'] });
     const latest = latestRow.rows.length ? (JSON.parse(String(latestRow.rows[0].v)) as PricingBundle) : null;
+    if (latest) validatePricingBundle(latest);
     if (
       !requested &&
-      latest &&
+      latest?.version === 3 &&
       (latest.sessionDate > date ||
         (latest.sessionDate === date && latest.inputs?.curveRawHash === snapshot.rawHash && !latest.inputs.degraded))
     ) {
@@ -53,9 +63,10 @@ async function main() {
           result: pending ? 'waiting' : 'up_to_date',
           sessionDate: latest.sessionDate,
           sofrSession: latest.inputs?.sofrSession,
-          message: pending
-            ? `${pendingText}${latest.sessionDate} paketi kullanılıyor.`
-            : 'Fiyatlama paketi güncel; yeni final veri yok.',
+          message:
+            (pending
+              ? `${pendingText}${latest.sessionDate} paketi kullanılıyor.`
+              : 'Fiyatlama paketi güncel; yeni final veri yok.') + quarantineSummary(latest.surfaces),
         });
       console.log(JSON.stringify({ upToDate: true, sessionDate: latest.sessionDate, id: latest.id }));
       return;
@@ -140,14 +151,18 @@ async function main() {
         product,
         NaN,
       );
+      if (surfaces[product].quarantinedExpiries?.length)
+        console.log(
+          `[curve] ${product}: fiyatlamaya kapalı vadeler ${JSON.stringify(surfaces[product].quarantinedExpiries)}`,
+        );
       if (surfaces[product].expiries.length < 3) throw new Error(`${product}: yeniden kurulan IV yüzeyi yetersiz.`);
     }
     const id = createHash('sha256')
-      .update('proxy-v2.4:' + sources.join(':'))
+      .update('proxy-v3.0:' + sources.join(':'))
       .digest('hex');
     for (const surface of Object.values(surfaces)) surface.curves!.id = id;
     const bundle: PricingBundle = {
-      version: 2,
+      version: 3,
       id,
       sessionDate: date,
       builtAt: new Date().toISOString(),
@@ -165,11 +180,11 @@ async function main() {
         [
           {
             sql: 'INSERT INTO kv(k,v) VALUES (?,?) ON CONFLICT(k) DO NOTHING',
-            args: [`pricing_bundle_v2:${date}:${id}`, json],
+            args: [`pricing_bundle_v3:${date}:${id}`, json],
           },
           {
             sql: `INSERT INTO kv(k,v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v WHERE json_extract(kv.v,'$.sessionDate') <= json_extract(excluded.v,'$.sessionDate')`,
-            args: ['pricing_bundle_v2:latest', json],
+            args: ['pricing_bundle_v3:latest', json],
           },
         ],
         'write',
@@ -182,7 +197,8 @@ async function main() {
         sofrSession: sofr.session,
         message:
           pendingText +
-          (sofr.degraded ? `Opsiyonlar güncellendi; ${sofr.note}` : 'Opsiyon, futures ve SOFR finalleri yüklendi.'),
+          (sofr.degraded ? `Opsiyonlar güncellendi; ${sofr.note}` : 'Opsiyon, futures ve SOFR finalleri yüklendi.') +
+          quarantineSummary(surfaces),
       });
     }
     console.log(
@@ -194,6 +210,9 @@ async function main() {
           promoted,
           usdMonths: usd.months.length,
           expiryCounts: Object.fromEntries(Object.entries(surfaces).map(([p, s]) => [p, s.expiries.length])),
+          quarantinedExpiryCounts: Object.fromEntries(
+            Object.entries(surfaces).map(([p, s]) => [p, s.quarantinedExpiries?.length ?? 0]),
+          ),
           downloadEstimateUsd: data.newEstimateUsd,
           newDownloads: data.downloads,
           geminiRequests: 0,

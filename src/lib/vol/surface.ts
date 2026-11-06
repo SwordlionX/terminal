@@ -23,12 +23,23 @@ export interface ExpirySmile {
   underlyingLastTradeTime?: string;
 }
 
+/** Rejected tenors are explicit barriers: pricing must not interpolate across them. */
+export interface QuarantinedExpiry {
+  expiryAt: string;
+  days: number;
+  date: string;
+  reason: 'zero_calibration' | 'zero_below_intrinsic' | 'forward_vol_outlier';
+  instrumentIds: string[];
+  issueCount: number;
+}
+
 export interface VolSurface {
   curves?: PricingCurves;
   symbol: string;
   spot: number;
   fetchedISO: string;
   expiries: ExpirySmile[];
+  quarantinedExpiries?: QuarantinedExpiry[];
   /** Eğri paketi olmadan sabit faizle kurulmuş yüzeyin faizi (paketli metal yüzeyinde yok). */
   builtWithR?: number;
   /**
@@ -83,7 +94,11 @@ function dateDay(value: string): number | null {
   return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === prefix ? time / 86400000 : null;
 }
 
-export function rebasedExpiryDays(surface: VolSurface, expiry: ExpirySmile, valuationDate?: string): number {
+export function rebasedExpiryDays(
+  surface: VolSurface,
+  expiry: Pick<ExpirySmile, 'expiryAt' | 'days' | 'date'>,
+  valuationDate?: string,
+): number {
   if (!valuationDate) return expiry.days;
   if (surface.curves && expiry.expiryAt) {
     const valuation = dateDay(valuationDate),
@@ -162,6 +177,33 @@ export function surfaceVolEstimate(surface: VolSurface, m: number, days: number,
   if (!aged.length)
     return { vol: null, mode: 'unavailable', reason: 'Değerleme tarihinde kote vadeler dolmuş veya tarih geçersiz.' };
 
+  const quarantine = surface.quarantinedExpiries ?? [];
+  if (
+    !Array.isArray(quarantine) ||
+    quarantine.some(
+      expiry =>
+        !expiry ||
+        !Number.isFinite(expiry.days) ||
+        !(expiry.days > 0) ||
+        typeof expiry.expiryAt !== 'string' ||
+        !Number.isFinite(Date.parse(expiry.expiryAt)) ||
+        typeof expiry.date !== 'string' ||
+        expiry.date.length !== 10 ||
+        dateDay(expiry.date) == null ||
+        expiry.expiryAt.slice(0, 10) !== expiry.date,
+    )
+  )
+    return { vol: null, mode: 'unavailable', reason: 'Kullanılamayan vade kaydı geçersiz.' };
+  const quarantinedDays = quarantine.map(expiry => rebasedExpiryDays(surface, expiry, valuationDate));
+  if (quarantinedDays.some(day => !Number.isFinite(day)))
+    return { vol: null, mode: 'unavailable', reason: 'Kullanılamayan vade kaydı geçersiz.' };
+  if (quarantinedDays.some(day => Math.abs(day - days) < 1e-8))
+    return {
+      vol: null,
+      mode: 'unavailable',
+      reason: 'Bu vade güvenilir settlement bulunmadığı için fiyatlamaya kapalı.',
+    };
+
   // An observed expiry needs only its own smile. A neighboring tenor may not quote
   // this moneyness, which must not invalidate the exact-tenor observation.
   const exact = aged.find(entry => Math.abs(entry.days - days) < 1e-8);
@@ -177,6 +219,12 @@ export function surfaceVolEstimate(surface: VolSurface, m: number, days: number,
     const e1 = aged[i],
       e2 = aged[i + 1];
     if (days > e1.days && days < e2.days) {
+      if (quarantinedDays.some(day => day >= e1.days - 1e-8 && day <= e2.days + 1e-8))
+        return {
+          vol: null,
+          mode: 'unavailable',
+          reason: 'Aradaki bir vade güvenilir settlement içermiyor; bu aralıkta fiyat türetilemez.',
+        };
       const a = sliceEstimate(e1.expiry, m, e1.days);
       const b = sliceEstimate(e2.expiry, m, e2.days);
       if (a.vol == null || b.vol == null)

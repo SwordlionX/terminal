@@ -41,7 +41,12 @@ async function runPipeline(failure) {
   };
   const db = {
     execute: async query => ({
-      rows: query.args[0] === 'databento_curve_inputs_v1:latest' ? [{ v: JSON.stringify(snapshot) }] : [],
+      rows:
+        query.args[0] === 'databento_curve_inputs_v1:latest'
+          ? [{ v: JSON.stringify(snapshot) }]
+          : query.args[0] === 'pricing_bundle_v3:latest' && failure?.latest
+            ? [{ v: JSON.stringify(failure.latest) }]
+            : [],
     }),
     batch: async queries => {
       events.push('activate');
@@ -110,7 +115,24 @@ async function runPipeline(failure) {
         assert.equal(inputs.optSettle.get('live'), 2);
         events.push('surface-' + product);
         if (failure?.surface === product) throw new Error(product + ': IV yüzeyi yetersiz');
-        return { curves: inputs.curves, expiries: [{}, {}, {}] };
+        return {
+          curves: inputs.curves,
+          expiries: failure?.tooFew === product ? [{}, {}] : [{}, {}, {}],
+          ...(failure?.quarantine
+            ? {
+                quarantinedExpiries: [
+                  {
+                    expiryAt: '2026-10-14T18:30:00Z',
+                    date: '2026-10-14',
+                    days: 2,
+                    reason: 'zero_calibration',
+                    instrumentIds: ['42762966'],
+                    issueCount: 1,
+                  },
+                ],
+              }
+            : {}),
+        };
       },
     },
     '../src/services/pricing-bundle.service': {
@@ -161,7 +183,8 @@ test('known expired sentinel is excluded; both metals validate before one atomic
   assert.equal(result.exitCode, 0);
   assert.equal(result.batches.length, 1);
   assert.equal(result.batches[0].length, 2);
-  assert.equal(result.batches[0][1].args[0], 'pricing_bundle_v2:latest');
+  assert.equal(result.batches[0][1].args[0], 'pricing_bundle_v3:latest');
+  assert.equal(JSON.parse(result.batches[0][1].args[1]).version, 3);
   assert.ok(result.events.indexOf('surface-XAU') < result.events.indexOf('validate'));
   assert.ok(result.events.indexOf('surface-XAG') < result.events.indexOf('validate'));
   assert.ok(result.events.indexOf('validate') < result.events.indexOf('activate'));
@@ -196,4 +219,39 @@ test('failure on the second metal cannot replace latest with a half-package', as
   assert.equal(result.batches.length, 0);
   assert.equal(result.artifacts.length, 0);
   assert.equal(result.statuses.at(-1).result, 'failed');
+});
+
+test('quarantined expiries persist atomically in v3 and warn in refresh status', async () => {
+  const result = await runPipeline({ quarantine: true });
+  assert.equal(result.exitCode, 0);
+  const bundle = JSON.parse(result.batches[0][1].args[1]);
+  assert.equal(bundle.surfaces.XAU.quarantinedExpiries[0].instrumentIds[0], '42762966');
+  assert.equal(bundle.surfaces.XAG.quarantinedExpiries.length, 1);
+  assert.match(result.statuses.at(-1).message, /fiyatlamaya kapalı/);
+  assert.ok(result.batches[0].every(q => q.args[0].startsWith('pricing_bundle_v3:')));
+});
+
+test('quarantine leaving fewer than three clean tenors cannot activate either metal', async () => {
+  const result = await runPipeline({ quarantine: true, tooFew: 'XAG' });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.batches.length, 0);
+  assert.equal(result.artifacts.length, 0);
+});
+
+test('up-to-date v3 keeps the coverage warning without another download or activation', async () => {
+  const surface = { quarantinedExpiries: [{ date: '2026-10-14' }] };
+  const result = await runPipeline({
+    latest: {
+      version: 3,
+      id: 'current',
+      sessionDate: date,
+      inputs: { curveRawHash: 'fixture-hash', degraded: false },
+      surfaces: { XAU: surface, XAG: {} },
+    },
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.batches.length, 0);
+  assert.equal(result.downloads.length, 0);
+  assert.equal(result.statuses.at(-1).result, 'up_to_date');
+  assert.match(result.statuses.at(-1).message, /XAU: 1 vade.*fiyatlamaya kapalı/);
 });
