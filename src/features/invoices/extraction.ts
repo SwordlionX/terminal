@@ -3,6 +3,47 @@ import type { InvoiceCompany, DocumentSummary } from './model';
 import { parseQrEvidence } from './qr-evidence';
 
 export const MAX_DOCUMENT_BYTES = 3 * 1024 * 1024;
+export const MAX_DOCUMENTS_PER_FILE = 10;
+
+/** Match QR evidence by document number; never mix different receipts' quantities. */
+export function validateExtractions(
+  value: unknown,
+  companies: Pick<InvoiceCompany, 'id' | 'name'>[],
+  codes: unknown = [],
+) {
+  const batch = object(value);
+  if (!Array.isArray(batch.documents) || !batch.documents.length || batch.documents.length > MAX_DOCUMENTS_PER_FILE)
+    throw new InvoiceError(`Dosyada 1–${MAX_DOCUMENTS_PER_FILE} mesnet olmalı. Daha büyük dosyayı bölerek yükle.`, 422);
+  if (batch.hasMoreDocuments !== false)
+    throw new InvoiceError('Dosyanın tamamı okunamadı. Mesnetleri daha küçük dosyalara bölerek yükle.', 422);
+  // Validate the outer transport bound before selecting evidence for any one receipt.
+  parseQrEvidence(codes);
+  const qrCodes = codes == null ? [] : (codes as string[]);
+  const evidence = qrCodes.map(code => ({ code, qr: parseQrEvidence([code]) }));
+  const qrNumbers = new Set(evidence.filter(e => e.qr.hasData && e.qr.number).map(e => normalizeNumber(e.qr.number!)));
+  const rows = batch.documents.map(object);
+  if (
+    qrNumbers.size > 1 &&
+    [...qrNumbers].some(
+      number => !rows.some(row => typeof row.number === 'string' && normalizeNumber(row.number) === number),
+    )
+  )
+    throw new InvoiceError('QR bilgisi bulunan mesnetlerin tümü okunamadı. Dosyayı bölerek yeniden yükle.', 422);
+  return rows.map(row => {
+    const selected =
+      rows.length === 1 && qrNumbers.size <= 1
+        ? qrCodes
+        : evidence
+            .filter(
+              e =>
+                typeof row.number === 'string' &&
+                e.qr.number &&
+                normalizeNumber(e.qr.number) === normalizeNumber(row.number),
+            )
+            .map(e => e.code);
+    return validateExtraction(row, companies, selected);
+  });
+}
 export function documentMime(bytes: Uint8Array) {
   const b = Buffer.from(bytes);
   if (b.subarray(0, 5).toString() === '%PDF-') return 'application/pdf';
@@ -26,6 +67,7 @@ export function qrReviewAfterFailure(companies: Pick<InvoiceCompany, 'id' | 'nam
   const partial = validateExtraction({ documentType: qr.documentType }, companies, codes);
   partial.warnings.unshift(
     'Gemini okuması tamamlanamadı. QR bilgileri aktarıldı; firmayı belgeye bakarak seç ve tüm alanları doğrula.',
+    'Bu sonuç yalnızca okunan QR içindir. Dosyadaki başka mesnetler okunmuş sayılmaz.',
   );
   return partial;
 }

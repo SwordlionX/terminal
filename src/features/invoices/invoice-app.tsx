@@ -61,6 +61,7 @@ type Extracted = {
 };
 type Modal =
   | { type: 'new'; extracted?: Extracted }
+  | { type: 'batch'; documents: (Extracted & { duplicates?: Invoice[] })[] }
   | { type: 'edit'; invoice: Invoice }
   | { type: 'usage'; invoice: Invoice }
   | { type: 'company' }
@@ -380,12 +381,15 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
       form.append('file', file);
       form.append('qrCodes', JSON.stringify(qr.codes));
       setReadingStage('Gemini firma, belge numarası ve miktarı okuyor…');
-      const data = await api<Extracted | { duplicates: Invoice[] }>('/api/fatura/mesnet', {
+      const data = await api<
+        Extracted | { duplicates: Invoice[] } | { documents: (Extracted & { duplicates?: Invoice[] })[] }
+      >('/api/fatura/mesnet', {
         method: 'POST',
         body: form,
         signal: AbortSignal.timeout(65000),
       });
-      if ('duplicates' in data) setModal({ type: 'duplicate', invoices: data.duplicates });
+      if ('documents' in data) setModal({ type: 'batch', documents: data.documents });
+      else if ('duplicates' in data) setModal({ type: 'duplicate', invoices: data.duplicates });
       else setModal({ type: 'new', extracted: data });
     } catch (error) {
       if (error instanceof RequestError && error.status === 401) onExpired();
@@ -595,7 +599,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             <p>
               {reading
                 ? readingStage || 'Belge hazırlanıyor…'
-                : 'PDF veya fotoğraf yükle. Alanları Gemini doldursun, kontrol edip kaydet.'}
+                : 'PDF veya fotoğraf yükle. Bir dosyadaki en fazla 10 mesnedi ayrı ayrı kontrol edip kaydet.'}
             </p>
           </div>
           <button className="inv-secondary" onClick={() => upload.current?.click()} disabled={reading}>
@@ -796,6 +800,13 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             setHistoryId(id);
           }}
         />
+      ) : modal?.type === 'batch' ? (
+        <BatchReview
+          documents={modal.documents}
+          companies={snapshot?.companies || []}
+          onClose={() => setModal(null)}
+          onChanged={() => setRevision(v => v + 1)}
+        />
       ) : modal ? (
         <EntryModal
           modal={modal}
@@ -817,10 +828,12 @@ function DuplicateModal({
   invoices,
   onClose,
   onOpen,
+  closeLabel = 'Kapat',
 }: {
   invoices: Invoice[];
   onClose: () => void;
-  onOpen: (id: string) => void;
+  onOpen?: (id: string) => void;
+  closeLabel?: string;
 }) {
   return (
     <ModalFrame title="Bu fatura daha önce kaydedilmiş" onClose={onClose}>
@@ -842,17 +855,79 @@ function DuplicateModal({
           <p>
             Kalan <b>{formatMoney(invoice.remainingCents, invoice.currency)}</b>
           </p>
-          <button className="inv-primary" type="button" onClick={() => onOpen(invoice.id)}>
-            Mevcut kaydı aç
-          </button>
+          {onOpen && (
+            <button className="inv-primary" type="button" onClick={() => onOpen(invoice.id)}>
+              Mevcut kaydı aç
+            </button>
+          )}
         </div>
       ))}
       <div className="inv-form-footer">
         <button className="inv-secondary" type="button" onClick={onClose}>
-          Kapat
+          {closeLabel}
         </button>
       </div>
     </ModalFrame>
+  );
+}
+
+function BatchReview({
+  documents,
+  companies,
+  onClose,
+  onChanged,
+}: {
+  documents: (Extracted & { duplicates?: Invoice[] })[];
+  companies: InvoiceCompany[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const [duplicates, setDuplicates] = useState<Invoice[] | null>(null);
+  const [savedCount, setSavedCount] = useState(0);
+  const current = documents[index];
+  const next = () => {
+    setDuplicates(null);
+    setIndex(i => i + 1);
+  };
+  if (!current)
+    return (
+      <ModalFrame title="Mesnet kontrolü tamamlandı" onClose={onClose}>
+        <p>
+          {documents.length} mesnet incelendi. {savedCount} yeni kayıt kaydedildi; diğerleri atlandı.
+        </p>
+        <button className="inv-primary" type="button" onClick={onClose}>
+          Tamam
+        </button>
+      </ModalFrame>
+    );
+  const found = duplicates ?? current.duplicates;
+  if (found?.length)
+    return (
+      <DuplicateModal
+        invoices={found}
+        onClose={next}
+        closeLabel={`${index + 1} / ${documents.length} — Bu mesnedi atla ve devam et`}
+      />
+    );
+  return (
+    <EntryModal
+      key={index}
+      modal={{ type: 'new', extracted: current }}
+      companies={companies}
+      selectedCompany=""
+      onDuplicate={setDuplicates}
+      onClose={() => {
+        if (window.confirm('Kalan mesnetleri incelemeden kapatmak istiyor musun? Kaydedilenler korunur.')) onClose();
+      }}
+      onSaved={() => {
+        setSavedCount(n => n + 1);
+        onChanged();
+        next();
+      }}
+      progress={`${index + 1} / ${documents.length} mesnet · ${savedCount} kaydedildi`}
+      onSkip={next}
+    />
   );
 }
 
@@ -863,13 +938,17 @@ function EntryModal({
   onClose,
   onSaved,
   onDuplicate,
+  progress,
+  onSkip,
 }: {
-  modal: Exclude<Modal, null | { type: 'accounts' } | { type: 'duplicate' }>;
+  modal: Exclude<Modal, null | { type: 'accounts' } | { type: 'duplicate' } | { type: 'batch' }>;
   companies: InvoiceCompany[];
   selectedCompany: string;
   onClose: () => void;
   onSaved: () => void;
   onDuplicate: (invoices: Invoice[]) => void;
+  progress?: string;
+  onSkip?: () => void;
 }) {
   const existing = modal.type === 'edit' || modal.type === 'usage' ? modal.invoice : undefined,
     extracted = modal.type === 'new' ? modal.extracted : undefined;
@@ -990,6 +1069,16 @@ function EntryModal({
         if (!busy) onClose();
       }}
     >
+      {progress && (
+        <p className="inv-muted" role="status">
+          {progress}
+        </p>
+      )}
+      {onSkip && (
+        <button type="button" className="inv-secondary" disabled={busy} onClick={onSkip}>
+          Bu mesnedi atla
+        </button>
+      )}
       {draft && (
         <div className="inv-document-confirm">
           <span className="inv-eyebrow">SON KONTROL</span>

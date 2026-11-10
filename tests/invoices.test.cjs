@@ -29,8 +29,80 @@ function loadTs(file) {
 const { createSqliteClient } = require('./support/sqlite-client.cjs');
 const { InvoiceStore } = loadTs('src/features/invoices/store.ts');
 const { parseMoney, date, pin, INITIAL_COMPANIES, csvCell } = loadTs('src/features/invoices/model.ts');
-const { validateExtraction, documentMime } = loadTs('src/features/invoices/extraction.ts');
+const { validateExtraction, validateExtractions, documentMime } = loadTs('src/features/invoices/extraction.ts');
 const { readDocumentQr } = loadTs('src/features/invoices/read-qr.ts');
+
+async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP') {
+  const calls = [];
+  const existing = { id: 'existing', number: 'QA2026000000123' };
+  const db = {
+    snapshot: async () => ({ companies }),
+    duplicates: async number => (number === existing.number ? [existing] : []),
+  };
+  const mock = {
+    '@google/genai': {
+      Type: { OBJECT: 'OBJECT', ARRAY: 'ARRAY', STRING: 'STRING', BOOLEAN: 'BOOLEAN' },
+      GoogleGenAI: class {
+        models = {
+          generateContent: async request => {
+            calls.push(request);
+            return {
+              text: JSON.stringify(payload),
+              candidates: [{ finishReason }],
+            };
+          },
+        };
+      },
+    },
+    '@/features/invoices/server': {
+      authenticated: async () => ({ db }),
+      sameOrigin: () => {},
+      json: (body, status = 200) => new Response(JSON.stringify(body), { status }),
+      errorResponse: error => new Response(JSON.stringify({ error: error.message }), { status: error.status || 500 }),
+    },
+    '@/features/invoices/model': loadTs('src/features/invoices/model.ts'),
+    '@/features/invoices/extraction': loadTs('src/features/invoices/extraction.ts'),
+    '@/features/invoices/qr-evidence': loadTs('src/features/invoices/qr-evidence.ts'),
+    '@/features/invoices/document-reader': loadTs('src/features/invoices/document-reader.ts'),
+    '@/lib/assistant/limits': {
+      reserveModelCall: async () => {},
+      reserveRequest: async () => {},
+      readModelBlocks: async () => ({}),
+      blockModel: async () => {},
+    },
+    '@/lib/assistant/models': {
+      availableModels: models => models,
+      modelChain: () => ['fixture-1', 'fixture-2'],
+      thinkingFor: () => ({}),
+    },
+  };
+  const filename = path.resolve('src/app/api/fatura/mesnet/route.ts');
+  const mod = new Module(filename, module);
+  mod.filename = filename;
+  mod.paths = Module._nodeModulePaths(path.dirname(filename));
+  const normal = mod.require.bind(mod);
+  mod.require = id => mock[id] || normal(id);
+  mod._compile(
+    ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText,
+    filename,
+  );
+  const previous = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'fixture-only-never-sent';
+  try {
+    const form = new FormData();
+    form.set('file', new Blob(['%PDF-synthetic'], { type: 'application/pdf' }), 'batch.pdf');
+    form.set('qrCodes', JSON.stringify(qrCodes));
+    const response = await mod.exports.POST(
+      new Request('http://localhost/api/fatura/mesnet', { method: 'POST', body: form }),
+    );
+    return { status: response.status, body: await response.json(), calls };
+  } finally {
+    if (previous === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previous;
+  }
+}
 
 async function fixture(t) {
   const db = createSqliteClient();
@@ -346,6 +418,84 @@ test('QR conflicts do not silently replace number, amount or date', () => {
     /tek bir belge/,
   );
   assert.throws(() => validateExtraction(fxRead, companies, [1]), /QR/);
+});
+
+test('one file returns independent mesnets with QR values matched only by document number', () => {
+  const other = {
+    ...fxRead,
+    number: 'SECOND',
+    counterpartyName: 'Albayrak',
+    foreignAmountCents: 50000,
+    foreignCurrency: 'USD',
+  };
+  const secondQr = { senaryo: 'EDOVIZBELGE', no: 'SECOND', tarih: '2026-11-05', 'miktari(USD)': '500,00' };
+  const result = validateExtractions({ documents: [fxRead, other], hasMoreDocuments: false }, companies, [
+    JSON.stringify(secondQr),
+    JSON.stringify(fxQr),
+  ]);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].amountCents, 250000);
+  assert.equal(result[0].currency, 'GBP');
+  assert.equal(result[0].companyId, 'elve');
+  assert.equal(result[1].amountCents, 50000);
+  assert.equal(result[1].currency, 'USD');
+  assert.equal(result[1].companyId, 'albayrak');
+  assert(result.every(row => row.document.qrStatus === 'matched'));
+});
+
+test('an unreadable mesnet stays in review and cannot inherit a neighboring QR', () => {
+  const rows = validateExtractions({ documents: [fxRead, { number: null }], hasMoreDocuments: false }, companies, [
+    JSON.stringify(fxQr),
+  ]);
+  assert.equal(rows[1].number, null);
+  assert.equal(rows[1].amountCents, null);
+  assert.equal(rows[1].companyId, null);
+  assert.notEqual(rows[1].document.qrStatus, 'matched');
+  assert.throws(() => validateExtractions({ documents: [fxRead], hasMoreDocuments: true }, companies), /tamamı/);
+  assert.throws(() => validateExtractions({ documents: [], hasMoreDocuments: false }, companies), /1–10/);
+  assert.throws(
+    () => validateExtractions({ documents: Array(11).fill(fxRead), hasMoreDocuments: false }, companies),
+    /1–10/,
+  );
+  assert.throws(
+    () =>
+      validateExtractions({ documents: [fxRead], hasMoreDocuments: false }, companies, [
+        JSON.stringify(fxQr),
+        JSON.stringify({ ...fxQr, no: 'MISSING' }),
+      ]),
+    /tümü/,
+  );
+});
+
+test('upload reads the entire file even when its first QR already exists, preserving new receipts', async () => {
+  const other = { ...fxRead, number: 'NEW', counterpartyName: 'Albayrak' };
+  const result = await readUploadFixture({ documents: [fxRead, other], hasMoreDocuments: false }, [
+    JSON.stringify(fxQr),
+  ]);
+  assert.equal(result.status, 200);
+  assert.equal(result.calls.length, 1);
+  assert.equal(result.body.documents.length, 2);
+  assert.equal(result.body.documents[0].duplicates.length, 1);
+  assert.equal(result.body.documents[1].duplicates.length, 0);
+  assert.equal(result.body.documents[1].number, 'NEW');
+  assert(result.calls[0].config.responseSchema.properties.documents.items);
+});
+
+test('single uploads keep their original response shape; truncated batches never become one QR-only invoice', async () => {
+  const single = await readUploadFixture({ documents: [{ ...fxRead, number: 'NEW' }], hasMoreDocuments: false });
+  assert.equal(single.status, 200);
+  assert.equal(single.body.number, 'NEW');
+  assert.equal('duplicates' in single.body, false);
+  const incomplete = await readUploadFixture({ documents: [fxRead], hasMoreDocuments: true }, [JSON.stringify(fxQr)]);
+  assert.equal(incomplete.status, 422);
+  assert.equal(incomplete.body.number, undefined);
+  const truncated = await readUploadFixture(
+    { documents: [fxRead, { ...fxRead, number: 'NEW' }], hasMoreDocuments: false },
+    [],
+    'MAX_TOKENS',
+  );
+  assert.equal(truncated.status, 422);
+  assert.equal(truncated.body.documents, undefined);
 });
 
 test('cold QR library loading does not consume scan time or require animation frames', async t => {
