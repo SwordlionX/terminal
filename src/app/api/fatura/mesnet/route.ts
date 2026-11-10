@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     let parsed: unknown;
     let batchDetected = false;
+    let observedDocumentCount = 0;
     try {
       stage = 'recognition';
       parsed = await readDocumentWithFallback({
@@ -166,6 +167,9 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
               throw new Error('Invalid document object');
             const envelope = parsed as { documents?: unknown[]; hasMoreDocuments?: boolean };
+            const count = Array.isArray(envelope.documents) ? envelope.documents.length : 0;
+            if (count < observedDocumentCount) throw new DocumentOutputError('Receipt count decreased on retry');
+            observedDocumentCount = count;
             if ((envelope.documents?.length ?? 0) > 1 || envelope.hasMoreDocuments === true) batchDetected = true;
             validateExtractions(parsed, snapshot.companies, codes);
             return parsed;

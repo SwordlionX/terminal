@@ -47,7 +47,7 @@ async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP') {
           generateContent: async request => {
             calls.push(request);
             return {
-              text: JSON.stringify(payload),
+              text: JSON.stringify(typeof payload === 'function' ? payload(calls.length) : payload),
               candidates: [{ finishReason }],
             };
           },
@@ -496,6 +496,19 @@ test('single uploads keep their original response shape; truncated batches never
   );
   assert.equal(truncated.status, 422);
   assert.equal(truncated.body.documents, undefined);
+});
+
+test('a retry cannot silently shrink a detected batch to a single receipt', async () => {
+  const result = await readUploadFixture(
+    attempt =>
+      attempt === 1
+        ? { documents: [fxRead, { ...fxRead, number: 'SECOND' }], hasMoreDocuments: true }
+        : { documents: [fxRead], hasMoreDocuments: false },
+    [JSON.stringify(fxQr)],
+  );
+  assert.equal(result.status, 422);
+  assert.equal(result.body.number, undefined);
+  assert.equal(result.body.documents, undefined);
 });
 
 test('cold QR library loading does not consume scan time or require animation frames', async t => {
