@@ -22,6 +22,7 @@ import {
 import { AppSwitcher } from '@/components/app-switcher';
 import { CURRENCIES, formatMoney, parseMoney, STATUS_LABELS, todayInTurkey, csvCell } from './model';
 import type { DocumentSummary, Invoice, InvoiceAccount, InvoiceCompany, InvoiceEvent, InvoiceSnapshot } from './model';
+import { readUploadQueue, MAX_UPLOAD_FILES } from './upload-queue';
 
 class RequestError extends Error {
   constructor(
@@ -61,13 +62,15 @@ type Extracted = {
 };
 type Modal =
   | { type: 'new'; extracted?: Extracted }
-  | { type: 'batch'; documents: (Extracted & { duplicates?: Invoice[] })[] }
+  | { type: 'batch'; documents: ReviewItem[]; failures?: string[] }
   | { type: 'edit'; invoice: Invoice }
   | { type: 'usage'; invoice: Invoice }
   | { type: 'company' }
   | { type: 'accounts' }
   | { type: 'duplicate'; invoices: Invoice[] }
   | null;
+
+type ReviewItem = { fileName: string; value: Extracted | { duplicates: Invoice[] } };
 
 function ModalFrame({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -367,30 +370,34 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     setRevision(v => v + 1);
     setNotice('Kayıt kaydedildi.');
   };
-  async function readFile(file: File | undefined) {
-    if (!file || reading) return;
+  async function readFiles(files: File[]) {
+    if (!files.length || reading) return;
     setReading(true);
     setError('');
     setNotice('');
     try {
-      if (file.size > 3 * 1024 * 1024) throw new Error('En fazla 3 MB büyüklüğünde bir belge yükle.');
+      if (files.length > MAX_UPLOAD_FILES) throw new Error('Bir seferde en fazla 10 dosya yükle.');
       const { readDocumentQr } = await import('./read-qr');
-      setReadingStage('Belgedeki QR kontrol ediliyor…');
-      const qr = await readDocumentQr(file);
-      const form = new FormData();
-      form.append('file', file);
-      form.append('qrCodes', JSON.stringify(qr.codes));
-      setReadingStage('Gemini firma, belge numarası ve miktarı okuyor…');
-      const data = await api<
-        Extracted | { duplicates: Invoice[] } | { documents: (Extracted & { duplicates?: Invoice[] })[] }
-      >('/api/fatura/mesnet', {
-        method: 'POST',
-        body: form,
-        signal: AbortSignal.timeout(65000),
-      });
-      if ('documents' in data) setModal({ type: 'batch', documents: data.documents });
-      else if ('duplicates' in data) setModal({ type: 'duplicate', invoices: data.duplicates });
-      else setModal({ type: 'new', extracted: data });
+      const { results, failures } = await readUploadQueue<Extracted | { duplicates: Invoice[] }>(
+        files,
+        async (file, index) => {
+          const progress = `${index + 1} / ${files.length} · ${file.name}`;
+          setReadingStage(`${progress} — QR ve PDF metni kontrol ediliyor…`);
+          const qr = await readDocumentQr(file);
+          const form = new FormData();
+          form.append('file', file);
+          form.append('qrCodes', JSON.stringify(qr.codes));
+          if (qr.pdfPages) form.append('pdfPages', JSON.stringify(qr.pdfPages));
+          setReadingStage(`${progress} — Bilgiler doğrulanıyor; gerekirse ayrıntılı okunuyor…`);
+          const data = await api<
+            Extracted | { duplicates: Invoice[] } | { documents: (Extracted & { duplicates?: Invoice[] })[] }
+          >('/api/fatura/mesnet', { method: 'POST', body: form, signal: AbortSignal.timeout(65000) });
+          return 'documents' in data ? data.documents : [data];
+        },
+        error => error instanceof RequestError && error.status === 401,
+      );
+      if (results.length) setModal({ type: 'batch', documents: results, failures });
+      else setError(failures.join('\n'));
     } catch (error) {
       if (error instanceof RequestError && error.status === 401) onExpired();
       else
@@ -583,11 +590,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
           onDrop={e => {
             e.preventDefault();
             setDrag(false);
-            if (e.dataTransfer.files.length > 1) {
-              setError('Her seferinde tek bir mesnet dosyası yükle.');
-              return;
-            }
-            void readFile(e.dataTransfer.files[0]);
+            void readFiles(Array.from(e.dataTransfer.files));
           }}
           aria-busy={reading}
         >
@@ -599,7 +602,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             <p>
               {reading
                 ? readingStage || 'Belge hazırlanıyor…'
-                : 'PDF veya fotoğraf yükle. Bir dosyadaki en fazla 10 mesnedi ayrı ayrı kontrol edip kaydet.'}
+                : 'En fazla 10 PDF veya fotoğraf seç. Her dosya en fazla 3 MB, her dosyada en fazla 10 mesnet olabilir.'}
             </p>
           </div>
           <button className="inv-secondary" onClick={() => upload.current?.click()} disabled={reading}>
@@ -609,8 +612,9 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             hidden
             ref={upload}
             type="file"
+            multiple
             accept="application/pdf,image/png,image/jpeg,image/webp"
-            onChange={e => void readFile(e.target.files?.[0])}
+            onChange={e => void readFiles(Array.from(e.target.files || []))}
           />
         </section>
         <section className="inv-records">
@@ -803,6 +807,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
       ) : modal?.type === 'batch' ? (
         <BatchReview
           documents={modal.documents}
+          failures={modal.failures}
           companies={snapshot?.companies || []}
           onClose={() => setModal(null)}
           onChanged={() => setRevision(v => v + 1)}
@@ -873,11 +878,13 @@ function DuplicateModal({
 
 function BatchReview({
   documents,
+  failures = [],
   companies,
   onClose,
   onChanged,
 }: {
-  documents: (Extracted & { duplicates?: Invoice[] })[];
+  documents: ReviewItem[];
+  failures?: string[];
   companies: InvoiceCompany[];
   onClose: () => void;
   onChanged: () => void;
@@ -885,11 +892,29 @@ function BatchReview({
   const [index, setIndex] = useState(0);
   const [duplicates, setDuplicates] = useState<Invoice[] | null>(null);
   const [savedCount, setSavedCount] = useState(0);
+  const [errorsAcknowledged, setErrorsAcknowledged] = useState(false);
   const current = documents[index];
   const next = () => {
     setDuplicates(null);
     setIndex(i => i + 1);
   };
+  if (failures.length && !errorsAcknowledged)
+    return (
+      <ModalFrame title="Bazı dosyalar okunamadı" onClose={onClose}>
+        <ul>
+          {failures.map((failure, i) => (
+            <li key={i}>{failure}</li>
+          ))}
+        </ul>
+        <p>
+          Başarıyla okunan {documents.length} mesnet kontrol için hazır. Hatalı dosyaları ayrıca yeniden
+          yükleyebilirsin.
+        </p>
+        <button className="inv-primary" onClick={() => setErrorsAcknowledged(true)}>
+          Okunan mesnetleri incele
+        </button>
+      </ModalFrame>
+    );
   if (!current)
     return (
       <ModalFrame title="Mesnet kontrolü tamamlandı" onClose={onClose}>
@@ -901,19 +926,21 @@ function BatchReview({
         </button>
       </ModalFrame>
     );
-  const found = duplicates ?? current.duplicates;
+  const value = current.value;
+  const found = duplicates ?? ('duplicates' in value ? value.duplicates : undefined);
   if (found?.length)
     return (
       <DuplicateModal
         invoices={found}
         onClose={next}
-        closeLabel={`${index + 1} / ${documents.length} — Bu mesnedi atla ve devam et`}
+        closeLabel={`${current.fileName} · ${index + 1} / ${documents.length} — Bu mesnedi atla ve devam et`}
       />
     );
+  if (!('document' in value)) return null;
   return (
     <EntryModal
       key={index}
-      modal={{ type: 'new', extracted: current }}
+      modal={{ type: 'new', extracted: value }}
       companies={companies}
       selectedCompany=""
       onDuplicate={setDuplicates}
@@ -925,7 +952,7 @@ function BatchReview({
         onChanged();
         next();
       }}
-      progress={`${index + 1} / ${documents.length} mesnet · ${savedCount} kaydedildi`}
+      progress={`${current.fileName} · ${index + 1} / ${documents.length} mesnet · ${savedCount} kaydedildi`}
       onSkip={next}
     />
   );
@@ -968,7 +995,7 @@ function EntryModal({
     ),
     [edited, setEdited] = useState(false),
     requestId = useRef<string>(crypto.randomUUID());
-  const [unit, setUnit] = useState(existing?.currency || extracted?.currency || 'TRY');
+  const [unit, setUnit] = useState(existing?.currency || (extracted ? extracted.currency || '' : 'TRY'));
   const amount = (n: number | undefined | null) => (n == null ? '' : (n / 100).toFixed(2).replace('.', ','));
   async function saveDraft() {
     if (!draft || busy) return;
@@ -1239,7 +1266,11 @@ function EntryModal({
                 value={unit}
                 onChange={e => setUnit(e.target.value)}
                 disabled={!!existing?.usedCents}
+                required
               >
+                <option value="" disabled>
+                  Para birimi seçiniz
+                </option>
                 {CURRENCIES.map(c => (
                   <option key={c} value={c}>
                     {c}

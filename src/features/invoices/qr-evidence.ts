@@ -11,6 +11,7 @@ export interface QrEvidence {
   exchangeRate: string | null;
   documentType: 'foreign_exchange' | 'invoice';
   conflict: boolean;
+  rateIssue: 'rounded' | 'mismatch' | null;
   hasData: boolean;
   hasLink: boolean;
   warnings: string[];
@@ -27,12 +28,13 @@ export function parseQrEvidence(codes: unknown): QrEvidence {
     exchangeRate: null,
     documentType: 'invoice',
     conflict: false,
+    rateIssue: null,
     hasData: false,
     hasLink: false,
     warnings: [],
   };
   if (codes == null) return result;
-  if (!Array.isArray(codes) || codes.length > 4 || codes.some(s => typeof s !== 'string' || s.length > 4096))
+  if (!Array.isArray(codes) || codes.length > 20 || codes.some(s => typeof s !== 'string' || s.length > 4096))
     throw new InvoiceError('QR bilgisi geçersiz.');
   const readAmount = (v: unknown) => {
     try {
@@ -70,7 +72,9 @@ export function parseQrEvidence(codes: unknown): QrEvidence {
       const keys = Object.keys(b).filter(k => /^miktari\([A-Z]{3}\)$/i.test(k));
       if (keys.length === 1) {
         try {
-          unit = currency(keys[0].slice(8, -1).toUpperCase());
+          const foreignUnit = currency(keys[0].slice(8, -1).toUpperCase());
+          if (foreignUnit === 'TRY') throw new Error('FX currency cannot be TRY');
+          unit = foreignUnit;
           amount = readAmount(b[keys[0]]);
         } catch {
           result.warnings.push('QR içindeki döviz para birimi desteklenmiyor.');
@@ -120,8 +124,18 @@ export function parseQrEvidence(codes: unknown): QrEvidence {
       rate = BigInt(whole + fraction);
     const rounded = (BigInt(result.foreignAmountCents) * rate * BigInt(2) + divisor) / (BigInt(2) * divisor);
     if (rounded > BigInt(Number.MAX_SAFE_INTEGER) || Math.abs(Number(rounded) - result.tlAmountCents) > 1) {
-      result.conflict = true;
-      result.warnings.push('QR içindeki döviz miktarı × kur, TL karşılığıyla uyuşmuyor.');
+      // A rounded reference rate must not invalidate the independently encoded
+      // document identity or FX quantity. Bound rounding by half the last digit.
+      const difference = rounded - BigInt(result.tlAmountCents);
+      const absolute = difference < BigInt(0) ? -difference : difference;
+      const tolerance =
+        (BigInt(result.foreignAmountCents) + BigInt(2) * divisor - BigInt(1)) / (BigInt(2) * divisor) + BigInt(1);
+      result.rateIssue = absolute <= tolerance ? 'rounded' : 'mismatch';
+      result.warnings.push(
+        result.rateIssue === 'rounded'
+          ? 'QR kuru yuvarlanmış olabilir. Döviz miktarı ve para birimi korunmuştur; kur ve TL karşılığını belgeden kontrol et.'
+          : 'QR kuru ile TL karşılığı uyuşmuyor. Döviz miktarını, kuru ve TL karşılığını belgeden ayrıca doğrula.',
+      );
     }
   }
   return result;

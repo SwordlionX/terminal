@@ -32,8 +32,9 @@ const { parseMoney, date, pin, INITIAL_COMPANIES, csvCell } = loadTs('src/featur
 const { validateExtraction, validateExtractions, documentMime } = loadTs('src/features/invoices/extraction.ts');
 const { readDocumentQr } = loadTs('src/features/invoices/read-qr.ts');
 
-async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP') {
+async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP', pdfPages) {
   const calls = [];
+  let reservations = 0;
   const existing = { id: 'existing', number: 'QA2026000000123' };
   const db = {
     snapshot: async () => ({ companies }),
@@ -63,10 +64,15 @@ async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP') {
     '@/features/invoices/model': loadTs('src/features/invoices/model.ts'),
     '@/features/invoices/extraction': loadTs('src/features/invoices/extraction.ts'),
     '@/features/invoices/qr-evidence': loadTs('src/features/invoices/qr-evidence.ts'),
+    '@/features/invoices/pdf-review': loadTs('src/features/invoices/pdf-review.ts'),
     '@/features/invoices/document-reader': loadTs('src/features/invoices/document-reader.ts'),
     '@/lib/assistant/limits': {
-      reserveModelCall: async () => {},
-      reserveRequest: async () => {},
+      reserveModelCall: async () => {
+        reservations++;
+      },
+      reserveRequest: async () => {
+        reservations++;
+      },
       readModelBlocks: async () => ({}),
       blockModel: async () => {},
     },
@@ -94,10 +100,11 @@ async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP') {
     const form = new FormData();
     form.set('file', new Blob(['%PDF-synthetic'], { type: 'application/pdf' }), 'batch.pdf');
     form.set('qrCodes', JSON.stringify(qrCodes));
+    if (pdfPages) form.set('pdfPages', JSON.stringify(pdfPages));
     const response = await mod.exports.POST(
       new Request('http://localhost/api/fatura/mesnet', { method: 'POST', body: form }),
     );
-    return { status: response.status, body: await response.json(), calls };
+    return { status: response.status, body: await response.json(), calls, reservations };
   } finally {
     if (previous === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = previous;
@@ -362,8 +369,8 @@ test('legacy database migration keeps TRY invoices, history and existing session
 const companies = INITIAL_COMPANIES.map(([id, name]) => ({ id, name }));
 const fxRead = {
   documentType: 'foreign_exchange',
-  issuerName: 'Örnek Döviz AŞ',
-  counterpartyName: 'Elve Ticaret Limited Şirketi',
+  issuerName: 'Elve Ticaret Limited Şirketi',
+  counterpartyName: 'Örnek Döviz AŞ',
   number: 'QA2026000000123',
   date: '2026-11-05',
   foreignAmountCents: 250000,
@@ -381,7 +388,7 @@ const fxQr = {
   uygulanankur: '45,000000',
   'odenecek(TRY)': '112.500,00',
 };
-test('FX documents track customer and FX quantity, independently cross-checked with QR', () => {
+test('FX source documents track issuer and FX quantity, independently cross-checked with QR', () => {
   const result = validateExtraction(fxRead, companies, [JSON.stringify(fxQr)]);
   assert.equal(result.companyId, 'elve');
   assert.equal(result.amountCents, 250000);
@@ -409,8 +416,10 @@ test('QR conflicts do not silently replace number, amount or date', () => {
   assert.equal(result.date, null);
   assert.equal(result.document.qrStatus, 'conflict');
   const arithmetic = validateExtraction(fxRead, companies, [JSON.stringify({ ...fxQr, uygulanankur: '44' })]);
-  assert.equal(arithmetic.amountCents, null);
-  assert.equal(arithmetic.number, null);
+  assert.equal(arithmetic.amountCents, fxRead.foreignAmountCents);
+  assert.equal(arithmetic.number, fxRead.number);
+  assert.equal(arithmetic.document.qrStatus, 'partial');
+  assert(arithmetic.warnings.some(w => w.includes('QR kuru')));
   const multi = validateExtraction(fxRead, companies, [JSON.stringify(fxQr), JSON.stringify({ ...fxQr, no: 'OTHER' })]);
   assert.equal(multi.document.qrStatus, 'conflict');
   assert.throws(
@@ -424,7 +433,7 @@ test('one file returns independent mesnets with QR values matched only by docume
   const other = {
     ...fxRead,
     number: 'SECOND',
-    counterpartyName: 'Albayrak',
+    issuerName: 'Albayrak',
     foreignAmountCents: 50000,
     foreignCurrency: 'USD',
   };
@@ -735,6 +744,133 @@ test('printed document amounts convert exactly without model arithmetic and stil
   const conflict = validateExtraction({ ...fxRead, foreignAmountText: '25.000,00' }, companies, [JSON.stringify(fxQr)]);
   assert.equal(conflict.amountCents, null);
   assert.equal(conflict.document.qrStatus, 'conflict');
+});
+
+const sourcePdfText = `DÜZENLEYEN YETKİLİ ALBAYRAK DÖVİZ VE ALTIN YETKİLİ MÜESSESE A.Ş. ÖRNEK ADRES
+SATAN KİŞİ/KURULUŞ ALİ YÜCE DÖVİZ A.Ş. ÖRNEK ADRES BELGE BİLGİLERİ
+Belge No QA2026000000999 Oluşturma Tarihi 03-11-2026 Senaryo: EDOVIZBELGE Tip: ALIM
+Döviz/Kıymetli Maden Miktarı 123.000,00 Döviz/Kıymetli Maden Cinsi EUR
+Uygulanan Kur 55,768000 TL Karşılığı 6859464.00 TL NET TUTAR 6.859.464,00 TL`;
+const sourceQr = {
+  senaryo: 'EDOVIZBELGE',
+  no: 'QA2026000000999',
+  tarih: '2026-11-03',
+  'miktari(EUR)': '123000',
+  uygulanankur: '55,77',
+  'odenecek(TRY)': '6859464.00',
+};
+
+test('rounded QR reference rates preserve issuer, identity and FX quantity with printed precision', () => {
+  const { reviewPdfText } = loadTs('src/features/invoices/pdf-review.ts');
+  const [result] = reviewPdfText([sourcePdfText], [JSON.stringify(sourceQr)], companies);
+  assert.equal(result.companyId, 'albayrak');
+  assert.equal(result.number, sourceQr.no);
+  assert.equal(result.currency, 'EUR');
+  assert.equal(result.amountCents, 12300000);
+  assert.equal(result.document.exchangeRate, '55.768000');
+  assert.equal(result.document.qrStatus, 'partial');
+  assert(result.warnings.some(w => w.includes('yuvarlanmış')));
+  const unknown = validateExtraction(
+    { ...fxRead, issuerName: 'Bilinmeyen Döviz', counterpartyName: 'Albayrak' },
+    companies,
+  );
+  assert.equal(unknown.companyId, null, 'never silently switches from unknown issuer to known other party');
+  const unknownUnit = validateExtraction({ ...fxRead, foreignCurrency: 'TRY' }, companies);
+  assert.equal(unknownUnit.currency, null, 'TRY countervalue is never an FX tracking currency');
+  assert.equal(unknownUnit.amountCents, null);
+});
+
+test('fast PDF path refuses unknown layouts, partial files, additional QRs and conflicting visible amounts', () => {
+  const { reviewPdfText } = loadTs('src/features/invoices/pdf-review.ts');
+  const codes = [JSON.stringify(sourceQr)];
+  for (const pages of [
+    [],
+    [sourcePdfText, ''],
+    [sourcePdfText, 'unrecognized page'],
+    [sourcePdfText + ' Belge No OTHER'],
+    [sourcePdfText.replace('123.000,00', '124.000,00')],
+    [sourcePdfText.replace('Cinsi EUR', 'Cinsi USD')],
+    [sourcePdfText.replace('03-11-2026', '04-11-2026')],
+  ]) {
+    assert.equal(reviewPdfText(pages, codes, companies), null);
+  }
+  assert.equal(reviewPdfText([sourcePdfText], [], companies), null);
+  assert.equal(
+    reviewPdfText([sourcePdfText], [...codes, JSON.stringify({ ...sourceQr, no: 'OTHER' })], companies),
+    null,
+  );
+  assert.equal(reviewPdfText([sourcePdfText], [JSON.stringify({ ...sourceQr, uygulanankur: '44' })], companies), null);
+  assert.equal(reviewPdfText([sourcePdfText], codes, []), null);
+  const nextText = sourcePdfText.replace(sourceQr.no, 'QA2026000000998');
+  const nextCode = JSON.stringify({ ...sourceQr, no: 'QA2026000000998' });
+  assert.equal(reviewPdfText([sourcePdfText, nextText], [nextCode, ...codes], companies).length, 2);
+});
+
+test('verified PDF and QR bypass the model and its quota; uncertain PDFs use the existing reader', async () => {
+  const quick = await readUploadFixture(null, [JSON.stringify(sourceQr)], 'STOP', [sourcePdfText]);
+  assert.equal(quick.status, 200);
+  assert.equal(quick.body.companyId, 'albayrak');
+  assert.equal(quick.body.currency, 'EUR');
+  assert.equal(quick.calls.length, 0);
+  assert.equal(quick.reservations, 0);
+  const slow = await readUploadFixture({ documents: [fxRead], hasMoreDocuments: false }, [], 'STOP', [
+    'unknown layout',
+  ]);
+  assert.equal(slow.status, 200);
+  assert.equal(slow.calls.length, 1);
+  assert.equal(slow.reservations, 2);
+});
+
+test('multi-file queue reads sequentially, keeps successes and reports individual failures', async () => {
+  const { readUploadQueue } = loadTs('src/features/invoices/upload-queue.ts');
+  const files = ['one.pdf', 'bad.pdf', 'three.pdf'].map(name => new File(['%PDF-fixture'], name));
+  let active = 0,
+    peak = 0;
+  const visits = [];
+  const queue = await readUploadQueue(
+    files,
+    async (file, index) => {
+      active++;
+      peak = Math.max(peak, active);
+      visits.push(index);
+      await new Promise(resolve => setTimeout(resolve, 1));
+      active--;
+      if (index === 1) throw new Error('Unreadable');
+      return index === 0 ? ['first', 'second'] : ['third'];
+    },
+    () => false,
+  );
+  assert.equal(peak, 1);
+  assert.deepEqual(visits, [0, 1, 2]);
+  assert.deepEqual(
+    queue.results.map(r => r.value),
+    ['first', 'second', 'third'],
+  );
+  assert.deepEqual(
+    queue.results.map(r => r.fileName),
+    ['one.pdf', 'one.pdf', 'three.pdf'],
+  );
+  assert.deepEqual(queue.failures, ['bad.pdf: Unreadable']);
+  const stopped = await readUploadQueue(
+    files,
+    async (_, index) => {
+      if (index === 1) throw new Error('Session expired');
+      assert.equal(index, 0);
+      return ['kept'];
+    },
+    () => true,
+  );
+  assert.equal(stopped.results.length, 1);
+  assert.equal(stopped.failures.length, 2);
+  await assert.rejects(
+    () =>
+      readUploadQueue(
+        Array(11).fill(files[0]),
+        async () => [],
+        () => false,
+      ),
+    /1–10/,
+  );
 });
 
 test('new confirmed invoices consume the full amount automatically and preserve older balances', async t => {

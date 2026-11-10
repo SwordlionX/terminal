@@ -63,7 +63,8 @@ function companyKey(name: string) {
 }
 export function qrReviewAfterFailure(companies: Pick<InvoiceCompany, 'id' | 'name'>[], codes: unknown) {
   const qr = parseQrEvidence(codes);
-  if (!qr.hasData || qr.conflict || !qr.number || !qr.amountCents || !qr.currency) return null;
+  if (!qr.hasData || qr.conflict || qr.rateIssue === 'mismatch' || !qr.number || !qr.amountCents || !qr.currency)
+    return null;
   const partial = validateExtraction({ documentType: qr.documentType }, companies, codes);
   partial.warnings.unshift(
     'Gemini okuması tamamlanamadı. QR bilgileri aktarıldı; firmayı belgeye bakarak seç ve tüm alanları doğrula.',
@@ -112,7 +113,9 @@ export function validateExtraction(
   const issuerName = read('issuerName'),
     counterpartyName = read('counterpartyName') || read('buyerName');
   const isFx = b.documentType === 'foreign_exchange' || qr.documentType === 'foreign_exchange';
-  let companyName = isFx ? counterpartyName : read('companyName') || issuerName;
+  // These are source documents supplied by exchange offices, not necessarily
+  // transactions involving our own company. Propose the issuing institution.
+  let companyName = isFx ? issuerName : read('companyName') || issuerName;
   const match = (name: string | null) =>
     name
       ? companies.filter(c => {
@@ -137,7 +140,7 @@ export function validateExtraction(
     warnings.push('Belge tarihi doğrulanamadı.');
   }
   const foreignAmount = printedAmount('foreignAmountText', 'foreignAmountCents'),
-    foreignCurrency = unit(b.foreignCurrency);
+    foreignCurrency = unit(b.foreignCurrency) === 'TRY' ? null : unit(b.foreignCurrency);
   let amountCents = isFx ? foreignAmount : printedAmount('amountText', 'amountCents'),
     trackingCurrency = isFx ? foreignCurrency : unit(b.currency);
   let qrStatus: DocumentSummary['qrStatus'] = qr.conflict ? 'conflict' : qr.hasData ? 'partial' : 'not_read';
@@ -169,7 +172,7 @@ export function validateExtraction(
       invoiceDate = null;
       qrStatus = 'conflict';
     } else if (qr.date) invoiceDate = qr.date;
-    if (qrStatus !== 'conflict' && agreed === 2) qrStatus = 'matched';
+    if (qrStatus !== 'conflict' && agreed === 2 && !qr.rateIssue) qrStatus = 'matched';
   }
   if (qr.conflict) {
     number = null;
@@ -190,8 +193,8 @@ export function validateExtraction(
         ? 'QR yalnız bir belge bağlantısı içeriyor; numara ve tutar bu QR’dan doğrulanamadı.'
         : 'Veri içeren QR okunamadı; alanları belge üzerinden kontrol et.',
     );
-  const tlAmount = qr.tlAmountCents ?? printedAmount('tlAmountText', 'tlAmountCents'),
-    rate = qr.exchangeRate ?? read('exchangeRate', 30);
+  const tlAmount = printedAmount('tlAmountText', 'tlAmountCents') ?? qr.tlAmountCents,
+    rate = read('exchangeRate', 30) ?? qr.exchangeRate;
   const document: DocumentSummary = {
     issuerName,
     counterpartyName,
