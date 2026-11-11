@@ -4,6 +4,7 @@ import { InvoiceStore } from './store';
 import { InvoiceError } from './model';
 
 export const SESSION_COOKIE = 'invoice_session';
+export const DEVICE_COOKIE = 'invoice_device';
 let store: InvoiceStore | undefined;
 export function invoiceStore() {
   const secret = process.env.INVOICE_AUTH_SECRET,

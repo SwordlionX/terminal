@@ -59,6 +59,8 @@ type Extracted = {
   numberLabel: string;
   document: DocumentSummary;
   warnings: string[];
+  /** Server signature over the read fields; required to keep a QR agreement claim. */
+  proof?: string;
 };
 type Modal =
   | { type: 'new'; extracted?: Extracted }
@@ -378,12 +380,14 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     try {
       if (files.length > MAX_UPLOAD_FILES) throw new Error('Bir seferde en fazla 10 dosya yükle.');
       const { readDocumentQr } = await import('./read-qr');
-      const { results, failures } = await readUploadQueue<Extracted | { duplicates: Invoice[] }>(
+      type Scan = Awaited<ReturnType<typeof readDocumentQr>>;
+      const { results, failures } = await readUploadQueue<Extracted | { duplicates: Invoice[] }, Scan>(
         files,
-        async (file, index) => {
+        async (file, index, prepared) => {
           const progress = `${index + 1} / ${files.length} · ${file.name}`;
           setReadingStage(`${progress} — QR ve PDF metni kontrol ediliyor…`);
-          const qr = await readDocumentQr(file);
+          // The next file's local scan already ran while the previous file was on the server.
+          const qr = prepared ?? (await readDocumentQr(file));
           const form = new FormData();
           form.append('file', file);
           form.append('qrCodes', JSON.stringify(qr.codes));
@@ -395,6 +399,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
           return 'documents' in data ? data.documents : [data];
         },
         error => error instanceof RequestError && error.status === 401,
+        file => readDocumentQr(file),
       );
       if (results.length) setModal({ type: 'batch', documents: results, failures });
       else setError(failures.join('\n'));
@@ -486,9 +491,11 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
         </button>
         <div className="inv-firms-heading">
           <p className="inv-sidebar-label">FİRMALAR</p>
-          <button className="inv-icon" onClick={() => setModal({ type: 'company' })} aria-label="Firma ekle">
-            <Plus size={16} />
-          </button>
+          {account.role === 'admin' && (
+            <button className="inv-icon" onClick={() => setModal({ type: 'company' })} aria-label="Firma ekle">
+              <Plus size={16} />
+            </button>
+          )}
         </div>
         {snapshot?.companies.map(c => (
           <button
@@ -1016,6 +1023,7 @@ function EntryModal({
         document: extracted?.document
           ? { ...extracted.document, qrStatus: edited ? 'partial' : extracted.document.qrStatus }
           : null,
+        ...(extracted?.proof && !edited ? { proof: extracted.proof } : {}),
       });
       onSaved();
     } catch (error) {

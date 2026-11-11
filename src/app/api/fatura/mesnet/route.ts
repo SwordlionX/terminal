@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, type ThinkingConfig } from '@google/genai';
 import { NextRequest } from 'next/server';
 import { authenticated, errorResponse, json, sameOrigin } from '@/features/invoices/server';
-import { InvoiceError, CURRENCIES } from '@/features/invoices/model';
+import { InvoiceError, CURRENCIES, normalizeNumber } from '@/features/invoices/model';
 import {
   documentMime,
   MAX_DOCUMENT_BYTES,
@@ -12,7 +12,13 @@ import { parseQrEvidence } from '@/features/invoices/qr-evidence';
 import { reviewPdfText } from '@/features/invoices/pdf-review';
 import { randomUUID } from 'node:crypto';
 import { DocumentOutputError, INVOICE_MODELS, readDocumentWithFallback } from '@/features/invoices/document-reader';
-import { reserveModelCall, reserveRequest, readModelBlocks, blockModel } from '@/lib/assistant/limits';
+import {
+  reserveInvoiceRead,
+  reserveModelCall,
+  reserveRequest,
+  readModelBlocks,
+  blockModel,
+} from '@/lib/assistant/limits';
 import { availableModels, modelChain, thinkingFor } from '@/lib/assistant/models';
 
 export const runtime = 'nodejs';
@@ -41,7 +47,7 @@ export async function POST(request: NextRequest) {
   };
   try {
     sameOrigin(request);
-    const { db } = await authenticated(request);
+    const { db, account } = await authenticated(request);
     stage = 'upload';
     if (Number(request.headers.get('content-length') || 0) > MAX_DOCUMENT_BYTES + 300000)
       throw new InvoiceError('Dosya en fazla 3 MB olabilir.', 413);
@@ -70,14 +76,18 @@ export async function POST(request: NextRequest) {
     } catch {
       throw new InvoiceError('PDF metni okunamadı.');
     }
-    const snapshot = await db.snapshot({});
+    // Only id/name are needed for matching; avoid aggregating every invoice balance.
+    const snapshot = { companies: await db.companies() };
     const responseFor = async (results: ReturnType<typeof validateExtractions>) => {
-      const documents = await Promise.all(
-        results.map(async result => ({
+      const found = await db.duplicatesMany(results.flatMap(r => (r.number ? [r.number] : [])));
+      const documents = results.map(result => {
+        const proof = db.signReading(result);
+        return {
           ...result,
-          duplicates: result.number ? await db.duplicates(result.number) : [],
-        })),
-      );
+          ...(proof ? { proof } : {}),
+          duplicates: result.number ? (found.get(normalizeNumber(result.number)) ?? []) : [],
+        };
+      });
       report({ event: 'review_ready', documentCount: documents.length });
       if (documents.length === 1) {
         const { duplicates, ...single } = documents[0];
@@ -93,6 +103,7 @@ export async function POST(request: NextRequest) {
     if (!process.env.GEMINI_API_KEY)
       throw new InvoiceError('Gemini bağlantısı henüz hazır değil. Faturayı elle ekleyebilirsin.', 503);
     stage = 'budget';
+    await reserve(() => reserveInvoiceRead(account.id));
     await reserve(reserveRequest);
     const chain = modelChain(process.env.GEMINI_INVOICE_MODELS, INVOICE_MODELS),
       blocks = await readModelBlocks();
@@ -211,7 +222,7 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
         !batchDetected && error instanceof InvoiceError ? qrReviewAfterFailure(snapshot.companies, codes) : null;
       if (partial) {
         if (partial.number) {
-          const duplicates = await db.duplicates(partial.number);
+          const duplicates = (await db.duplicatesMany([partial.number])).get(normalizeNumber(partial.number)) ?? [];
           if (duplicates.length) return json({ duplicates });
         }
         report({ event: 'qr_review_fallback', status: error instanceof InvoiceError ? error.status : 500 });

@@ -37,8 +37,10 @@ async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP', p
   let reservations = 0;
   const existing = { id: 'existing', number: 'QA2026000000123' };
   const db = {
-    snapshot: async () => ({ companies }),
-    duplicates: async number => (number === existing.number ? [existing] : []),
+    companies: async () => companies,
+    duplicatesMany: async numbers =>
+      new Map(numbers.map(number => [number, number === existing.number ? [existing] : []])),
+    signReading: result => (result.document.qrStatus === 'matched' ? 'fixture-proof' : null),
   };
   const mock = {
     '@google/genai': {
@@ -56,7 +58,7 @@ async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP', p
       },
     },
     '@/features/invoices/server': {
-      authenticated: async () => ({ db }),
+      authenticated: async () => ({ db, account: { id: 'fixture-account', role: 'member' } }),
       sameOrigin: () => {},
       json: (body, status = 200) => new Response(JSON.stringify(body), { status }),
       errorResponse: error => new Response(JSON.stringify({ error: error.message }), { status: error.status || 500 }),
@@ -67,6 +69,8 @@ async function readUploadFixture(payload, qrCodes = [], finishReason = 'STOP', p
     '@/features/invoices/pdf-review': loadTs('src/features/invoices/pdf-review.ts'),
     '@/features/invoices/document-reader': loadTs('src/features/invoices/document-reader.ts'),
     '@/lib/assistant/limits': {
+      // Per-account read cap; counted separately from the shared provider budget.
+      reserveInvoiceRead: async () => {},
       reserveModelCall: async () => {
         reservations++;
       },
@@ -239,12 +243,12 @@ test('closed invoices, stale edits and invoice reductions below used balance', a
   assert.equal(snapshot.invoices[0].remainingCents, 0);
   assert.equal(snapshot.balances[0].openCount, 0);
   await assert.rejects(
-    () => store.update({ ...before, amountCents: 99999 }),
+    () => store.update(owner, { ...before, amountCents: 99999 }),
     e => e.status === 409,
   );
   const current = (await store.history(id)).invoice;
   await assert.rejects(
-    () => store.update({ ...current, amountCents: 1 }),
+    () => store.update(owner, { ...current, amountCents: 1 }),
     e => e.status === 400,
   );
 });
@@ -311,10 +315,10 @@ test('currency balances stay separate and usage history prevents changing units'
   assert.equal(filtered.total, 1);
   assert.equal(filtered.invoices[0].currency, 'GBP');
   let h = await store.history(fx.id);
-  await assert.rejects(() => store.update({ ...h.invoice, currency: 'TRY' }), /para birimi/);
+  await assert.rejects(() => store.update(owner, { ...h.invoice, currency: 'TRY' }), /para birimi/);
   await store.reverse(owner, { eventId: h.events[0].id, note: 'Reverse synthetic use' });
   h = await store.history(fx.id);
-  await assert.rejects(() => store.update({ ...h.invoice, currency: 'USD' }), /para birimi/);
+  await assert.rejects(() => store.update(owner, { ...h.invoice, currency: 'USD' }), /para birimi/);
 });
 test('document import requires explicit confirmation and stores only selected metadata', async t => {
   const { store, owner } = await fixture(t);
@@ -357,6 +361,8 @@ test('legacy database migration keeps TRY invoices, history and existing session
   });
   await db.execute('ALTER TABLE invoice_records DROP COLUMN currency');
   await db.execute('ALTER TABLE invoice_records DROP COLUMN document_data');
+  // A legacy database predates the schema marker.
+  await db.execute('DROP TABLE invoice_meta');
   const upgraded = new InvoiceStore(db, 'test-secret-for-isolated-database-only-123456789');
   assert.equal((await upgraded.session(token)).id, owner.id);
   const h = await upgraded.history(id);
@@ -947,4 +953,230 @@ test('simultaneous submissions cannot record the same document under two firms',
   assert.equal(s.total, 1);
   assert.equal(s.invoices[0].remainingCents, 0);
   assert.equal((await store.history(s.invoices[0].id)).events.length, 1);
+});
+
+test('trusted devices keep logging in while outside failures trigger the global lockout', async t => {
+  const { store } = await fixture(t);
+  const trusted = await store.login('0123', 'office-ip');
+  assert.match(trusted.deviceToken, /^[A-Za-z0-9_-]{43}$/);
+  // Twenty failures from rotating addresses lock out unknown browsers everywhere.
+  for (let n = 0; n < 20; n++)
+    await assert.rejects(
+      () => store.login('9999', `attacker-${n}`),
+      e => e.status === 401,
+    );
+  await assert.rejects(
+    () => store.login('0123', 'new-browser-ip'),
+    e => e.status === 429,
+  );
+  assert.equal((await store.login('0123', 'office-ip', trusted.deviceToken)).account.id, 'owner');
+  // A forged device token gets no exemption.
+  await assert.rejects(
+    () => store.login('0123', 'office-ip', 'x'.repeat(43)),
+    e => e.status === 429,
+  );
+  // A trusted device still has its own failure limit.
+  for (let n = 0; n < 5; n++)
+    await assert.rejects(
+      () => store.login('9999', 'office-ip', trusted.deviceToken),
+      e => e.status === 401,
+    );
+  await assert.rejects(
+    () => store.login('0123', 'office-ip', trusted.deviceToken),
+    e => e.status === 429,
+  );
+});
+
+test('idle sessions expire and active sessions slide forward', async t => {
+  const { db, store, token } = await fixture(t);
+  const soon = new Date(Date.now() + 3 * 86400000).toISOString();
+  await db.execute({ sql: 'UPDATE invoice_sessions SET expires_at=?', args: [soon] });
+  assert.equal((await store.session(token)).id, 'owner');
+  const slid = String((await db.execute('SELECT expires_at FROM invoice_sessions')).rows[0].expires_at);
+  assert(Date.parse(slid) > Date.now() + 13 * 86400000);
+  await db.execute({
+    sql: 'UPDATE invoice_sessions SET expires_at=?',
+    args: [new Date(Date.now() - 1000).toISOString()],
+  });
+  assert.equal(await store.session(token), null);
+});
+
+test('QR agreement survives only with a server-signed reading of the same fields', async t => {
+  const { store, owner } = await fixture(t);
+  const document = {
+    issuerName: 'Elve',
+    counterpartyName: null,
+    documentType: 'foreign_exchange',
+    foreignAmountCents: 250000,
+    foreignCurrency: 'GBP',
+    exchangeRate: null,
+    tlAmountCents: null,
+    qrStatus: 'matched',
+  };
+  const reading = { number: 'QA-SIGNED-1', date: '2026-11-05', amountCents: 250000, currency: 'GBP', document };
+  const proof = store.signReading(reading);
+  assert.match(proof, /^\d+\./);
+  const base = {
+    companyId: 'elve',
+    date: '2026-11-05',
+    currency: 'GBP',
+    source: 'document',
+    confirmed: true,
+    document,
+  };
+  const signed = await store.createFullyUsed(owner, { ...base, number: 'QA-SIGNED-1', amountCents: 250000, proof });
+  assert.equal((await store.history(signed.id)).invoice.document.qrStatus, 'matched');
+  const forged = await store.createFullyUsed(owner, { ...base, number: 'QA-FORGED-1', amountCents: 250000 });
+  assert.equal((await store.history(forged.id)).invoice.document.qrStatus, 'partial');
+  // A valid proof for different figures does not carry over.
+  const swapped = await store.createFullyUsed(owner, { ...base, number: 'QA-SIGNED-2', amountCents: 999, proof });
+  assert.equal((await store.history(swapped.id)).invoice.document.qrStatus, 'partial');
+  assert.equal(store.signReading({ ...reading, document: { ...document, qrStatus: 'partial' } }), null);
+});
+
+test('invoice edits are attributed in an admin-only audit trail', async t => {
+  const { store, owner } = await fixture(t);
+  await store.addAccount(owner, { name: 'Colleague', code: '0042' });
+  const member = (await store.login('0042', 'member-ip')).account;
+  const { id } = await store.create(owner, {
+    companyId: 'tempo',
+    number: 'QA-AUDIT-1',
+    date: '2026-11-05',
+    amountCents: 50000,
+  });
+  const before = (await store.history(id)).invoice;
+  await store.update(member, { ...before, amountCents: 70000 });
+  const trail = await store.auditTrail(owner, id);
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].accountName, 'Colleague');
+  assert.equal(trail[0].before.amountCents, 50000);
+  assert.equal(trail[0].after.amountCents, 70000);
+  await assert.rejects(
+    () => store.auditTrail(member, id),
+    e => e.status === 403,
+  );
+});
+
+test('members cannot add firms or reverse another account usage', async t => {
+  const { store, owner } = await fixture(t);
+  await store.addAccount(owner, { name: 'Colleague', code: '0042' });
+  const member = (await store.login('0042', 'member-ip')).account;
+  await assert.rejects(
+    () => store.addCompany(member, { name: 'Yeni Firma' }),
+    e => e.status === 403,
+  );
+  await store.addCompany(owner, { name: 'Yeni Firma' });
+  const day = { companyId: 'tempo', date: '2026-11-05', amountCents: 1000 };
+  const ownerUse = await store.createFullyUsed(owner, { ...day, number: 'QA-REV-OWNER' });
+  const memberUse = await store.createFullyUsed(member, { ...day, number: 'QA-REV-MEMBER' });
+  const ownerEvent = (await store.history(ownerUse.id)).events[0].id;
+  const memberEvent = (await store.history(memberUse.id)).events[0].id;
+  await assert.rejects(
+    () => store.reverse(member, { eventId: ownerEvent, note: 'Not mine' }),
+    e => e.status === 403,
+  );
+  await store.reverse(member, { eventId: memberEvent, note: 'My own mistake' });
+  await store.reverse(owner, { eventId: ownerEvent, note: 'Admin correction' });
+});
+
+test('company list and batched duplicate lookup avoid per-document queries', async t => {
+  const { db, store, owner } = await fixture(t);
+  assert.deepEqual(
+    (await store.companies()).map(c => c.name),
+    INITIAL_COMPANIES.map(([, name]) => name),
+  );
+  await store.createFullyUsed(owner, { companyId: 'elve', number: 'QA DUP 9', date: '2026-11-05', amountCents: 1 });
+  const found = await store.duplicatesMany(['qa dup9', 'QA-NONE']);
+  assert.equal(found.get('QADUP9').length, 1);
+  assert.deepEqual(found.get('QA-NONE'), []);
+  assert.equal(String((await db.execute("SELECT v FROM invoice_meta WHERE k='schema'")).rows[0].v), '3');
+});
+
+test('the next file is scanned locally while the current file is on the server', async () => {
+  const { readUploadQueue } = loadTs('src/features/invoices/upload-queue.ts');
+  const files = ['a.pdf', 'b.pdf', 'c.pdf'].map(name => new File(['%PDF-fixture'], name));
+  const log = [];
+  let reading = 0,
+    peak = 0;
+  const queue = await readUploadQueue(
+    files,
+    async (file, index, prepared) => {
+      reading++;
+      peak = Math.max(peak, reading);
+      log.push(`read:${index}:${prepared}`);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      log.push(`done:${index}`);
+      reading--;
+      return [file.name];
+    },
+    () => false,
+    async (_, index) => {
+      log.push(`prepare:${index}`);
+      return `scan-${index}`;
+    },
+  );
+  assert.equal(peak, 1);
+  assert.deepEqual(
+    queue.results.map(r => r.value),
+    ['a.pdf', 'b.pdf', 'c.pdf'],
+  );
+  // The second file's scan starts while the first file is still being read.
+  assert(log.indexOf('prepare:1') < log.indexOf('done:0'));
+  assert.deepEqual(
+    log.filter(l => l.startsWith('read')),
+    ['read:0:scan-0', 'read:1:scan-1', 'read:2:scan-2'],
+  );
+});
+
+test('a data-bearing QR found at moderate size skips the detailed high-resolution pass', async t => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window'),
+    originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document'),
+    originalBitmap = Object.getOwnPropertyDescriptor(globalThis, 'createImageBitmap');
+  t.after(() => {
+    for (const [key, value] of [
+      ['window', originalWindow],
+      ['document', originalDocument],
+      ['createImageBitmap', originalBitmap],
+    ])
+      if (value) Object.defineProperty(globalThis, key, value);
+      else delete globalThis[key];
+  });
+  const canvasSizes = [];
+  let reads = 0;
+  const context = {
+    drawImage() {},
+    getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+  };
+  globalThis.document = {
+    createElement(tag) {
+      if (tag !== 'canvas') return { remove() {} };
+      const canvas = { height: 0, getContext: () => context };
+      let width = 0;
+      Object.defineProperty(canvas, 'width', {
+        get: () => width,
+        set: value => {
+          width = value;
+          if (value) canvasSizes.push(value);
+        },
+      });
+      return canvas;
+    },
+    head: { append: script => queueMicrotask(() => script.onload()) },
+  };
+  globalThis.window = {
+    ZXingWASM: {
+      prepareZXingModule: async () => ({}),
+      readBarcodes: async () => {
+        reads++;
+        return [{ text: JSON.stringify({ no: 'QA2026000000999', tarih: '2026-11-05' }), isValid: true }];
+      },
+    },
+  };
+  globalThis.createImageBitmap = async () => ({ width: 8000, height: 6000, close() {} });
+  const result = await readDocumentQr({ type: 'image/png', name: 'photo.png' });
+  assert.equal(result.state, 'read');
+  // Only the two quick regions are read; the 3200 px detailed draw and its 15 crops never happen.
+  assert.equal(reads, 2);
+  assert(!canvasSizes.includes(3200));
+  assert(canvasSizes.includes(2400));
 });

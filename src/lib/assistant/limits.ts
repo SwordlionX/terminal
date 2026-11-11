@@ -47,6 +47,16 @@ export function reserveRequest(): Promise<void> {
     configuredLimit('ASSISTANT_REQUESTS_PER_MINUTE', 20, 1000),
   );
 }
+/** Per-account daily cap for invoice document reads, so one account cannot drain the shared model budget. */
+export function reserveInvoiceRead(accountId: string): Promise<void> {
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  return reserve(`invoice:reads:${accountId}:${day}`, configuredLimit('INVOICE_DAILY_READS_PER_ACCOUNT', 60, 10000));
+}
 export function reserveModelCall(): Promise<void> {
   const day = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Istanbul',

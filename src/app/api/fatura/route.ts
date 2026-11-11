@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
         geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
       });
     if (q.get('action') === 'history') return json(await db.history(text(q.get('id'), 'Fatura')));
+    if (q.get('action') === 'audit') return json({ audit: await db.auditTrail(account, text(q.get('id'), 'Fatura')) });
     if (q.get('action') === 'duplicates') return json({ duplicates: await db.duplicates(q.get('number')) });
     const offset = Number(q.get('offset') || 0);
     if (!Number.isSafeInteger(offset) || offset < 0) throw new InvoiceError('Sayfa geçersiz.');
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
       case 'create':
         return json({ ok: true, ...(await db.createFullyUsed(account, b)) }, 201);
       case 'update':
-        await db.update(b);
+        await db.update(account, b);
         break;
       case 'usage':
         await db.usage(account, b);
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
         await db.reverse(account, b);
         break;
       case 'company':
-        await db.addCompany(b);
+        await db.addCompany(account, b);
         break;
       case 'addAccount':
         await db.addAccount(account, b);

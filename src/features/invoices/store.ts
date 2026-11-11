@@ -23,7 +23,18 @@ import type {
 } from './model';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+/** Cookie lifetime; the database enforces the shorter idle limit below. */
 const SESSION_DAYS = 90;
+/** A session unused for this long is rejected; activity slides it forward. */
+const SESSION_IDLE_DAYS = 14;
+/** Trusted-device cookies let known devices log in during a global lockout. */
+const DEVICE_DAYS = 180;
+/** Signed extraction results stay valid long enough for a slow review. */
+const READING_PROOF_HOURS = 24;
+/** Bump when initialize() adds tables, columns or indexes. */
+const SCHEMA_VERSION = '3';
+const DAY_MS = 86400000;
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 function documentSummary(value: unknown): DocumentSummary {
   const b = object(value),
     optional = (key: string) => (b[key] == null ? null : text(b[key], key, 250)),
@@ -92,6 +103,13 @@ export class InvoiceStore {
     return this.ready;
   }
   private async initialize() {
+    // Cold starts skip the DDL batch and migration transaction once the schema is current.
+    try {
+      const row = (await this.db.execute("SELECT v FROM invoice_meta WHERE k='schema'")).rows[0];
+      if (row && String(row.v) === SCHEMA_VERSION) return;
+    } catch {
+      // The meta table does not exist yet; run the full initialization.
+    }
     await this.db.batch(
       [
         `CREATE TABLE IF NOT EXISTS invoice_companies (id TEXT PRIMARY KEY, name TEXT NOT NULL, normalized_name TEXT NOT NULL UNIQUE, sort_order INTEGER NOT NULL, created_at TEXT NOT NULL)`,
@@ -103,6 +121,10 @@ export class InvoiceStore {
         `CREATE INDEX IF NOT EXISTS invoice_records_company ON invoice_records(company_id,invoice_date)`,
         `CREATE INDEX IF NOT EXISTS invoice_records_number ON invoice_records(normalized_number)`,
         `CREATE INDEX IF NOT EXISTS invoice_events_invoice ON invoice_events(invoice_id,created_at)`,
+        `CREATE TABLE IF NOT EXISTS invoice_devices (token_digest TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES invoice_accounts(id), expires_at TEXT NOT NULL)`,
+        `CREATE TABLE IF NOT EXISTS invoice_audit (id TEXT PRIMARY KEY, invoice_id TEXT NOT NULL REFERENCES invoice_records(id), account_id TEXT NOT NULL REFERENCES invoice_accounts(id), action TEXT NOT NULL, before_data TEXT NOT NULL, after_data TEXT NOT NULL, created_at TEXT NOT NULL)`,
+        `CREATE INDEX IF NOT EXISTS invoice_audit_invoice ON invoice_audit(invoice_id,created_at)`,
+        `CREATE TABLE IF NOT EXISTS invoice_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
         ...INITIAL_COMPANIES.map(([id, name], i) => ({
           sql: 'INSERT OR IGNORE INTO invoice_companies (id,name,normalized_name,sort_order,created_at) VALUES (?,?,?,?,?)',
           args: [id, name, name.toLocaleLowerCase('tr-TR'), i, new Date().toISOString()],
@@ -117,6 +139,10 @@ export class InvoiceStore {
         await tx.execute("ALTER TABLE invoice_records ADD COLUMN currency TEXT NOT NULL DEFAULT 'TRY'");
       if (!columns.includes('document_data'))
         await tx.execute('ALTER TABLE invoice_records ADD COLUMN document_data TEXT');
+      await tx.execute({
+        sql: "INSERT INTO invoice_meta (k,v) VALUES ('schema',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        args: [SCHEMA_VERSION],
+      });
       await tx.commit();
     } catch (error) {
       await tx.rollback();
@@ -162,24 +188,49 @@ export class InvoiceStore {
     await this.init();
     return (await this.db.execute('SELECT id FROM invoice_accounts LIMIT 1')).rows.length > 0;
   }
-  private async issueSession(tx: Transaction, accountId: string) {
+  private async issueSession(tx: Transaction, accountId: string, deviceToken?: string) {
     const token = randomBytes(32).toString('base64url'),
-      expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000).toISOString();
+      now = new Date().toISOString(),
+      expiresAt = new Date(Date.now() + SESSION_IDLE_DAYS * DAY_MS).toISOString();
     await tx.execute({
       sql: 'INSERT INTO invoice_sessions (token_digest,account_id,expires_at) VALUES (?,?,?)',
       args: [hash(token), accountId, expiresAt],
     });
-    await tx.execute({ sql: 'DELETE FROM invoice_sessions WHERE expires_at < ?', args: [new Date().toISOString()] });
+    await tx.execute({ sql: 'DELETE FROM invoice_sessions WHERE expires_at < ?', args: [now] });
+    // A successful login marks this browser as a trusted device for the account.
+    const device = deviceToken && TOKEN_PATTERN.test(deviceToken) ? deviceToken : randomBytes(32).toString('base64url');
+    await tx.execute({
+      sql: 'INSERT INTO invoice_devices (token_digest,account_id,expires_at) VALUES (?,?,?) ON CONFLICT(token_digest) DO UPDATE SET account_id=excluded.account_id,expires_at=excluded.expires_at',
+      args: [hash(device), accountId, new Date(Date.now() + DEVICE_DAYS * DAY_MS).toISOString()],
+    });
+    await tx.execute({ sql: 'DELETE FROM invoice_devices WHERE expires_at < ?', args: [now] });
     const row = (await tx.execute({ sql: 'SELECT * FROM invoice_accounts WHERE id=?', args: [accountId] })).rows[0];
-    return { token, account: toAccount(row), maxAge: SESSION_DAYS * 86400 };
+    return {
+      token,
+      account: toAccount(row),
+      maxAge: SESSION_DAYS * 86400,
+      deviceToken: device,
+      deviceMaxAge: DEVICE_DAYS * 86400,
+    };
   }
-  async login(code: unknown, address: string) {
+  async login(code: unknown, address: string, deviceToken?: string) {
     const p = pin(code),
       now = new Date().toISOString(),
       next = new Date(Date.now() + 30 * 60000).toISOString();
     // Both per-address and global limits live in the shared database, across instances.
     const result = await this.write(async tx => {
-      const keys = [`ip:${hash(address)}`, 'global'];
+      // A browser that previously logged in to an active account is exempt from the
+      // global limit, so outside failures cannot lock every known device out.
+      const trusted =
+        !!deviceToken &&
+        TOKEN_PATTERN.test(deviceToken) &&
+        (
+          await tx.execute({
+            sql: 'SELECT 1 FROM invoice_devices d JOIN invoice_accounts a ON a.id=d.account_id WHERE d.token_digest=? AND d.expires_at>? AND a.active=1',
+            args: [hash(deviceToken), now],
+          })
+        ).rows.length > 0;
+      const keys = trusted ? [`device:${hash(deviceToken!)}`] : [`ip:${hash(address)}`, 'global'];
       for (const key of keys) {
         const row = (await tx.execute({ sql: 'SELECT * FROM invoice_login_attempts WHERE key=?', args: [key] }))
           .rows[0];
@@ -201,22 +252,32 @@ export class InvoiceStore {
         return { invalid: true } as const;
       }
       await tx.execute({ sql: 'DELETE FROM invoice_login_attempts WHERE key=?', args: [keys[0]] });
-      return this.issueSession(tx, String(row.id));
+      return this.issueSession(tx, String(row.id), deviceToken);
     });
     if ('limited' in result) throw new InvoiceError('Çok fazla giriş denemesi. 30 dakika sonra tekrar dene.', 429);
     if ('invalid' in result) throw new InvoiceError('Hesap kodu geçersiz veya erişim kapatılmış.', 401);
     return result;
   }
   async session(token: string | undefined) {
-    if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+    if (!token || !TOKEN_PATTERN.test(token)) return null;
     await this.init();
+    const now = Date.now(),
+      digest = hash(token);
     const row = (
       await this.db.execute({
-        sql: 'SELECT a.* FROM invoice_sessions s JOIN invoice_accounts a ON a.id=s.account_id WHERE s.token_digest=? AND s.expires_at>? AND a.active=1',
-        args: [hash(token), new Date().toISOString()],
+        sql: 'SELECT a.*,s.expires_at AS session_expires FROM invoice_sessions s JOIN invoice_accounts a ON a.id=s.account_id WHERE s.token_digest=? AND s.expires_at>? AND a.active=1',
+        args: [digest, new Date(now).toISOString()],
       })
     ).rows[0];
-    return row ? toAccount(row) : null;
+    if (!row) return null;
+    // Slide the idle window at most once a day to avoid a write on every request.
+    const idleExpiry = new Date(now + SESSION_IDLE_DAYS * DAY_MS);
+    if (Date.parse(String(row.session_expires)) < idleExpiry.getTime() - DAY_MS)
+      await this.db.execute({
+        sql: 'UPDATE invoice_sessions SET expires_at=? WHERE token_digest=?',
+        args: [idleExpiry.toISOString(), digest],
+      });
+    return toAccount(row);
   }
   async logout(token: string) {
     await this.init();
@@ -255,6 +316,7 @@ export class InvoiceStore {
     return this.write(async tx => {
       await tx.execute({ sql: 'UPDATE invoice_accounts SET active=0 WHERE id=?', args: [id] });
       await tx.execute({ sql: 'DELETE FROM invoice_sessions WHERE account_id=?', args: [id] });
+      await tx.execute({ sql: 'DELETE FROM invoice_devices WHERE account_id=?', args: [id] });
     });
   }
   async changeCode(actor: InvoiceAccount, body: unknown) {
@@ -281,7 +343,8 @@ export class InvoiceStore {
       await tx.execute({ sql: 'DELETE FROM invoice_sessions WHERE account_id=?', args: [id] });
     });
   }
-  async addCompany(body: unknown) {
+  async addCompany(actor: InvoiceAccount, body: unknown) {
+    this.admin(actor);
     const b = object(body),
       name = text(b.name, 'Firma adı', 100);
     return this.write(async tx => {
@@ -390,6 +453,40 @@ export class InvoiceStore {
       tx.close();
     }
   }
+  /** Lightweight company list for document matching; no balance aggregation. */
+  async companies(): Promise<Pick<InvoiceCompany, 'id' | 'name'>[]> {
+    await this.init();
+    return (await this.db.execute('SELECT id,name FROM invoice_companies ORDER BY sort_order,name')).rows.map(r => ({
+      id: String(r.id),
+      name: String(r.name),
+    }));
+  }
+  /** Signs the server-read fields so a later create can trust the QR agreement claim. */
+  signReading(result: {
+    number: string | null;
+    date: string | null;
+    amountCents: number | null;
+    currency: string | null;
+    document: DocumentSummary;
+  }) {
+    if (result.document.qrStatus !== 'matched' || !result.number) return null;
+    const expires = Date.now() + READING_PROOF_HOURS * 3600000;
+    return `${expires}.${this.readingMac(expires, result.number, result.date, result.amountCents, result.currency)}`;
+  }
+  private readingMac(expires: number, number: string, date: unknown, amount: unknown, unit: unknown) {
+    return createHmac('sha256', this.secret)
+      .update(JSON.stringify(['invoice-reading-v1', expires, normalizeNumber(number), date, amount, unit]))
+      .digest('base64url');
+  }
+  private validReading(proof: unknown, number: string, date: string, amount: number, unit: string) {
+    if (typeof proof !== 'string' || proof.length > 200) return false;
+    const [rawExpires, mac] = proof.split('.');
+    const expires = Number(rawExpires);
+    if (!Number.isSafeInteger(expires) || expires < Date.now() || !mac) return false;
+    const expected = Buffer.from(this.readingMac(expires, number, date, amount, unit)),
+      given = Buffer.from(mac);
+    return expected.length === given.length && timingSafeEqual(expected, given);
+  }
   async usageMeter(actor: InvoiceAccount) {
     this.admin(actor);
     await this.init();
@@ -409,6 +506,24 @@ export class InvoiceStore {
       })
     ).rows.map(invoice);
   }
+  /** One query for every number read from a file instead of one per document. */
+  async duplicatesMany(numbers: string[]): Promise<Map<string, Invoice[]>> {
+    const keys = [...new Set(numbers.map(n => normalizeNumber(text(n, 'Belge numarası', 100))))].slice(0, 20);
+    const found = new Map<string, Invoice[]>(keys.map(k => [k, []]));
+    if (!keys.length) return found;
+    await this.init();
+    const rows = (
+      await this.db.execute({
+        sql: invoiceSelect + ` WHERE i.normalized_number IN (${keys.map(() => '?').join(',')}) ORDER BY i.created_at`,
+        args: keys,
+      })
+    ).rows;
+    for (const row of rows) {
+      const list = found.get(String(row.normalized_number));
+      if (list && list.length < 20) list.push(invoice(row));
+    }
+    return found;
+  }
   async createFullyUsed(actor: InvoiceAccount, body: unknown) {
     const b = object(body);
     return this.create(actor, { ...b, usedCents: b.amountCents, fullUsage: true });
@@ -425,6 +540,9 @@ export class InvoiceStore {
     if (b.source === 'document' && b.confirmed !== true)
       throw new InvoiceError('Belgeden okunan firma, belge numarası, para birimi ve tutar onaylanmalı.');
     const doc = b.document == null ? null : documentSummary(b.document);
+    // Only a server-signed reading of exactly these fields may keep the QR agreement claim.
+    if (doc?.qrStatus === 'matched' && !this.validReading(b.proof, number, invoiceDate, amount, unit))
+      doc.qrStatus = 'partial';
     if (used > amount) throw new InvoiceError('Kullanılan tutar fatura tutarını aşamaz.');
     return this.write(async tx => {
       if (!(await tx.execute({ sql: 'SELECT id FROM invoice_companies WHERE id=?', args: [companyId] })).rows.length)
@@ -488,7 +606,7 @@ export class InvoiceStore {
       return { id };
     });
   }
-  async update(body: unknown) {
+  async update(actor: InvoiceAccount, body: unknown) {
     const b = object(body),
       id = text(b.id, 'Fatura'),
       number = text(b.number, 'Fatura numarası', 100),
@@ -516,11 +634,46 @@ export class InvoiceStore {
         ).rows.length
       )
         throw new InvoiceError('Aynı numaralı fatura zaten kayıtlı.', 409);
+      const now = new Date().toISOString();
       await tx.execute({
         sql: 'UPDATE invoice_records SET number=?,normalized_number=?,invoice_date=?,amount_cents=?,currency=?,version=version+1,updated_at=? WHERE id=?',
-        args: [number, normalizeNumber(number), invoiceDate, amount, unit, new Date().toISOString(), id],
+        args: [number, normalizeNumber(number), invoiceDate, amount, unit, now, id],
+      });
+      // Edits are attributed like usage events so changed amounts and numbers stay traceable.
+      await tx.execute({
+        sql: "INSERT INTO invoice_audit (id,invoice_id,account_id,action,before_data,after_data,created_at) VALUES (?,?,?,'update',?,?,?)",
+        args: [
+          randomUUID(),
+          id,
+          actor.id,
+          JSON.stringify({
+            number: String(row.number),
+            date: String(row.invoice_date),
+            amountCents: Number(row.amount_cents),
+            currency: String(row.currency),
+            version: Number(row.version),
+          }),
+          JSON.stringify({ number, date: invoiceDate, amountCents: amount, currency: unit, version: b.version + 1 }),
+          now,
+        ],
       });
     });
+  }
+  async auditTrail(actor: InvoiceAccount, id: string) {
+    this.admin(actor);
+    await this.init();
+    return (
+      await this.db.execute({
+        sql: 'SELECT u.*,a.name account_name FROM invoice_audit u JOIN invoice_accounts a ON a.id=u.account_id WHERE u.invoice_id=? ORDER BY u.created_at DESC LIMIT 100',
+        args: [id],
+      })
+    ).rows.map(r => ({
+      action: String(r.action),
+      accountName: String(r.account_name),
+      before: JSON.parse(String(r.before_data)) as Record<string, unknown>,
+      after: JSON.parse(String(r.after_data)) as Record<string, unknown>,
+      createdAt: String(r.created_at),
+    }));
   }
   async usage(actor: InvoiceAccount, body: unknown) {
     const b = object(body),
@@ -566,6 +719,8 @@ export class InvoiceStore {
     return this.write(async tx => {
       const row = (await tx.execute({ sql: 'SELECT * FROM invoice_events WHERE id=?', args: [eventId] })).rows[0];
       if (!row || Number(row.delta_cents) <= 0) throw new InvoiceError('İptal edilecek kullanım bulunamadı.', 404);
+      if (actor.role !== 'admin' && row.account_id !== actor.id)
+        throw new InvoiceError('Başka bir hesabın kullanımını yalnızca yönetici iptal edebilir.', 403);
       if ((await tx.execute({ sql: 'SELECT id FROM invoice_events WHERE reversal_of=?', args: [eventId] })).rows.length)
         throw new InvoiceError('Bu kullanım zaten iptal edilmiş.', 409);
       const now = new Date().toISOString();

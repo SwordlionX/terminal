@@ -52,14 +52,43 @@ function loadScript(src: string, module = false) {
     );
   return scripts.get(src)!;
 }
-async function scan(canvas: HTMLCanvasElement, read: QrReader, codes: Set<string>, deadline: number) {
-  // Overlapping crops isolate multiple small/dense codes and preserve quiet zones.
-  const regions = [
-    [0.55, 0, 0.4, 0.13],
-    [0.5, 0, 0.5, 0.2],
-    [0, 0, 1, 1],
-    ...[0, 0.28, 0.55].flatMap(x => [0, 0.2, 0.4, 0.6].map(y => [x, y, 0.45, 0.4])),
-  ];
+// Quick pass: the receipt QR sits in the upper-right corner; the whole-page read
+// still finds several large codes on one page.
+const QUICK_REGIONS = [
+  [0.5, 0, 0.5, 0.2],
+  [0, 0, 1, 1],
+];
+// Detailed pass: overlapping crops isolate multiple small/dense codes and preserve quiet zones.
+const DETAILED_REGIONS = [
+  [0.55, 0, 0.4, 0.13],
+  [0.5, 0, 0.5, 0.2],
+  [0, 0, 1, 1],
+  ...[0, 0.28, 0.55].flatMap(x => [0, 0.2, 0.4, 0.6].map(y => [x, y, 0.45, 0.4])),
+];
+const QUICK_EDGE = 2400,
+  DETAILED_PDF_EDGE = 6400,
+  DETAILED_IMAGE_EDGE = 3200;
+/** True for a decoded QR carrying structured document data (not a bare link). */
+function carriesData(code: string) {
+  if (/^https?:\/\//i.test(code)) return false;
+  try {
+    const value: unknown = JSON.parse(code);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const b = value as Record<string, unknown>;
+    return typeof b.no === 'string' || typeof b.faturano === 'string';
+  } catch {
+    return false;
+  }
+}
+/** Returns the number of data-bearing codes newly added by this scan. */
+async function scan(
+  canvas: HTMLCanvasElement,
+  read: QrReader,
+  codes: Set<string>,
+  deadline: number,
+  regions: number[][] = DETAILED_REGIONS,
+) {
+  let found = 0;
   for (const [x, y, w, h] of regions) {
     if (codes.size >= 20 || performance.now() > deadline) break;
     const left = Math.floor(x * canvas.width),
@@ -73,11 +102,32 @@ async function scan(canvas: HTMLCanvasElement, read: QrReader, codes: Set<string
     crop.getContext('2d')!.drawImage(canvas, left, top, width, height, 0, 0, crop.width, crop.height);
     const image = crop.getContext('2d')!.getImageData(0, 0, crop.width, crop.height),
       results = await read(image, { formats: ['QRCode'], tryHarder: true, tryDenoise: true, maxNumberOfSymbols: 20 });
-    for (const result of results) if (result.isValid !== false && result.text.length <= 4096) codes.add(result.text);
+    for (const result of results)
+      if (result.isValid !== false && result.text.length <= 4096 && !codes.has(result.text)) {
+        codes.add(result.text);
+        if (carriesData(result.text)) found++;
+      }
     crop.width = crop.height = 0;
     // Animation frames can pause indefinitely when the user changes tabs.
     await new Promise<void>(resolve => setTimeout(resolve, 0));
   }
+  return found;
+}
+/** Draws at a moderate size first and escalates to the detailed scan only when
+ * no data-bearing QR was found, keeping the same detection fallback. */
+async function scanInPasses(
+  draw: (longestEdge: number) => Promise<void>,
+  canvas: HTMLCanvasElement,
+  read: QrReader,
+  codes: Set<string>,
+  deadline: number,
+  detailedEdge: number,
+) {
+  await draw(QUICK_EDGE);
+  if ((await scan(canvas, read, codes, deadline, QUICK_REGIONS)) > 0) return;
+  if (codes.size >= 20 || performance.now() > deadline) return;
+  await draw(detailedEdge);
+  await scan(canvas, read, codes, deadline, DETAILED_REGIONS);
 }
 export async function readDocumentQr(
   file: File,
@@ -117,15 +167,17 @@ export async function readDocumentQr(
           n++
         ) {
           const page = await wait(pdf.getPage(n)),
-            base = page.getViewport({ scale: 1 }),
-            viewport = page.getViewport({ scale: 6400 / Math.max(base.width, base.height) });
+            base = page.getViewport({ scale: 1 });
           const content = await wait(page.getTextContent());
           const text = content.items.map(item => item.str || '').join(' ');
           pages.push(text.length <= 20000 ? text : '');
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          await wait(page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise);
-          await scan(canvas, read, codes, deadline);
+          const draw = async (edge: number) => {
+            const viewport = page.getViewport({ scale: edge / Math.max(base.width, base.height) });
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            await wait(page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise);
+          };
+          await scanInPasses(draw, canvas, read, codes, deadline, DETAILED_PDF_EDGE);
           page.cleanup();
         }
         // Do not advertise a partially scanned PDF as a complete fast-path input.
@@ -134,13 +186,18 @@ export async function readDocumentQr(
         void pdf.destroy().catch(() => {});
       }
     } else {
-      const bitmap = await wait(createImageBitmap(file)),
-        scale = Math.min(1, 3200 / Math.max(bitmap.width, bitmap.height));
-      canvas.width = Math.ceil(bitmap.width * scale);
-      canvas.height = Math.ceil(bitmap.height * scale);
-      canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-      await scan(canvas, read, codes, performance.now() + 16000);
+      const bitmap = await wait(createImageBitmap(file));
+      try {
+        const draw = async (edge: number) => {
+          const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+          canvas.width = Math.ceil(bitmap.width * scale);
+          canvas.height = Math.ceil(bitmap.height * scale);
+          canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        };
+        await scanInPasses(draw, canvas, read, codes, performance.now() + 16000, DETAILED_IMAGE_EDGE);
+      } finally {
+        bitmap.close();
+      }
     }
     return { codes: [...codes], state: codes.size ? 'read' : 'not_found', ...(pdfPages ? { pdfPages } : {}) };
   } catch {

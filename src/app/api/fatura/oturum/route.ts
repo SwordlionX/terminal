@@ -1,5 +1,13 @@
 import { NextRequest } from 'next/server';
-import { body, errorResponse, invoiceStore, json, sameOrigin, SESSION_COOKIE } from '@/features/invoices/server';
+import {
+  body,
+  DEVICE_COOKIE,
+  errorResponse,
+  invoiceStore,
+  json,
+  sameOrigin,
+  SESSION_COOKIE,
+} from '@/features/invoices/server';
 import { InvoiceError, object } from '@/features/invoices/model';
 
 export const runtime = 'nodejs';
@@ -22,17 +30,24 @@ export async function POST(request: NextRequest) {
     const address = (request.headers.get('x-vercel-forwarded-for') || request.headers.get('x-forwarded-for') || 'local')
       .split(',')[0]
       .trim();
+    const device = request.cookies.get(DEVICE_COOKIE)?.value;
     const result =
       b.action === 'setup'
         ? await db.setup(b.code, b.name, b.setupToken, process.env.INVOICE_SETUP_TOKEN)
-        : await db.login(b.code, address);
+        : await db.login(b.code, address, device);
     const response = json({ account: result.account });
-    response.cookies.set(SESSION_COOKIE, result.token, {
+    const cookie = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'strict' as const,
       path: '/',
-      maxAge: result.maxAge,
+    };
+    response.cookies.set(SESSION_COOKIE, result.token, { ...cookie, maxAge: result.maxAge });
+    // Kept after logout: it only exempts this browser from the global login lockout.
+    response.cookies.set(DEVICE_COOKIE, result.deviceToken, {
+      ...cookie,
+      path: '/api/fatura/oturum',
+      maxAge: result.deviceMaxAge,
     });
     return response;
   } catch (error) {
