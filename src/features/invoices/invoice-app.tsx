@@ -365,9 +365,6 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     return () => window.removeEventListener('focus', refresh);
   }, []);
   const selected = snapshot?.companies.find(c => c.id === companyId);
-  const balances = (selected?.balances || snapshot?.balances || []).filter(
-    b => !currencyFilter || b.currency === currencyFilter,
-  );
   const saved = () => {
     setModal(null);
     setRevision(v => v + 1);
@@ -564,32 +561,8 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             </button>
           </div>
         )}
-        <div className="inv-currency-summaries" aria-label="Para birimine göre fatura özeti">
-          {balances.length === 0 && (
-            <p className="inv-muted">{loading ? 'Özet yükleniyor…' : 'Bu seçimde henüz fatura bakiyesi yok.'}</p>
-          )}
-          {balances.map(totals => (
-            <section key={totals.currency} aria-label={totals.currency + ' özeti'}>
-              <h2 className="inv-currency-title">{totals.currency} bakiyeleri</h2>
-              <div className="inv-metrics">
-                {[
-                  ['Toplam fatura', formatMoney(totals.amountCents, totals.currency)],
-                  ['Kullanılan tutar', formatMoney(totals.usedCents, totals.currency)],
-                  ['Kalan tutar', formatMoney(totals.remainingCents, totals.currency)],
-                  ['Açık fatura', String(totals.openCount)],
-                ].map(([label, value], i) => (
-                  <div className={'inv-metric ' + (i === 2 ? 'inv-metric-accent' : '')} key={label}>
-                    <span>{label}</span>
-                    <strong>{value}</strong>
-                    {i === 3 && <small>Kalan tutarı sıfırdan büyük</small>}
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
         <section
-          className={`inv-upload ${drag ? 'inv-drag' : ''} ${reading ? 'inv-upload-busy' : ''}`}
+          className={`inv-upload inv-upload-large ${drag ? 'inv-drag' : ''} ${reading ? 'inv-upload-busy' : ''}`}
           onDragOver={e => {
             e.preventDefault();
             setDrag(true);
@@ -601,12 +574,13 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
             void readFiles(Array.from(e.dataTransfer.files));
           }}
           aria-busy={reading}
+          aria-label="Mesnet yükleme alanı"
         >
           <span className="inv-upload-icon">
-            <Upload size={23} />
+            <Upload size={32} />
           </span>
           <div>
-            <h2>{reading ? 'Mesnet okunuyor…' : 'Mesnedi buraya bırak'}</h2>
+            <h2>{reading ? 'Mesnet okunuyor…' : 'Mesnetleri buraya sürükle bırak'}</h2>
             <p>
               {reading
                 ? readingStage || 'Belge hazırlanıyor…'
