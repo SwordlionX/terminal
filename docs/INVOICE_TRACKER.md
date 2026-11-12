@@ -10,6 +10,12 @@ Invoices contain a company, document/invoice number, date, currency and amount. 
 
 Usage additions and reversals are append-only events attributed to an authenticated account. Write transactions serialize balance changes, prevent overspending, and enforce idempotency for repeated usage requests. Reversing an event preserves the original event. Edits use a version check and cannot reduce an invoice below its used balance. A new invoice is rejected if its normalized document number already exists under any company. The cross-company check runs in the same write transaction as creation, preventing concurrent duplicate inserts while preserving older records. Lists are paginated, and summary totals are read within the same transaction as the displayed invoice page.
 
+## Phone installation
+
+Fatura Takip has a scoped web app manifest at `/fatura-takip/manifest.webmanifest`, with a stable ID, standalone display, 192/512 px regular and maskable icons, and a 180 px Apple touch icon. The home-screen entry opens `/fatura-takip` without setup tokens or query parameters. The installation panel explains Safari's Share → Add to Home Screen flow on iOS/iPadOS. Browsers exposing `beforeinstallprompt` get a user-initiated install button; other browsers get menu instructions. The panel is hidden in standalone mode and after `appinstalled`. No notification permission, service worker or offline financial-data cache is introduced: viewing records and uploading documents requires a connection.
+
+The mobile layout preserves zoom, uses safe-area insets, 16 px form controls, larger touch targets and viewport-bounded scrollable dialogs. Automated Chromium mobile emulation covers 320, 390 and 412 px widths, iOS/Android instructions, the install event and standalone state, login and invoice forms. Native iOS/Android installation still depends on the device's browser and is not simulated by those checks.
+
 ## Access and initial setup
 
 The owner chooses a four-digit code on the initial setup screen. Administrators create each member's name and distinct four-digit code. Code changes revoke all of that account's existing sessions. Disabling a member also revokes existing sessions and trusted devices. Member accounts cannot list, create or disable accounts, add firms, view the edit audit trail, or reverse another account's usage event.

@@ -8,6 +8,8 @@
   min-height: 100dvh;
   font-family: Arial, sans-serif;
   font-size: 14px;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
 }
 .invoice-app * {
   box-sizing: border-box;
@@ -920,7 +922,8 @@
 }
 @media (max-width: 760px) {
   .invoice-topbar {
-    height: 68px;
+    height: auto;
+    min-height: 68px;
     padding-right: 14px;
   }
   .invoice-app .app-switcher summary {
@@ -1086,6 +1089,24 @@
     flex-wrap: wrap;
   }
 }
+
+@media (max-width: 480px) {
+  .inv-account-name {
+    display: none;
+  }
+  .invoice-app .app-switcher summary {
+    white-space: nowrap;
+  }
+  .invoice-app .app-switcher summary small {
+    font-size: 10px;
+  }
+  .inv-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inv-metric {
+    min-height: 88px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .inv-spin {
     animation: none;
@@ -1156,4 +1177,138 @@
 }
 .inv-duplicate-warning p {
   margin: 6px 0 0;
+}
+
+.inv-install {
+  border-bottom: 1px solid var(--inv-line);
+  background: #edf3ff;
+  padding: 12px 24px;
+}
+.inv-install-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.inv-install-row > svg {
+  flex-shrink: 0;
+  color: var(--inv-blue);
+}
+.inv-install-row p {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+}
+.inv-install-row strong,
+.inv-install-row span {
+  display: block;
+}
+.inv-install-row strong {
+  font-size: 13px;
+}
+.inv-install-row span {
+  font-size: 12px;
+  color: var(--inv-muted);
+  margin-top: 3px;
+}
+.inv-install-help {
+  max-width: 1100px;
+  margin: 12px auto 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.inv-install-help p {
+  margin: 6px 0;
+}
+
+@media (max-width: 760px) {
+  .invoice-app input:not(.inv-pin),
+  .invoice-app select,
+  .invoice-app textarea {
+    font-size: 16px !important;
+  }
+  .invoice-app .inv-primary,
+  .invoice-app .inv-secondary,
+  .invoice-app .inv-icon,
+  .invoice-app .inv-company-button,
+  .invoice-app .inv-text-button {
+    min-height: 44px;
+  }
+  .invoice-app .inv-icon {
+    min-width: 44px;
+  }
+  .inv-install {
+    padding: 12px 15px;
+  }
+  .inv-install-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .inv-install-row > p {
+    flex-basis: calc(100% - 85px);
+  }
+  .inv-install-row > .inv-secondary {
+    order: 2;
+    width: 100%;
+  }
+  .inv-install-row > .inv-icon {
+    margin-left: auto;
+  }
+  .inv-topbar-right {
+    min-width: 0;
+  }
+  .inv-account-name {
+    max-width: 80px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .inv-account-name .inv-avatar {
+    display: none;
+  }
+  .inv-main,
+  .inv-upload > div {
+    min-width: 0;
+  }
+  .inv-upload > div {
+    flex: 1 1 calc(100% - 60px);
+  }
+  .inv-upload > .inv-secondary {
+    width: 100%;
+    margin-left: 0;
+  }
+  .inv-upload p,
+  .inv-muted,
+  .inv-error {
+    overflow-wrap: anywhere;
+  }
+  .inv-metric strong {
+    font-size: clamp(16px, 5vw, 22px);
+    overflow-wrap: anywhere;
+  }
+  .invoice-dialog {
+    width: calc(100% - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overscroll-behavior: contain;
+  }
+  .invoice-dialog-inner {
+    padding: 18px;
+  }
+  .inv-form-footer {
+    flex-wrap: wrap;
+  }
+  .inv-form-footer > button {
+    flex: 1 1 180px;
+    white-space: normal;
+  }
+  .inv-document-confirm dl {
+    padding: 12px;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  }
+  .inv-document-confirm dt,
+  .inv-document-confirm dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }

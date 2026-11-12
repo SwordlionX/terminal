@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { AppSwitcher } from '@/components/app-switcher';
+import { InstallInvoiceApp } from './install-app';
 import { CURRENCIES, formatMoney, parseMoney, STATUS_LABELS, todayInTurkey, csvCell } from './model';
 import type { DocumentSummary, Invoice, InvoiceAccount, InvoiceCompany, InvoiceEvent, InvoiceSnapshot } from './model';
 import { readUploadQueue, MAX_UPLOAD_FILES } from './upload-queue';
@@ -167,8 +168,7 @@ function Login({
         <span className="inv-eyebrow">3N FİNANS</span>
         <FileText size={42} strokeWidth={1.3} />
         <h1>
-          Fatura takip
-          <br />
+          Fatura takip <br />
           çalışma alanı
         </h1>
         <p>Firmaların faturalarını, kullanılan tutarları ve kalan bakiyeleri birlikte takip edin.</p>
@@ -279,6 +279,7 @@ export function InvoiceApp() {
           )}
         </div>
       </header>
+      <InstallInvoiceApp />
       {authError ? (
         <div className="inv-access-error">
           <p role="alert">{authError}</p>

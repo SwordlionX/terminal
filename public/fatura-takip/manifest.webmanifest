@@ -1,0 +1,17 @@
+{
+  "id": "/fatura-takip",
+  "name": "3N Finans Fatura Takip",
+  "short_name": "Fatura Takip",
+  "description": "Mesnet yükleme, firma ve fatura takibi",
+  "lang": "tr",
+  "start_url": "/fatura-takip",
+  "scope": "/fatura-takip",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#152c45",
+  "icons": [
+    { "src": "/fatura-takip/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/fatura-takip/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/fatura-takip/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
