@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       report({ event: 'review_ready', documentCount: documents.length });
       if (documents.length === 1) {
         const { duplicates, ...single } = documents[0];
-        return json(duplicates.length ? { duplicates } : single);
+        return json(duplicates.length ? { duplicates, reading: single } : single);
       }
       return json({ documents });
     };
@@ -133,6 +133,7 @@ BELGE TÜRÜ: e-Döviz/Kıymetli Maden Alım/Satım Belgesi ise documentType=for
 TARAFLAR: Bu dosyalar dövizcilerin piyasadan temin ettikleri dövize ilişkin kaynak belgeleridir; takip eden işletmenin belgede taraf olması gerekmez. DÜZENLEYEN YETKİLİ bölümündeki kuruluşun tam unvanı issuerName olsun; döviz mesnedinde takip firması olarak bu düzenleyen kuruluş önerilir. ALAN KİŞİ/KURULUŞ veya SATAN KİŞİ/KURULUŞ altındaki diğer tarafın unvanı counterpartyName olsun. İki tarafı ayrı tut; belge türü ALIM diye düzenleyeni diğer tarafla değiştirme. Normal faturada counterpartyName alıcı/müşteri, companyName satıcı unvanı olsun.
 NUMARA: Sağ üstte SATIŞ/ALIŞ BELGESİ BİLGİLERİ içindeki Belge No alanını öncelikle ara. number alanına etiketin yanındaki numarayı karakter karakter aynen yaz; numberLabel=Belge No olsun. Normal faturada Fatura No/Fatura Numarası etiketini kullan. ETTN, UUID, İşt No, sıra no, müşteri no veya şube kodunu fatura numarası sanma. Belge numarası okunamıyorsa null yaz.
 TUTAR: Parasal değerleri HESAPLAMA; 100 ile çarpma, kuruşa/yüzde birime çevirme, kur dönüşümü yapma. Basılı miktarı nokta/virgülleriyle aynen METİN olarak kopyala (örnek: belgede 1.234,56 yazıyorsa "1.234,56"). Döviz mesnedinde Döviz Miktarı alanı foreignAmountText, Döviz Cinsi alanının üç harfli ISO kodu foreignCurrency, Döviz Kuru exchangeRate, TL Karşılığı/NET Tutar tlAmountText olsun. Döviz miktarını TL net tutarına, dolar eşdeğerine veya kura karıştırma. Döviz belgesinde amountText=null ve currency=null yaz; takip foreignAmountText üzerinden olacak. Normal faturada vergi dahil ödenecek genel toplam amountText ve üç harfli para birimi kodu currency olsun; ara toplamı veya KDV'yi alma. Okuyamadığın miktarı veya para birimini null bırak.
+TARAMA: Döviz Miktarı satırında binlik ayırıcılar karışık görünse bile okunabilen rakamları ve ayırıcıları olduğu gibi kopyala. Döviz Cinsi açıkça USD ise, basılı ABD Doları Karşılığı satırını ayrıca usdEquivalentText alanına aynen kopyala. Bu alanı hesaplama ve Döviz Miktarı ile birleştirme. Satır yoksa, okunmuyorsa veya Döviz Cinsi USD değilse usdEquivalentText=null yaz.
 TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null bırak; varsayım yapma ve warnings alanında Türkçe uyar. Her documents öğesi yalnız bir mesnedi temsil etsin ve multipleDocuments=false olsun. Mesnetleri görünme sırasıyla döndür. Okunamayan mesnedi atlama; alanlarını null bırakıp kendi warnings listesinde açıkla. Hiç mesnet yoksa documents boş olsun. Bağlantıları, hesap kodlarını ve ilgisiz kişisel bilgileri çıktıya aktarma.`,
                   },
                 ],
@@ -161,6 +162,7 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
                         numberLabel: { type: Type.STRING, nullable: true },
                         foreignAmountText: { type: Type.STRING, nullable: true },
                         foreignCurrency: { type: Type.STRING, enum: CURRENCIES, nullable: true },
+                        usdEquivalentText: { type: Type.STRING, nullable: true },
                         tlAmountText: { type: Type.STRING, nullable: true },
                         exchangeRate: { type: Type.STRING, nullable: true },
                       },
@@ -176,6 +178,7 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
                         'counterpartyName',
                         'foreignAmountText',
                         'foreignCurrency',
+                        'usdEquivalentText',
                         'tlAmountText',
                         'exchangeRate',
                         'multipleDocuments',
@@ -223,7 +226,7 @@ TARİH: Düzenleme tarihi date=YYYY-MM-DD. Eksik veya okunaksız alanları null 
       if (partial) {
         if (partial.number) {
           const duplicates = (await db.duplicatesMany([partial.number])).get(normalizeNumber(partial.number)) ?? [];
-          if (duplicates.length) return json({ duplicates });
+          if (duplicates.length) return json({ duplicates, reading: partial });
         }
         report({ event: 'qr_review_fallback', status: error instanceof InvoiceError ? error.status : 500 });
         return json(partial);

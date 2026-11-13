@@ -752,6 +752,31 @@ test('printed document amounts convert exactly without model arithmetic and stil
   assert.equal(conflict.document.qrStatus, 'conflict');
 });
 
+test('a duplicate scanned USD receipt returns the newly read amount even with mixed thousands separators', async () => {
+  for (const foreignAmountText of ['2.314,850.25', '2.314.850.25']) {
+    const result = await readUploadFixture(
+      {
+        documents: [{ ...fxRead, foreignAmountText, foreignCurrency: 'USD' }],
+        hasMoreDocuments: false,
+      },
+      ['https://example.invalid/receipt'],
+    );
+    assert.equal(result.status, 200);
+    assert.equal(result.body.duplicates[0].number, fxRead.number);
+    assert.equal(result.body.reading.amountCents, 231485025);
+    assert.equal(result.body.reading.currency, 'USD');
+  }
+});
+
+test('the printed USD equivalent can recover a USD scan and flags discrepancies', () => {
+  const row = { ...fxRead, foreignAmountText: null, foreignCurrency: 'USD', usdEquivalentText: '2314850.25' };
+  assert.equal(validateExtraction(row, companies).amountCents, 231485025);
+  const different = validateExtraction({ ...row, foreignAmountText: '2.300.000,00' }, companies);
+  assert.equal(different.amountCents, null);
+  assert(different.warnings.some(warning => warning.includes('ABD Doları Karşılığı farklı')));
+  assert.equal(validateExtraction({ ...row, foreignCurrency: 'EUR' }, companies).amountCents, null);
+});
+
 const sourcePdfText = `DÜZENLEYEN YETKİLİ ALBAYRAK DÖVİZ VE ALTIN YETKİLİ MÜESSESE A.Ş. ÖRNEK ADRES
 SATAN KİŞİ/KURULUŞ ALİ YÜCE DÖVİZ A.Ş. ÖRNEK ADRES BELGE BİLGİLERİ
 Belge No QA2026000000999 Oluşturma Tarihi 03-11-2026 Senaryo: EDOVIZBELGE Tip: ALIM

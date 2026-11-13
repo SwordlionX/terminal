@@ -73,7 +73,24 @@ type Modal =
   | { type: 'duplicate'; invoices: Invoice[] }
   | null;
 
-type ReviewItem = { fileName: string; value: Extracted | { duplicates: Invoice[] } };
+type DuplicateReading = { duplicates: Invoice[]; reading?: Extracted };
+type ReviewItem = { fileName: string; value: Extracted | DuplicateReading };
+
+const amountInputFormatter = new Intl.NumberFormat('tr-TR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const formatAmountInput = (amountCents: number | null | undefined) =>
+  amountCents == null ? '' : amountInputFormatter.format(amountCents / 100);
+
+function formatAmountOnBlur(input: HTMLInputElement) {
+  if (!input.value.trim()) return;
+  try {
+    input.value = formatAmountInput(parseMoney(input.value));
+  } catch {
+    // Preserve invalid input so the user can correct it after validation.
+  }
+}
 
 function ModalFrame({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -379,7 +396,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
       if (files.length > MAX_UPLOAD_FILES) throw new Error('Bir seferde en fazla 10 dosya yükle.');
       const { readDocumentQr } = await import('./read-qr');
       type Scan = Awaited<ReturnType<typeof readDocumentQr>>;
-      const { results, failures } = await readUploadQueue<Extracted | { duplicates: Invoice[] }, Scan>(
+      const { results, failures } = await readUploadQueue<Extracted | DuplicateReading, Scan>(
         files,
         async (file, index, prepared) => {
           const progress = `${index + 1} / ${files.length} · ${file.name}`;
@@ -392,7 +409,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
           if (qr.pdfPages) form.append('pdfPages', JSON.stringify(qr.pdfPages));
           setReadingStage(`${progress} — Bilgiler doğrulanıyor; gerekirse ayrıntılı okunuyor…`);
           const data = await api<
-            Extracted | { duplicates: Invoice[] } | { documents: (Extracted & { duplicates?: Invoice[] })[] }
+            Extracted | DuplicateReading | { documents: (Extracted & { duplicates?: Invoice[] })[] }
           >('/api/fatura/mesnet', { method: 'POST', body: form, signal: AbortSignal.timeout(65000) });
           return 'documents' in data ? data.documents : [data];
         },
@@ -813,11 +830,13 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
 
 function DuplicateModal({
   invoices,
+  reading,
   onClose,
   onOpen,
   closeLabel = 'Kapat',
 }: {
   invoices: Invoice[];
+  reading?: Extracted;
   onClose: () => void;
   onOpen?: (id: string) => void;
   closeLabel?: string;
@@ -828,6 +847,19 @@ function DuplicateModal({
         <strong>Bu belgeyi tekrar kaydetmedik.</strong>
         <p>Aynı belge numarası daha önce şu firmaya kaydedilmiş:</p>
       </div>
+      {reading && (
+        <div className="inv-usage-summary">
+          <strong>Bu yüklemede okunan tutar</strong>
+          <p>
+            {reading.amountCents != null && reading.currency
+              ? formatMoney(reading.amountCents, reading.currency)
+              : 'Tutar kesinleştirilemedi.'}
+          </p>
+          {reading.warnings.map((warning, i) => (
+            <p key={i}>{warning}</p>
+          ))}
+        </div>
+      )}
       {invoices.map(invoice => (
         <div className="inv-usage-summary" key={invoice.id}>
           <strong>{invoice.companyName}</strong>
@@ -914,6 +946,7 @@ function BatchReview({
     return (
       <DuplicateModal
         invoices={found}
+        reading={'document' in value ? value : 'reading' in value ? value.reading : undefined}
         onClose={next}
         closeLabel={`${current.fileName} · ${index + 1} / ${documents.length} — Bu mesnedi atla ve devam et`}
       />
@@ -978,7 +1011,6 @@ function EntryModal({
     [edited, setEdited] = useState(false),
     requestId = useRef<string>(crypto.randomUUID());
   const [unit, setUnit] = useState(existing?.currency || (extracted ? extracted.currency || '' : 'TRY'));
-  const amount = (n: number | undefined | null) => (n == null ? '' : (n / 100).toFixed(2).replace('.', ','));
   async function saveDraft() {
     if (!draft || busy) return;
     setBusy(true);
@@ -1186,7 +1218,13 @@ function EntryModal({
             </div>
             <label className="inv-field">
               Kullanım miktarı ({existing!.currency})
-              <input name="amount" inputMode="decimal" placeholder="Örn. 25.000,00" required />
+              <input
+                name="amount"
+                inputMode="decimal"
+                onBlur={e => formatAmountOnBlur(e.currentTarget)}
+                placeholder="Örn. 25.000,00"
+                required
+              />
             </label>
             <label className="inv-field">
               Kullanım tarihi
@@ -1267,7 +1305,8 @@ function EntryModal({
               <input
                 name="amount"
                 inputMode="decimal"
-                defaultValue={amount(existing?.amountCents ?? extracted?.amountCents)}
+                defaultValue={formatAmountInput(existing?.amountCents ?? extracted?.amountCents)}
+                onBlur={e => formatAmountOnBlur(e.currentTarget)}
                 required
                 placeholder="Örn. 125.000,00"
               />

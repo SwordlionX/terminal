@@ -96,8 +96,10 @@ export function validateExtraction(
     if (typeof value !== 'string' || value.length > 40) return null;
     const printed = value.trim().replace(/[ \u00a0\u202f]/g, '');
     try {
-      // Recognize explicit English grouping/decimal punctuation without asking the model to do arithmetic.
-      const normalized = /^\d{1,3}(?:,\d{3})+\.\d{1,2}$/.test(printed) ? printed.replaceAll(',', '') : printed;
+      // Scans can mix commas and dots between thousands. Only strip grouping
+      // when every group has three digits and a distinct decimal tail follows.
+      const grouped = /^(\d{1,3}(?:[.,]\d{3})+)\.(\d{1,2})$/.exec(printed);
+      const normalized = grouped ? `${grouped[1].replace(/[.,]/g, '')}.${grouped[2]}` : printed;
       return cents(parseMoney(normalized));
     } catch {
       return null;
@@ -139,8 +141,20 @@ export function validateExtraction(
   } catch {
     warnings.push('Belge tarihi doğrulanamadı.');
   }
-  const foreignAmount = printedAmount('foreignAmountText', 'foreignAmountCents'),
-    foreignCurrency = unit(b.foreignCurrency) === 'TRY' ? null : unit(b.foreignCurrency);
+  const foreignCurrency = unit(b.foreignCurrency) === 'TRY' ? null : unit(b.foreignCurrency);
+  let foreignAmount = printedAmount('foreignAmountText', 'foreignAmountCents');
+  if (isFx && foreignCurrency === 'USD') {
+    const usdEquivalent = printedAmount('usdEquivalentText', 'usdEquivalentCents');
+    if (usdEquivalent !== null) {
+      if (foreignAmount === null) {
+        foreignAmount = usdEquivalent;
+        warnings.push('Döviz miktarı, belgede basılı ABD Doları Karşılığı satırından alındı. Tutarı kontrol et.');
+      } else if (foreignAmount !== usdEquivalent) {
+        foreignAmount = null;
+        warnings.push('Basılı döviz miktarı ve ABD Doları Karşılığı farklı. Tutarı belge üzerinden doğrula.');
+      }
+    }
+  }
   let amountCents = isFx ? foreignAmount : printedAmount('amountText', 'amountCents'),
     trackingCurrency = isFx ? foreignCurrency : unit(b.currency);
   let qrStatus: DocumentSummary['qrStatus'] = qr.conflict ? 'conflict' : qr.hasData ? 'partial' : 'not_read';
