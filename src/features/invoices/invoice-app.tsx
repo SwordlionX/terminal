@@ -382,6 +382,7 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
     return () => window.removeEventListener('focus', refresh);
   }, []);
   const selected = snapshot?.companies.find(c => c.id === companyId);
+  const totalInvoiceCount = snapshot?.companies.reduce((total, company) => total + company.invoiceCount, 0);
   const saved = () => {
     setModal(null);
     setRevision(v => v + 1);
@@ -502,7 +503,9 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
           <span>
             Tüm firmalar<small>Genel özet</small>
           </span>
-          <span className="inv-count">{snapshot?.companies.length ?? '—'}</span>
+          <span className="inv-count" title="Toplam fatura sayısı">
+            {totalInvoiceCount ?? '—'}
+          </span>
         </button>
         <div className="inv-firms-heading">
           <p className="inv-sidebar-label">FİRMALAR</p>
@@ -531,7 +534,9 @@ function Workspace({ account, onExpired }: { account: InvoiceAccount; onExpired:
                   : 'Henüz fatura yok'}
               </small>
             </span>
-            <span className="inv-count">{c.openCount}</span>
+            <span className="inv-count" title="Toplam fatura sayısı">
+              {c.invoiceCount}
+            </span>
           </button>
         ))}
         <div className="inv-sidebar-bottom">
